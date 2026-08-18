@@ -117,6 +117,13 @@ class TestCCharts(unittest.TestCase):
         lines = out.strip("\n").split("\n")
         self.assertEqual(len(lines), 3)
 
+    def test_height_one_line_is_single_row(self):
+        # P5 smoke (TUI watchlist mini cells): height=1 renders one line.
+        out = self.chart.line(width=12, height=1)
+        lines = out.strip("\n").split("\n")
+        self.assertEqual(len(lines), 1)
+        self.assertGreater(len(lines[0]), 0)
+
 
 class TestInputValidation(unittest.TestCase):
     """Dimension and payload guards added during the hardening pass."""
