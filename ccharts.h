@@ -31,27 +31,38 @@
 #define CC_BLOCK_1_8 "\u258F"
 #define CC_BLOCK_UPPER_HALF "\u2580"
 #define CC_BLOCK_LOWER_HALF "\u2584"
+#define CC_BLOCK_LOWER_1_8 "\u2581"
+#define CC_BLOCK_LOWER_2_8 "\u2582"
+#define CC_BLOCK_LOWER_3_8 "\u2583"
+#define CC_BLOCK_LOWER_5_8 "\u2585"
+#define CC_BLOCK_LOWER_6_8 "\u2586"
+#define CC_BLOCK_LOWER_7_8 "\u2587"
 #define CC_LINE_VERTICAL "\u2502"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <time.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-// timestamp ekle
 typedef struct cc_ohlc cc_ohlc_t;
 typedef struct cc_settings {
     const char* rise_color;
     const char* fall_color;
     const char* bg_color;
+    const char* area_color;   // çizgi altı doldurma rengi; NULL = kapalı
+    int single_color;         // 1 = tüm çizgi tek renk; 0 = segment bazlı (default)
+    int show_prices;          // 1 = Y ekseni min/max fiyat etiketi; 0 = kapalı
+    int show_times;           // 1 = X ekseni ilk/son zaman etiketi; 0 = kapalı
 } cc_settings_t;
 cc_settings_t cc_settings_resolve(const cc_settings_t* settings);
 int cc_str_to_ohlc(const char* data, int size, cc_ohlc_t** ohlc,
                    char val_seperator, char line_seperator);
+int cc_json_to_ohlc(const char* json, cc_ohlc_t** ohlc, int* size);
 char* cc_line_create(const cc_ohlc_t* data, int size, int width, int height,
                      const cc_settings_t* settings);
 char* cc_candle_create(const cc_ohlc_t* data, int size, int width, int height,
@@ -69,13 +80,18 @@ struct cc_ohlc {
     double high;
     double low;
     double close;
+    long long timestamp;   // epoch saniye; 0 = yok
 };
 
 inline cc_settings_t cc_settings_resolve(const cc_settings_t* settings) {
     cc_settings_t resolved = {
-        .rise_color = (settings && settings->rise_color) ? settings->rise_color : CC_COLOR_GREEN,
-        .fall_color = (settings && settings->fall_color) ? settings->fall_color : CC_COLOR_RED,
-        .bg_color   = (settings && settings->bg_color)   ? settings->bg_color   : NULL,
+        .rise_color   = (settings && settings->rise_color)   ? settings->rise_color   : CC_COLOR_GREEN,
+        .fall_color   = (settings && settings->fall_color)   ? settings->fall_color   : CC_COLOR_RED,
+        .bg_color     = (settings && settings->bg_color)     ? settings->bg_color     : NULL,
+        .area_color   = (settings && settings->area_color)   ? settings->area_color   : NULL,
+        .single_color = settings ? settings->single_color : 0,
+        .show_prices  = settings ? settings->show_prices  : 0,
+        .show_times   = settings ? settings->show_times   : 0,
     };
     return resolved;
 }
@@ -104,6 +120,40 @@ static inline char* cc_trim_whitespace(char* str) {
     *(end + 1) = '\0';
 
     return str;
+}
+
+// ISO8601 "YYYY-MM-DDTHH:MM:SS..." -> epoch saniye (zaman dilimi yok sayılır)
+static inline long long cc_iso8601_to_epoch(const char* s) {
+    int y = 0, mo = 0, d = 0, h = 0, mi = 0, se = 0;
+    if (sscanf(s, "%d-%d-%dT%d:%d:%d", &y, &mo, &d, &h, &mi, &se) < 3) {
+        return 0;
+    }
+    if (mo < 1 || mo > 12 || d < 1 || d > 31) {
+        return 0;
+    }
+
+    // Howard Hinnant civil_date -> days from epoch
+    long long yy = y - (mo <= 2);
+    long long era = (yy >= 0 ? yy : yy - 399) / 400;
+    long long yoe = yy - era * 400;                                   // [0, 399]
+    long long doy = (153 * (mo + (mo > 2 ? -3 : 9)) + 2) / 5 + d - 1; // [0, 365]
+    long long doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;            // [0, 146096]
+    long long days = era * 146097 + doe - 719468;
+
+    return days * 86400 + (long long)h * 3600 + (long long)mi * 60 + se;
+}
+
+// Sayısal epoch veya ISO8601 string -> epoch saniye
+static inline long long cc_parse_ts(const char* s) {
+    if (s == NULL || *s == '\0') {
+        return 0;
+    }
+    for (const char* p = s; *p; p++) {
+        if (*p == '-' || *p == 'T' || *p == ':') {
+            return cc_iso8601_to_epoch(s);
+        }
+    }
+    return (long long)atoll(s);
 }
 
 
@@ -152,15 +202,23 @@ inline int cc_str_to_ohlc(const char* data, int size, cc_ohlc_t** ohlc, char val
     for (int i = 0; i<token_count;i++) {
         char* token = tokens[i];
 
-        strcpy(token, cc_trim_whitespace(token));
+        char* trimmed = cc_trim_whitespace(token);
+        memmove(token, trimmed, strlen(trimmed) + 1);
 
         cc_ohlc_t _ohlc = {0};
-        
+
+        // Alan sayısı (ayraç sayısı + 1), en fazla 5 (5.si timestamp)
+        int field_count = 1;
+        for (int k = 0; token[k] != '\0'; k++) {
+            if (token[k] == val_seperator) field_count++;
+        }
+        if (field_count > 5) field_count = 5;
+
         int start = 0;
         int end = 0;
         int j = 0;
         int num = 0;
-        while (num <= 3) {
+        while (num < field_count) {
             if (token[j] != val_seperator && token[j] != '\0') {
                 j++;
                 continue;
@@ -169,30 +227,113 @@ inline int cc_str_to_ohlc(const char* data, int size, cc_ohlc_t** ohlc, char val
             // val seperator
             end = j;
             int len = end -start;
-            char val_str[32];
+            char val_str[64];
             strncpy(val_str, token+start, len);
             val_str[len] = '\0';
             start=end +1;
             j++;
 
-            double val = atof(val_str);
-            if (num == 0) {
-                _ohlc.open=val;
-            } else if (num == 1) {
-                _ohlc.high=val;
-            } else if (num == 2) {
-                _ohlc.low=val;
-            } else if (num == 3) {
-                _ohlc.close=val;
+            if (num == 4) {
+                _ohlc.timestamp = cc_parse_ts(val_str);
+            } else {
+                double val = atof(val_str);
+                if (num == 0) {
+                    _ohlc.open=val;
+                } else if (num == 1) {
+                    _ohlc.high=val;
+                } else if (num == 2) {
+                    _ohlc.low=val;
+                } else if (num == 3) {
+                    _ohlc.close=val;
+                }
             }
 
             num++;
-            
+
         }
-        
+
         (*ohlc)[i] = _ohlc;
     }
 
+    return 0;
+}
+
+// start konumundan itibaren "key" alanının değerini buf'a kopyalar; değerin bitişinden sonraki konumu döndürür
+static inline const char* cc_json_field(const char* start, const char* key, char* buf, size_t buf_n) {
+    const char* p = strstr(start, key);
+    if (!p) return NULL;
+    p = strchr(p + strlen(key), ':');
+    if (!p) return NULL;
+    p++;
+    while (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r') p++;
+    if (*p == '"') {
+        p++;
+        const char* e = strchr(p, '"');
+        if (!e) return NULL;
+        size_t len = (size_t)(e - p);
+        if (len >= buf_n) len = buf_n - 1;
+        memcpy(buf, p, len);
+        buf[len] = '\0';
+        return e + 1;
+    }
+    const char* e = p;
+    while (*e && *e != ',' && *e != '}' && *e != ']' && *e != '\n' && *e != '\r' && *e != ' ') e++;
+    size_t len = (size_t)(e - p);
+    if (len >= buf_n) len = buf_n - 1;
+    memcpy(buf, p, len);
+    buf[len] = '\0';
+    return e;
+}
+
+// Sabit şema JSON parser: [{ts,open,high,low,close,volume}, ...] (volume yok sayılır)
+inline int cc_json_to_ohlc(const char* json, cc_ohlc_t** ohlc, int* size) {
+    *ohlc = NULL;
+    *size = 0;
+    if (json == NULL) {
+        return 1;
+    }
+
+    int count = 0;
+    for (const char* p = json; (p = strstr(p, "\"open\"")) != NULL; p += 6) {
+        count++;
+    }
+    if (count <= 0) {
+        return 1;
+    }
+
+    *ohlc = (cc_ohlc_t*)calloc(count, sizeof(cc_ohlc_t));
+    if (*ohlc == NULL) {
+        printf("Memory allocation failed.\n");
+        return 1;
+    }
+
+    const char* cur = json;
+    for (int i = 0; i < count; i++) {
+        cc_ohlc_t c = {0};
+        char buf[64];
+
+        if (cc_json_field(cur, "\"ts\"", buf, sizeof(buf))) {
+            c.timestamp = cc_parse_ts(buf);
+        }
+        if (cc_json_field(cur, "\"open\"", buf, sizeof(buf))) {
+            c.open = atof(buf);
+        }
+        if (cc_json_field(cur, "\"high\"", buf, sizeof(buf))) {
+            c.high = atof(buf);
+        }
+        if (cc_json_field(cur, "\"low\"", buf, sizeof(buf))) {
+            c.low = atof(buf);
+        }
+        const char* after = cc_json_field(cur, "\"close\"", buf, sizeof(buf));
+        if (after) {
+            c.close = atof(buf);
+            const char* brace = strchr(after, '}');
+            cur = brace ? brace + 1 : after;
+        }
+        (*ohlc)[i] = c;
+    }
+
+    *size = count;
     return 0;
 }
 
@@ -258,6 +399,91 @@ static cc_ohlc_t cc_agg_ohlc(const cc_ohlc_t* data, int start, int end) {
     return v;
 }
 
+static inline const char* cc_lower_eighth(int n) {
+    // n = 1..8 hücre içi yükseklik (8 = tam)
+    static const char* table[] = {
+        CC_BLOCK_LOWER_1_8, CC_BLOCK_LOWER_2_8, CC_BLOCK_LOWER_3_8, CC_BLOCK_LOWER_HALF,
+        CC_BLOCK_LOWER_5_8, CC_BLOCK_LOWER_6_8, CC_BLOCK_LOWER_7_8, CC_BLOCK_FULL
+    };
+    if (n < 1) n = 1;
+    if (n > 8) n = 8;
+    return table[n - 1];
+}
+
+// Ortalama mum aralığına göre zaman etiketi formatı
+static inline const char* cc_time_format(long long first, long long last, int count) {
+    long long span = last - first;
+    long long interval = (count > 1) ? span / (count - 1) : 0;
+    if (interval >= 72000) {         // >= 20 saat: günlük/haftalık/aylık
+        return "%Y-%m-%d";
+    }
+    if (span >= 86400) {             // birden çok gün sürüyor: tarih + saat
+        return "%m-%d %H:%M";
+    }
+    return "%H:%M";                  // aynı gün içi
+}
+
+// columns -> çıktı string; opsiyonel sol fiyat margin'i + alt zaman footer'ı
+static char* cc_assemble_chart(int width, int height, char columns[width][height][32],
+                               const cc_settings_t* s,
+                               long long ts_first, long long ts_last, int count,
+                               double max, double min) {
+    int margin = 0;
+    char max_label[16] = "";
+    char min_label[16] = "";
+    if (s->show_prices) {
+        margin = 8;
+        snprintf(max_label, sizeof(max_label), "%.2f", max);
+        snprintf(min_label, sizeof(min_label), "%.2f", min);
+    }
+
+    char t_first[32] = "";
+    char t_last[32] = "";
+    int footer = 0;
+    if (s->show_times && count > 0 && ts_first > 0 && ts_last > 0) {
+        const char* fmt = cc_time_format(ts_first, ts_last, count);
+        time_t a = (time_t)ts_first;
+        time_t b = (time_t)ts_last;
+        struct tm tmv;
+        if (gmtime_r(&a, &tmv)) strftime(t_first, sizeof(t_first), fmt, &tmv);
+        if (gmtime_r(&b, &tmv)) strftime(t_last, sizeof(t_last), fmt, &tmv);
+        footer = 1;
+    }
+
+    size_t total_size = (size_t)(width + margin) * (height + footer) * 32 + height + footer + 1;
+    char* chart = (char*)calloc(total_size, sizeof(char));
+
+    for (int y = height - 1; y >= 0; y--) { // Grafiği yukarıdan aşağıya tara
+        if (margin > 0) {
+            char mlabel[16] = "";
+            if (y == height - 1) snprintf(mlabel, sizeof(mlabel), "%8s", max_label);
+            else if (y == 0)     snprintf(mlabel, sizeof(mlabel), "%8s", min_label);
+            else                 snprintf(mlabel, sizeof(mlabel), "        ");
+            strcat(chart, mlabel);
+        }
+        for (int x = 0; x < width; x++) {
+            strcat(chart, columns[x][y]);
+        }
+        strcat(chart, "\n");
+    }
+
+    if (footer) {
+        int line_len = width + margin;
+        char line[512];
+        snprintf(line, sizeof(line), "%*s", line_len, "");
+        size_t t1 = strlen(t_first);
+        if (t1 > (size_t)line_len) t1 = line_len;
+        memcpy(line, t_first, t1);
+        size_t t2 = strlen(t_last);
+        if (t2 > (size_t)line_len) t2 = line_len;
+        memcpy(line + line_len - t2, t_last, t2);
+        strcat(chart, line);
+        strcat(chart, "\n");
+    }
+
+    return chart;
+}
+
 inline char* cc_line_create(const cc_ohlc_t* data, int size, int width, int height,
                             const cc_settings_t* settings) {
 
@@ -286,18 +512,25 @@ inline char* cc_line_create(const cc_ohlc_t* data, int size, int width, int heig
 
     cc_settings_t s = cc_settings_resolve(settings);
 
-    const char *color;
-    double change = (size > 1) ? (closes[size-1] - closes[size-2]) : 0.0;
-    if (change >= 0.0) {
-        color = s.rise_color;
+    // Renk: single_color=1 ise genel değişime göre tek renk, değilse segment bazlı
+    const char* col_color[width];
+    if (s.single_color) {
+        double change = (size > 1) ? (closes[size-1] - closes[size-2]) : 0.0;
+        const char* color = (change >= 0.0) ? s.rise_color : s.fall_color;
+        for (int w = 0; w < width; w++) {
+            col_color[w] = color;
+        }
     } else {
-        color = s.fall_color;
+        for (int w = 0; w < width; w++) {
+            double prev = (w > 0) ? vals[w-1] : vals[w];
+            col_color[w] = (vals[w] >= prev) ? s.rise_color : s.fall_color;
+        }
     }
 
-    // Yatay çözünürlüğü 2 katına çıkar: her hücre = alt + üst yarım piksel
-    int pixel_height = height * 2;
+    // Dikey çözünürlük: her hücre 8 kademe (alt-1/8 blok ailesi)
+    int pixel_height = height * 8;
 
-    // Her sütunun piksel cinsinden y konumu (0 = alt, pixel_height-1 = üst)
+    // Her sütunun 1/8 kademesindeki yüksekliği (0 = alt, pixel_height-1 = üst)
     int py[width];
     for (int i = 0; i < width; i++) {
         py[i] = cc_pixel(vals[i], min, max, diff_range, pixel_height);
@@ -306,13 +539,8 @@ inline char* cc_line_create(const cc_ohlc_t* data, int size, int width, int heig
     // Her hücre ANSI kodu + UTF-8 blok + \0 alacak kadar yer tutsun (32 bayt yeterli)
     char columns[width][height][32];
 
-    // mask[i][j]: bit0 = alt yarım piksel dolu, bit1 = üst yarım piksel dolu
-    unsigned char mask[width][height];
-    memset(mask, 0, sizeof(mask));
-
-    // Çizgi: her sütunda, kendi noktası ile bir sonraki nokta arasındaki
-    // pikselleri doldur (komşu sütunlar ortak pikseli paylaşır -> boşluk kalmaz)
     for (int i = 0; i < width; i++) {
+        // Komşu sütunlar ortak pikseli paylaşır -> boşluk kalmaz
         int lo = py[i];
         int hi = py[i];
         if (i + 1 < width) {
@@ -320,33 +548,48 @@ inline char* cc_line_create(const cc_ohlc_t* data, int size, int width, int heig
             if (py[i+1] > hi) hi = py[i+1];
         }
 
-        for (int p = lo; p <= hi; p++) {
-            int cell = p / 2;
-            int sub = p % 2;   // 0 = alt yarım, 1 = üst yarım
-            mask[i][cell] |= (sub == 1) ? 2 : 1;
+        int cell_lo = lo / 8;
+        int cell_hi = hi / 8;
+
+        // Çizginin altındaki hücreler: alan doldurma veya boş
+        for (int r = 0; r < cell_lo && r < height; r++) {
+            if (s.area_color != NULL) {
+                snprintf(columns[i][r], sizeof(columns[i][r]), "%s %s", s.area_color, CC_COLOR_RESET);
+            } else if (s.bg_color != NULL) {
+                snprintf(columns[i][r], sizeof(columns[i][r]), "%s %s", s.bg_color, CC_COLOR_RESET);
+            } else {
+                snprintf(columns[i][r], sizeof(columns[i][r]), " ");
+            }
+        }
+
+        // Gövde: alt kenar hücre sınırına çakılır, tam blok
+        for (int r = cell_lo; r < cell_hi && r < height; r++) {
+            snprintf(columns[i][r], sizeof(columns[i][r]), "%s%s%s", col_color[i], CC_BLOCK_FULL, CC_COLOR_RESET);
+        }
+
+        // Üst kısmi hücre: 8 kademe pürüzsüz kenar
+        if (cell_hi >= 0 && cell_hi < height) {
+            int count = hi - cell_hi * 8 + 1;
+            if (count > 8) count = 8;
+            snprintf(columns[i][cell_hi], sizeof(columns[i][cell_hi]), "%s%s%s",
+                     col_color[i], cc_lower_eighth(count), CC_COLOR_RESET);
+        }
+
+        // Boş hücreler: bg veya boşluk
+        for (int r = cell_hi + 1; r < height; r++) {
+            if (s.bg_color != NULL) {
+                snprintf(columns[i][r], sizeof(columns[i][r]), "%s %s", s.bg_color, CC_COLOR_RESET);
+            } else {
+                snprintf(columns[i][r], sizeof(columns[i][r]), " ");
+            }
         }
     }
 
-    // Maskeyi blok karakterlere dönüştür
-    for (int i = 0; i < width; i++) {
-        for (int j = 0; j < height; j++) {
-            cc_render_cell(columns[i][j], mask[i][j], 0, color, s.bg_color);
-        }
-    }
-
-    // columns to lines, then 1D text
-    // Her satırda (width karakter + 1 adet '\n') + en sonda 1 adet '\0'
-    size_t total_size = (size_t)width * height * 32 + height + 1;
-    char* chart = (char*)calloc(total_size, sizeof(char));
-
-    for (int y = height - 1; y >= 0; y--) { // Grafiği yukarıdan aşağıya tara
-        for (int x = 0; x < width; x++) {
-            strcat(chart, columns[x][y]);
-        }
-        strcat(chart, "\n");
-    }
-
-    return chart; // main içinde kullandıktan sonra free(chart) etmeyi unutma
+    // columns to lines, then 1D text (opsiyonel fiyat/zaman etiketleriyle)
+    long long ts_first = (size > 0) ? data[0].timestamp : 0;
+    long long ts_last = (size > 0) ? data[size-1].timestamp : 0;
+    return cc_assemble_chart(width, height, columns, &s,
+                             ts_first, ts_last, size, max, min);
 }
 
 inline char* cc_candle_create(const cc_ohlc_t* data, int size, int width, int height,
@@ -444,18 +687,11 @@ inline char* cc_candle_create(const cc_ohlc_t* data, int size, int width, int he
         }
     }
 
-    // columns to lines, then 1D text
-    size_t total_size = (size_t)width * height * 32 + height + 1;
-    char* chart = (char*)calloc(total_size, sizeof(char));
-
-    for (int y = height - 1; y >= 0; y--) { // Grafiği yukarıdan aşağıya tara
-        for (int x = 0; x < width; x++) {
-            strcat(chart, columns[x][y]);
-        }
-        strcat(chart, "\n");
-    }
-
-    return chart; // main içinde kullandıktan sonra free(chart) etmeyi unutma
+    // columns to lines, then 1D text (opsiyonel fiyat/zaman etiketleriyle)
+    long long ts_first = (size > 0) ? data[0].timestamp : 0;
+    long long ts_last = (size > 0) ? data[size-1].timestamp : 0;
+    return cc_assemble_chart(width, height, columns, &s,
+                             ts_first, ts_last, size, max, min);
 }
 
 #ifdef __cplusplus
