@@ -7,6 +7,23 @@ terminal.
 
 Licensed under the [MIT License](LICENSE).
 
+[![PyPI version](https://img.shields.io/pypi/v/ccharts.svg)](https://pypi.org/project/ccharts)
+[![License](https://img.shields.io/pypi/l/ccharts.svg)](https://pypi.org/project/ccharts)
+*Badges become live once the first release is published.*
+
+## Installation
+
+```sh
+pip install ccharts
+```
+
+Pre-built wheels for Linux (x86_64 and aarch64), macOS (x86_64 and arm64)
+and Windows (x86_64), built on GitHub Actions CI for CPython 3.9-3.14, are
+published together with each release — no C toolchain is needed on the
+target machine. Install the sdist instead and a C compiler (gcc/Clang on
+Linux/macOS, MSVC on Windows) is required, because the package wraps the C
+single-header library `ccharts.h`.
+
 ## Features
 
 - **Line charts** — smooth curves using 8-level vertical resolution
@@ -67,7 +84,13 @@ print(chart.line(width=60, height=8, show_prices=True, show_times=True))
 print(chart.candle(width=60, height=8))
 ```
 
-To build a wheel:
+To develop locally (builds the extension in place):
+
+```sh
+python3 -m pip install -e .      # or: make test-py
+```
+
+Building a wheel by hand also works and is a good local smoke test:
 
 ```sh
 python3 -m pip wheel . --no-deps -w /tmp/ccharts_wheel
@@ -114,6 +137,19 @@ with MSVC out of the box: `gmtime_r` is swapped for `gmtime_s` on `_WIN32`
 and all functions get internal linkage (`static`) through the `CC_INLINE`
 macro, sidestepping MSVC's lack of C11 inline semantics. No extra flags or
 libraries are required beyond the standard ones.
+
+## Releases
+
+Releases are published automatically from GitHub Actions: pushing a tag
+`v<version>` (e.g. `v0.2.0`) runs `.github/workflows/publish.yml`, which
+verifies that the tag matches the version in `pyproject.toml`, builds the
+sdist and all platform wheels with cibuildwheel, and uploads them to PyPI.
+
+Publishing currently authenticates with the `PYPI_API_TOKEN` repository
+secret (an API token scoped to the `ccharts` project). An alternative is
+[trusted publishing](https://docs.pypi.org/trusted-publishers/), which
+removes the token entirely: link the `pypi` GitHub environment to PyPI,
+then delete the `password` input from the publish step in the workflow.
 
 ## Repository layout
 
