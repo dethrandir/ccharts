@@ -9,12 +9,29 @@ import unittest
 
 try:
     from ccharts import Chart
-except ImportError:  # plain checkout without an installed package
+except ImportError:  # checkout without an in-place build, or cwd shadowing
+    import importlib.machinery
     import os
     import sys
 
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-    from ccharts import Chart
+    root = os.path.join(os.path.dirname(__file__), "..")
+    built_in_place = any(
+        os.path.exists(os.path.join(root, "ccharts", name))
+        for name in importlib.machinery.EXTENSION_SUFFIXES
+    )
+    if built_in_place:
+        # Local in-place build (`setup.py build_ext --inplace`): the checkout
+        # itself is the package under test.
+        sys.path.insert(0, root)
+        from ccharts import Chart
+    else:
+        # Wheel-test context (CI): the repo checkout on sys.path (cwd, in
+        # relative or absolute form) shadows an installed wheel without a
+        # compiled extension. Drop every cwd entry and import the installed
+        # package instead.
+        cwd_entries = {"", os.curdir, os.getcwd()}
+        sys.path[:] = [p for p in sys.path if p not in cwd_entries]
+        from ccharts import Chart
 
 SAMPLE_JSON = """[
   {"ts": "2026-07-20T00:00:00+00:00", "open": 328.75, "high": 330.0, "low": 323.75, "close": 328.0, "volume": 100},
