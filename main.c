@@ -43,7 +43,8 @@ int main() {
     cc_str_to_ohlc(data, candle_count, &ohlc, ',', '\n');
 
     if (ohlc != NULL) {
-        char* output = cc_line_create(ohlc, candle_count, chart_width, chart_height);
+        cc_settings_t s = { .rise_color = CC_COLOR_BLUE, .fall_color = CC_COLOR_RED, .bg_color = CC_COLOR_BRIGHT_BLACK };
+        char* output = cc_line_create(ohlc, candle_count, chart_width, chart_height, &s);
         
         if (output != NULL) {
             printf("%s\n", output);

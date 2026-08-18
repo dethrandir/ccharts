@@ -42,12 +42,19 @@ extern "C" {
 #endif
 
 // timestamp ekle
-typedef struct cc_chart_settings cc_chart_settings_t;
 typedef struct cc_ohlc cc_ohlc_t;
+typedef struct cc_settings {
+    const char* rise_color;
+    const char* fall_color;
+    const char* bg_color;
+} cc_settings_t;
+cc_settings_t cc_settings_resolve(const cc_settings_t* settings);
 int cc_str_to_ohlc(const char* data, int size, cc_ohlc_t** ohlc,
                    char val_seperator, char line_seperator);
-char* cc_line_create(const cc_ohlc_t* data, int size, int width, int height);
-char* cc_candle_create(const cc_ohlc_t* data, int size, int width, int height);
+char* cc_line_create(const cc_ohlc_t* data, int size, int width, int height,
+                     const cc_settings_t* settings);
+char* cc_candle_create(const cc_ohlc_t* data, int size, int width, int height,
+                       const cc_settings_t* settings);
 #ifdef __cplusplus
 }
 #endif
@@ -56,18 +63,21 @@ char* cc_candle_create(const cc_ohlc_t* data, int size, int width, int height);
 #ifdef __cplusplus
 extern "C" {
 #endif
-struct cc_chart_settings {
-    char* rise_color;
-    char* fall_color;
-    char* bg_color;
-};
-
 struct cc_ohlc {
     double open;
     double high;
     double low;
     double close;
 };
+
+inline cc_settings_t cc_settings_resolve(const cc_settings_t* settings) {
+    cc_settings_t resolved = {
+        .rise_color = (settings && settings->rise_color) ? settings->rise_color : CC_COLOR_GREEN,
+        .fall_color = (settings && settings->fall_color) ? settings->fall_color : CC_COLOR_RED,
+        .bg_color   = (settings && settings->bg_color)   ? settings->bg_color   : NULL,
+    };
+    return resolved;
+}
 
 // inline trim
 static inline char* cc_trim_whitespace(char* str) {
@@ -206,7 +216,8 @@ static inline double find_max(double arr[], int n) {
 	return max;
 }
 
-inline char* cc_line_create(const cc_ohlc_t* data, int size, int width, int height) {
+inline char* cc_line_create(const cc_ohlc_t* data, int size, int width, int height,
+                            const cc_settings_t* settings) {
 
     double closes[size];
     for (int i = 0; i < size; i++) {
@@ -231,12 +242,14 @@ inline char* cc_line_create(const cc_ohlc_t* data, int size, int width, int heig
     double max = find_max(vals, width);
     double diff_range = max - min;
 
-    char *color;
+    cc_settings_t s = cc_settings_resolve(settings);
+
+    const char *color;
     double change = (size > 1) ? (closes[size-1] - closes[size-2]) : 0.0;
     if (change >= 0.0) {
-        color = CC_COLOR_GREEN;
+        color = s.rise_color;
     } else {
-        color = CC_COLOR_RED;
+        color = s.fall_color;
     }
 
     // Yatay çözünürlüğü 2 katına çıkar: her hücre = alt + üst yarım piksel
@@ -285,9 +298,17 @@ inline char* cc_line_create(const cc_ohlc_t* data, int size, int width, int heig
             else                      block = NULL;
 
             if (block != NULL) {
-                snprintf(columns[i][j], sizeof(columns[i][j]), "%s%s%s", color, block, CC_COLOR_RESET);
+                if (s.bg_color != NULL) {
+                    snprintf(columns[i][j], sizeof(columns[i][j]), "%s%s%s%s", s.bg_color, color, block, CC_COLOR_RESET);
+                } else {
+                    snprintf(columns[i][j], sizeof(columns[i][j]), "%s%s%s", color, block, CC_COLOR_RESET);
+                }
             } else {
-                snprintf(columns[i][j], sizeof(columns[i][j]), " ");
+                if (s.bg_color != NULL) {
+                    snprintf(columns[i][j], sizeof(columns[i][j]), "%s %s", s.bg_color, CC_COLOR_RESET);
+                } else {
+                    snprintf(columns[i][j], sizeof(columns[i][j]), " ");
+                }
             }
         }
     }
@@ -307,7 +328,8 @@ inline char* cc_line_create(const cc_ohlc_t* data, int size, int width, int heig
     return chart; // main içinde kullandıktan sonra free(chart) etmeyi unutma
 }
 
-inline char* cc_candle_create(const cc_ohlc_t* data, int size, int width, int height) {
+inline char* cc_candle_create(const cc_ohlc_t* data, int size, int width, int height,
+                              const cc_settings_t* settings) {
 	return "deneme amacli";
 }
 
