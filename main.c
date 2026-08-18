@@ -44,13 +44,19 @@ int main() {
 
     if (ohlc != NULL) {
         cc_settings_t s = { .rise_color = CC_COLOR_BLUE, .fall_color = CC_COLOR_RED, .bg_color = CC_COLOR_BRIGHT_BLACK };
+
         char* output = cc_line_create(ohlc, candle_count, chart_width, chart_height, &s);
-        
         if (output != NULL) {
-            printf("%s\n", output);
+            printf("LINE\n%s\n", output);
             free(output); // cc_line_create içindeki malloc/calloc temizliği
         }
-        
+
+        char* candles = cc_candle_create(ohlc, candle_count, chart_width, chart_height, &s);
+        if (candles != NULL) {
+            printf("CANDLE\n%s\n", candles);
+            free(candles);
+        }
+
         free(ohlc);
     }
     

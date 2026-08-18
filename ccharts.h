@@ -31,6 +31,7 @@
 #define CC_BLOCK_1_8 "\u258F"
 #define CC_BLOCK_UPPER_HALF "\u2580"
 #define CC_BLOCK_LOWER_HALF "\u2584"
+#define CC_LINE_VERTICAL "\u2502"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -216,6 +217,47 @@ static inline double find_max(double arr[], int n) {
 	return max;
 }
 
+static inline int cc_pixel(double val, double min, double max, double range, int pixel_height) {
+    double t = (range == 0.0) ? 0.5 : (val - min) / range;
+    int p = (int)lround(t * (pixel_height - 1));
+    if (p < 0) p = 0;
+    if (p >= pixel_height) p = pixel_height - 1;
+    return p;
+}
+
+static inline void cc_render_cell(char out[32], unsigned char bodybits, unsigned char wickbits, const char* fg, const char* bg) {
+    const char *block;
+    if (bodybits == 3)          block = CC_BLOCK_FULL;        // her iki yarım da dolu
+    else if (bodybits == 2)     block = CC_BLOCK_UPPER_HALF;  // sadece üst yarım
+    else if (bodybits == 1)     block = CC_BLOCK_LOWER_HALF;  // sadece alt yarım
+    else if (wickbits != 0)     block = CC_LINE_VERTICAL;     // ince fitil
+    else                        block = NULL;
+
+    if (block != NULL) {
+        if (bg != NULL) {
+            snprintf(out, 32, "%s%s%s%s", bg, fg, block, CC_COLOR_RESET);
+        } else {
+            snprintf(out, 32, "%s%s%s", fg, block, CC_COLOR_RESET);
+        }
+    } else {
+        if (bg != NULL) {
+            snprintf(out, 32, "%s %s", bg, CC_COLOR_RESET);
+        } else {
+            snprintf(out, 32, " ");
+        }
+    }
+}
+
+static cc_ohlc_t cc_agg_ohlc(const cc_ohlc_t* data, int start, int end) {
+    cc_ohlc_t v = { .open = data[start].open, .high = data[start].high,
+                    .low = data[start].low, .close = data[end - 1].close };
+    for (int k = start + 1; k < end; k++) {
+        if (data[k].high > v.high) v.high = data[k].high;
+        if (data[k].low < v.low) v.low = data[k].low;
+    }
+    return v;
+}
+
 inline char* cc_line_create(const cc_ohlc_t* data, int size, int width, int height,
                             const cc_settings_t* settings) {
 
@@ -258,10 +300,7 @@ inline char* cc_line_create(const cc_ohlc_t* data, int size, int width, int heig
     // Her sütunun piksel cinsinden y konumu (0 = alt, pixel_height-1 = üst)
     int py[width];
     for (int i = 0; i < width; i++) {
-        double t = (diff_range == 0.0) ? 0.5 : (vals[i] - min) / diff_range;
-        py[i] = (int)lround(t * (pixel_height - 1));
-        if (py[i] < 0) py[i] = 0;
-        if (py[i] >= pixel_height) py[i] = pixel_height - 1;
+        py[i] = cc_pixel(vals[i], min, max, diff_range, pixel_height);
     }
 
     // Her hücre ANSI kodu + UTF-8 blok + \0 alacak kadar yer tutsun (32 bayt yeterli)
@@ -291,25 +330,7 @@ inline char* cc_line_create(const cc_ohlc_t* data, int size, int width, int heig
     // Maskeyi blok karakterlere dönüştür
     for (int i = 0; i < width; i++) {
         for (int j = 0; j < height; j++) {
-            const char *block;
-            if (mask[i][j] == 3)      block = CC_BLOCK_FULL;        // her iki yarım da dolu
-            else if (mask[i][j] == 2) block = CC_BLOCK_UPPER_HALF;  // sadece üst yarım
-            else if (mask[i][j] == 1) block = CC_BLOCK_LOWER_HALF;  // sadece alt yarım
-            else                      block = NULL;
-
-            if (block != NULL) {
-                if (s.bg_color != NULL) {
-                    snprintf(columns[i][j], sizeof(columns[i][j]), "%s%s%s%s", s.bg_color, color, block, CC_COLOR_RESET);
-                } else {
-                    snprintf(columns[i][j], sizeof(columns[i][j]), "%s%s%s", color, block, CC_COLOR_RESET);
-                }
-            } else {
-                if (s.bg_color != NULL) {
-                    snprintf(columns[i][j], sizeof(columns[i][j]), "%s %s", s.bg_color, CC_COLOR_RESET);
-                } else {
-                    snprintf(columns[i][j], sizeof(columns[i][j]), " ");
-                }
-            }
+            cc_render_cell(columns[i][j], mask[i][j], 0, color, s.bg_color);
         }
     }
 
@@ -330,7 +351,111 @@ inline char* cc_line_create(const cc_ohlc_t* data, int size, int width, int heig
 
 inline char* cc_candle_create(const cc_ohlc_t* data, int size, int width, int height,
                               const cc_settings_t* settings) {
-	return "deneme amacli";
+    if (size <= 0 || width <= 0 || height <= 0) {
+        return (char*)calloc(1, sizeof(char));
+    }
+
+    cc_settings_t s = cc_settings_resolve(settings);
+    int pixel_height = height * 2;
+
+    // Fitiller taşmasın diye aralık tüm high/low üzerinden
+    double min = data[0].low;
+    double max = data[0].high;
+    for (int i = 1; i < size; i++) {
+        if (data[i].low < min)  min = data[i].low;
+        if (data[i].high > max) max = data[i].high;
+    }
+    double range = max - min;
+
+    // body_mask[i][j]: bit0 = alt yarım piksel dolu, bit1 = üst yarım piksel dolu (gövde)
+    // wick_mask[i][j]:  hücreden fitil geçiyor mu (ince çizgi)
+    unsigned char body_mask[width][height];
+    unsigned char wick_mask[width][height];
+    memset(body_mask, 0, sizeof(body_mask));
+    memset(wick_mask, 0, sizeof(wick_mask));
+
+    const char* col_color[width];
+
+    if (width >= size) {
+        // Kalın gövde: her mum kendi kolon aralığına yayılır, cw>=2 ise son kolon boşluk
+        for (int i = 0; i < size; i++) {
+            int cs = (i * width) / size;
+            int ce = ((i + 1) * width) / size;
+            if (ce <= cs) ce = cs + 1;
+            int gap = (ce - cs >= 2) ? (ce - 1) : ce;
+            int cmid = cs + (gap - cs - 1) / 2;
+
+            const char* color = (data[i].close >= data[i].open) ? s.rise_color : s.fall_color;
+
+            int po = cc_pixel(data[i].open, min, max, range, pixel_height);
+            int pc = cc_pixel(data[i].close, min, max, range, pixel_height);
+            int ph = cc_pixel(data[i].high, min, max, range, pixel_height);
+            int pl = cc_pixel(data[i].low, min, max, range, pixel_height);
+
+            int blo = (po < pc) ? po : pc;
+            int bhi = (po > pc) ? po : pc;
+
+            for (int c = cs; c < ce; c++) {
+                col_color[c] = color;
+                if (c < gap) {
+                    for (int p = blo; p <= bhi; p++) {
+                        body_mask[c][p / 2] |= (p % 2) ? 2 : 1;
+                    }
+                }
+            }
+
+            // Fitil: ortadaki kolonda high..low
+            for (int p = pl; p <= ph; p++) {
+                wick_mask[cmid][p / 2] |= (p % 2) ? 2 : 1;
+            }
+        }
+    } else {
+        // Kompresyon: her kolon birden fazla mumu sanal muma indirger
+        for (int w = 0; w < width; w++) {
+            int ss = (w * size) / width;
+            int se = ((w + 1) * size) / width;
+            if (se <= ss) se = ss + 1;
+
+            cc_ohlc_t v = cc_agg_ohlc(data, ss, se);
+            col_color[w] = (v.close >= v.open) ? s.rise_color : s.fall_color;
+
+            int po = cc_pixel(v.open, min, max, range, pixel_height);
+            int pc = cc_pixel(v.close, min, max, range, pixel_height);
+            int ph = cc_pixel(v.high, min, max, range, pixel_height);
+            int pl = cc_pixel(v.low, min, max, range, pixel_height);
+
+            int blo = (po < pc) ? po : pc;
+            int bhi = (po > pc) ? po : pc;
+
+            for (int p = blo; p <= bhi; p++) {
+                body_mask[w][p / 2] |= (p % 2) ? 2 : 1;
+            }
+            for (int p = pl; p <= ph; p++) {
+                wick_mask[w][p / 2] |= (p % 2) ? 2 : 1;
+            }
+        }
+    }
+
+    // Maskeyi blok karakterlere dönüştür
+    char columns[width][height][32];
+    for (int i = 0; i < width; i++) {
+        for (int j = 0; j < height; j++) {
+            cc_render_cell(columns[i][j], body_mask[i][j], wick_mask[i][j], col_color[i], s.bg_color);
+        }
+    }
+
+    // columns to lines, then 1D text
+    size_t total_size = (size_t)width * height * 32 + height + 1;
+    char* chart = (char*)calloc(total_size, sizeof(char));
+
+    for (int y = height - 1; y >= 0; y--) { // Grafiği yukarıdan aşağıya tara
+        for (int x = 0; x < width; x++) {
+            strcat(chart, columns[x][y]);
+        }
+        strcat(chart, "\n");
+    }
+
+    return chart; // main içinde kullandıktan sonra free(chart) etmeyi unutma
 }
 
 #ifdef __cplusplus
