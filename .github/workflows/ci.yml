@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  # Full build+test on one latest-Python runner: warning-free C compile,
+  # the C demo, and the Python unit suite against an editable install.
+  test:
+    name: Build & test (gcc -Wall / make / unittest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Compile with gcc -Wall (0 warnings expected)
+        run: |
+          gcc -Wall -c ccharts/wrapper.c $(python3-config --includes) -o /tmp/wrapper.o
+          gcc -Wall main.c -lm -o /tmp/ccharts_demo
+
+      - name: make test (C demo)
+        run: make test
+
+      - name: Build extension and run unit tests
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install -e .
+          python3 -m unittest tests.test_python_api -v
+
+  # The extension must compile and pass under every supported CPython.
+  test-matrix:
+    name: Python ${{ matrix.python }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install and run unit tests
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+          python -m unittest tests.test_python_api -v

@@ -5,13 +5,16 @@ Run from the repo root (or via `make test-py`):
     python3 -m unittest tests.test_python_api -v
 """
 
-import os
-import sys
 import unittest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+try:
+    from ccharts import Chart
+except ImportError:  # plain checkout without an installed package
+    import os
+    import sys
 
-from ccharts import Chart
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+    from ccharts import Chart
 
 SAMPLE_JSON = """[
   {"ts": "2026-07-20T00:00:00+00:00", "open": 328.75, "high": 330.0, "low": 323.75, "close": 328.0, "volume": 100},
