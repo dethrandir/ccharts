@@ -1,6 +1,17 @@
+/*
+ * ccharts demo — renders the OHLC data from prices.txt as a line chart and
+ * as candlestick charts (with and without axis labels).
+ *
+ * Build & run:
+ *   make test && ./build/bin/test
+ *
+ * prices.txt is the JSON schema expected by cc_json_to_ohlc().
+ */
+
 #define CCHARTS_IMPLEMENTATION
 #include "ccharts.h"
 
+/* Reads a whole file into a malloc'd NUL-terminated buffer (caller frees). */
 static char* read_file(const char* path) {
     FILE* f = fopen(path, "rb");
     if (f == NULL) return NULL;

@@ -1,3 +1,11 @@
+"""Build script for the ccharts Python package.
+
+The compiled extension is `ccharts._core` (see ccharts/wrapper.c), which
+wraps the single-header C library ccharts.h. Build in place with:
+
+    python3 setup.py build_ext --inplace
+"""
+
 from setuptools import setup, Extension
 
 ccharts_ext = Extension(

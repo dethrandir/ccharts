@@ -1,6 +1,65 @@
+/*
+ * ccharts.h — single-header terminal charts for financial OHLC data.
+ *
+ * Renders line and candlestick charts as ANSI-colored strings of Unicode
+ * block characters that can be printed straight to a terminal.
+ *
+ * ---------------------------------------------------------------------------
+ * USAGE
+ * ---------------------------------------------------------------------------
+ * Define CCHARTS_IMPLEMENTATION in exactly ONE translation unit before the
+ * include; every other TU includes the header as-is (declarations only):
+ *
+ *     #define CCHARTS_IMPLEMENTATION
+ *     #include "ccharts.h"
+ *
+ * Minimal example:
+ *
+ *     const char* json =
+ *         "[{\"open\":1,\"high\":2,\"low\":0.5,\"close\":1.5}]";
+ *     cc_ohlc_t* ohlc = NULL;
+ *     int size = 0;
+ *     cc_json_to_ohlc(json, &ohlc, &size);
+ *
+ *     cc_settings_t s = { .rise_color = CC_COLOR_BLUE };
+ *     char* chart = cc_line_create(ohlc, size, 60, 8, &s);
+ *     printf("%s\n", chart);
+ *     free(chart);
+ *     free(ohlc);
+ *
+ * ---------------------------------------------------------------------------
+ * DATA FLOW
+ * ---------------------------------------------------------------------------
+ *   1. Parse raw data into a heap-allocated cc_ohlc_t array:
+ *        - cc_str_to_ohlc()  CSV text (open,high,low,close[,timestamp])
+ *        - cc_json_to_ohlc() fixed-schema JSON (see its doc comment)
+ *   2. Optionally override rendering via a cc_settings_t. Unspecified (NULL /
+ *      0) fields fall back to defaults; pass NULL to use all defaults.
+ *   3. Call cc_line_create() / cc_candle_create() to get a malloc'd string.
+ *   4. Print the string, then free it AND the cc_ohlc_t array.
+ *
+ * ---------------------------------------------------------------------------
+ * RENDERING MODEL
+ * ---------------------------------------------------------------------------
+ *   Line charts   : each cell is 8 pixels tall via the 1/8 blocks ▁▂▃▄▅▆▇█,
+ *                   so curves are smooth. Width keeps the same semantics.
+ *   Candle charts : cells are 2 pixels tall (▀/▄/█). A candle draws a solid
+ *                   body between open/close and a thin vertical wick (│)
+ *                   between high/low; when there is room (width >= size) a
+ *                   gap column separates neighboring candles.
+ *   Both charts   : optionally prepend a left price margin (min/max) and
+ *                   append a time footer (first/last timestamp). The time
+ *                   format is chosen automatically from the average interval.
+ *
+ * MEMORY OWNERSHIP
+ *   cc_str_to_ohlc / cc_json_to_ohlc allocate the cc_ohlc_t array (free it).
+ *   cc_line_create / cc_candle_create return a malloc'd string (free it).
+ */
 
 #ifndef CCHARTS_H
 #define CCHARTS_H
+
+/* ============================ ANSI color codes ============================ */
 
 #define CC_COLOR_RESET "\x1b[0m"
 #define CC_COLOR_BLACK "\x1b[30m"
@@ -19,6 +78,12 @@
 #define CC_COLOR_BRIGHT_MAGENTA "\x1b[95m"
 #define CC_COLOR_BRIGHT_CYAN "\x1b[96m"
 #define CC_COLOR_BRIGHT_WHITE "\x1b[97m"
+
+/* ============================ Block element characters ============================
+ * The 1/8..7/8 left-growing bars (▏▎▍▌▋▊▉) and the 1/8 lower bars (▁▂▃▅▆▇)
+ * give sub-cell horizontal/vertical resolution. ▀/▄/█ and the thin vertical
+ * line │ (used for candle wicks) round out the drawing primitives.
+ * ============================================================================ */
 
 #define CC_BLOCK_FULL "\u2588"
 #define CC_BLOCK_7_8 "\u2589"
@@ -48,7 +113,22 @@
 extern "C" {
 #endif
 
+/* ============================ Public API ============================ */
+
 typedef struct cc_ohlc cc_ohlc_t;
+
+/* Rendering options. Unspecified fields fall back to defaults:
+ *   - rise_color  : color for rising values / candles  (default green)
+ *   - fall_color  : color for falling values / candles (default red)
+ *   - bg_color    : background of empty cells (default: none)
+ *   - area_color  : line chart fill below the line (default: none)
+ *   - single_color: 1 = whole line in one color chosen from overall change,
+ *                   0 = color each segment by its own direction (default)
+ *   - show_prices : print max/min price labels in a left margin
+ *   - show_times  : print first/last timestamp footer under the chart
+ * Build with a designated initializer, e.g.
+ *   cc_settings_t s = { .rise_color = CC_COLOR_BLUE };
+ * and pass NULL to any chart function for full defaults. */
 typedef struct cc_settings {
     const char* rise_color;
     const char* fall_color;
@@ -58,22 +138,58 @@ typedef struct cc_settings {
     int show_prices;
     int show_times;
 } cc_settings_t;
+
+/* Fills missing fields of `settings` with defaults and returns the result.
+ * Never NULL — passing NULL yields a struct with all defaults. Used
+ * internally by every chart function; safe to call directly. */
 cc_settings_t cc_settings_resolve(const cc_settings_t* settings);
+
+/* Parses CSV text into a heap-allocated cc_ohlc_t array.
+ *
+ * Format: one candle per line, fields separated by `val_seperator`:
+ *     open,high,low,close          (timestamp = 0)
+ *     open,high,low,close,timestamp (ISO8601 or epoch seconds)
+ *
+ * `size` is the expected number of lines. On success returns 0 and stores a
+ * calloc'd array of exactly `size` entries in *ohlc (caller frees it).
+ * Returns non-zero on allocation failure. */
 int cc_str_to_ohlc(const char* data, int size, cc_ohlc_t** ohlc,
                    char val_seperator, char line_seperator);
+
+/* Parses a fixed-schema JSON document into a heap-allocated cc_ohlc_t array.
+ *
+ * Expected schema — an array of objects with string timestamps:
+ *     [{"ts":"2026-07-20T00:00:00+00:00","open":328.75,"high":330.0,
+ *       "low":323.75,"close":328.0,"volume":46622936}, ...]
+ * The "volume" field is ignored. On success returns 0 and stores the number
+ * of candles in *size and a calloc'd array in *ohlc (caller frees both).
+ * Returns non-zero on malformed input or allocation failure. */
 int cc_json_to_ohlc(const char* json, cc_ohlc_t** ohlc, int* size);
+
+/* Renders a smooth line chart of the close prices.
+ * `width`/`height` are the chart plot area in cells. Returns a malloc'd
+ * string (caller frees) that may additionally contain a left price margin
+ * and a time footer depending on the settings flags. */
 char* cc_line_create(const cc_ohlc_t* data, int size, int width, int height,
                      const cc_settings_t* settings);
+
+/* Renders a candlestick chart from the OHLC data.
+ * `width`/`height` are the chart plot area in cells. When width >= size each
+ * candle is a few cells wide with a gap between neighbors; when width < size
+ * neighboring candles are aggregated into virtual candles (like the line
+ * chart's downsampling). Returns a malloc'd string (caller frees). */
 char* cc_candle_create(const cc_ohlc_t* data, int size, int width, int height,
                        const cc_settings_t* settings);
 #ifdef __cplusplus
-}
+extern "C" {
 #endif
 #endif
 #ifdef CCHARTS_IMPLEMENTATION
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/* One candlestick. `timestamp` is epoch seconds, 0 when unknown. */
 struct cc_ohlc {
     double open;
     double high;
@@ -94,6 +210,18 @@ inline cc_settings_t cc_settings_resolve(const cc_settings_t* settings) {
     };
     return resolved;
 }
+
+/* ============================ Internal helpers ============================
+ * Everything below CCHARTS_IMPLEMENTATION is private. The pieces build on
+ * each other in this order:
+ *   1. cc_settings_resolve  -> normalize settings to full defaults
+ *   2. parsing helpers      -> whitespace trim + timestamp conversion
+ *   3. cc_str_to_ohlc       -> CSV  -> cc_ohlc_t[]
+ *   4. cc_json_field/to_ohlc-> JSON -> cc_ohlc_t[]
+ *   5. rendering helpers    -> value-to-pixel math + cell string builders
+ *   6. cc_line_create       -> line chart renderer
+ *   7. cc_candle_create     -> candle chart renderer
+ * ========================================================================== */
 
 static inline char* cc_trim_whitespace(char* str) {
     if (str == NULL || *str == '\0') {
@@ -118,6 +246,9 @@ static inline char* cc_trim_whitespace(char* str) {
 }
 
 static inline long long cc_iso8601_to_epoch(const char* s) {
+    /* Parses "YYYY-MM-DDTHH:MM:SS[+ZZ:ZZ]" and converts to epoch seconds
+     * using Howard Hinnant's civil_date algorithm (timezone is ignored).
+     * Returns 0 for malformed input. */
     int y = 0, mo = 0, d = 0, h = 0, mi = 0, se = 0;
     if (sscanf(s, "%d-%d-%dT%d:%d:%d", &y, &mo, &d, &h, &mi, &se) < 3) {
         return 0;
@@ -137,6 +268,8 @@ static inline long long cc_iso8601_to_epoch(const char* s) {
 }
 
 static inline long long cc_parse_ts(const char* s) {
+    /* Accepts either an ISO8601 string ("2026-07-20T21:00:00+00:00") or a
+     * plain epoch-seconds number, and returns epoch seconds (0 = none). */
     if (s == NULL || *s == '\0') {
         return 0;
     }
@@ -147,6 +280,8 @@ static inline long long cc_parse_ts(const char* s) {
     }
     return (long long)atoll(s);
 }
+
+/* ------------------------------ CSV parser ------------------------------ */
 
 inline int cc_str_to_ohlc(const char* data, int size, cc_ohlc_t** ohlc, char val_seperator, char line_seperator)
 {
@@ -243,7 +378,12 @@ inline int cc_str_to_ohlc(const char* data, int size, cc_ohlc_t** ohlc, char val
     return 0;
 }
 
+/* ------------------------------ JSON parser ------------------------------ */
+
 static inline const char* cc_json_field(const char* start, const char* key, char* buf, size_t buf_n) {
+    /* Finds `"key": value` after `start`, copies the value into buf (both
+     * quoted strings and bare numbers are handled), and returns the position
+     * just past the value, or NULL when the key is absent. */
     const char* p = strstr(start, key);
     if (!p) return NULL;
     p = strchr(p + strlen(key), ':');
@@ -320,6 +460,9 @@ inline int cc_json_to_ohlc(const char* json, cc_ohlc_t** ohlc, int* size) {
     return 0;
 }
 
+/* --------------------------- Rendering helpers --------------------------- */
+
+/* Smallest / largest value in arr[0..n-1]. */
 static inline double find_min(double arr[], int n) {
 	double min = arr[0];
 	for (int i =1; i<n;i++) {
@@ -331,7 +474,7 @@ static inline double find_min(double arr[], int n) {
 }
 
 static inline double find_max(double arr[], int n) {
-	double  max = arr[0];
+	double max = arr[0];
 	for (int i =1; i<n; i++) {
 		if (arr[i] > max) {
 			max = arr[i];
@@ -340,6 +483,8 @@ static inline double find_max(double arr[], int n) {
 	return max;
 }
 
+/* Maps a value in [min, max] to a pixel row in [0, pixel_height-1].
+ * `range` is max - min; a flat range is centered to avoid divide-by-zero. */
 static inline int cc_pixel(double val, double min, double max, double range, int pixel_height) {
     double t = (range == 0.0) ? 0.5 : (val - min) / range;
     int p = (int)lround(t * (pixel_height - 1));
@@ -349,6 +494,10 @@ static inline int cc_pixel(double val, double min, double max, double range, int
 }
 
 static inline void cc_render_cell(char out[32], unsigned char bodybits, unsigned char wickbits, const char* fg, const char* bg) {
+    /* Turns a candle cell's mask bits into a ready-to-print string.
+     * bodybits: bit0 = lower half filled, bit1 = upper half filled (body).
+     * wickbits: non-zero means a wick passes through this cell. Body wins
+     * over wick so a partial body still reads as a solid block. */
     const char *block;
     if (bodybits == 3)          block = CC_BLOCK_FULL;
     else if (bodybits == 2)     block = CC_BLOCK_UPPER_HALF;
@@ -372,6 +521,9 @@ static inline void cc_render_cell(char out[32], unsigned char bodybits, unsigned
 }
 
 static cc_ohlc_t cc_agg_ohlc(const cc_ohlc_t* data, int start, int end) {
+    /* Aggregates candles [start, end) into one virtual candle:
+     * open = first open, high = max high, low = min low, close = last close.
+     * Used to compress many candles into a few columns (width < size). */
     cc_ohlc_t v = { .open = data[start].open, .high = data[start].high,
                     .low = data[start].low, .close = data[end - 1].close };
     for (int k = start + 1; k < end; k++) {
@@ -382,7 +534,9 @@ static cc_ohlc_t cc_agg_ohlc(const cc_ohlc_t* data, int start, int end) {
 }
 
 static inline const char* cc_lower_eighth(int n) {
-
+    /* Returns the lower 1/8 block whose bar height is n/8 (n in 1..8).
+     * These characters give the line chart its 8-level vertical resolution:
+     * ▁▂▃▄▅▆▇█. */
     static const char* table[] = {
         CC_BLOCK_LOWER_1_8, CC_BLOCK_LOWER_2_8, CC_BLOCK_LOWER_3_8, CC_BLOCK_LOWER_HALF,
         CC_BLOCK_LOWER_5_8, CC_BLOCK_LOWER_6_8, CC_BLOCK_LOWER_7_8, CC_BLOCK_FULL
@@ -393,6 +547,10 @@ static inline const char* cc_lower_eighth(int n) {
 }
 
 static inline const char* cc_time_format(long long first, long long last, int count) {
+    /* Picks a strftime format from the average interval between candles:
+     *   >= 20 hours (daily/weekly/monthly)  -> "YYYY-MM-DD"
+     *   intraday spanning > 1 day           -> "MM-DD HH:MM"
+     *   intraday within one day             -> "HH:MM" */
     long long span = last - first;
     long long interval = (count > 1) ? span / (count - 1) : 0;
     if (interval >= 72000) {
@@ -408,6 +566,11 @@ static char* cc_assemble_chart(int width, int height, char columns[width][height
                                const cc_settings_t* s,
                                long long ts_first, long long ts_last, int count,
                                double max, double min) {
+    /* Joins the per-cell strings (columns[x][y], y counted from the bottom)
+     * into the final chart string, printing rows top-to-bottom. Optionally
+     * adds a left price margin (max on the top row, min on the bottom row)
+     * and a footer row with the first/last timestamps. Allocates the result
+     * with calloc; the caller frees it. */
     int margin = 0;
     char max_label[16] = "";
     char min_label[16] = "";
@@ -463,6 +626,16 @@ static char* cc_assemble_chart(int width, int height, char columns[width][height
 
     return chart;
 }
+
+/* ------------------------------ Line renderer ------------------------------
+ * For each output column, average the closes that fall into that column
+ * (like the candle chart, when width < size several candles share a column).
+ * The column's height is snapped to a cell boundary on the bottom and drawn
+ * with an 8-level bar on top (cc_lower_eighth), so the line's upper edge is
+ * smooth. Adjacent columns share pixels to avoid gaps. With area_color set,
+ * cells below the line are filled. Colors come from cc_settings_t: either
+ * one color for the whole chart (single_color) or per segment.
+ * ------------------------------------------------------------------------- */
 
 inline char* cc_line_create(const cc_ohlc_t* data, int size, int width, int height,
                             const cc_settings_t* settings) {
@@ -563,6 +736,17 @@ inline char* cc_line_create(const cc_ohlc_t* data, int size, int width, int heig
     return cc_assemble_chart(width, height, columns, &s,
                              ts_first, ts_last, size, max, min);
 }
+
+/* ----------------------------- Candle renderer -----------------------------
+ * Two modes:
+ *   - width >= size : each candle owns several columns; the body (open-close)
+ *     is drawn as blocks, the wick (high-low) as a thin │ in the center
+ *     column, and the last column of each candle is left empty as a gap.
+ *   - width < size  : neighboring candles are collapsed into virtual candles
+ *     (cc_agg_ohlc), one per column.
+ * The vertical price range covers the whole high/low span so wicks never
+ * clip. Rises use rise_color, falls use fall_color (close >= open).
+ * ------------------------------------------------------------------------- */
 
 inline char* cc_candle_create(const cc_ohlc_t* data, int size, int width, int height,
                               const cc_settings_t* settings) {

@@ -1,3 +1,10 @@
+"""Tests for the ccharts Python bindings.
+
+Run from the repo root (or via `make test-py`):
+
+    python3 -m unittest tests.test_python_api -v
+"""
+
 import os
 import sys
 import unittest

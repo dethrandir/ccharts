@@ -1,13 +1,34 @@
+/*
+ * ccharts._core — CPython extension wrapping ccharts.h.
+ *
+ * The module exposes three low-level functions; the high-level `Chart`
+ * class lives in ccharts/__init__.py:
+ *
+ *   parse_json(json: str) -> PyCapsule
+ *       Parses the fixed-schema JSON into cc_ohlc_t via cc_json_to_ohlc()
+ *       and wraps the result in a PyCapsule. The capsule owns the OHLC
+ *       buffer and frees it when garbage collected.
+ *
+ *   create_line(capsule, width, height, rise, fall, bg, area, single, prices, times)
+ *   create_candle(...)                                     -> str
+ *       Renders a chart from the capsule's data and returns the ANSI-colored
+ *       string. Every settings flag maps 1:1 to cc_settings_t fields.
+ *
+ * Build: `make test-py` (see setup.py).
+ */
+
 #define PY_SSIZE_T_CLEAN
 #define CCHARTS_IMPLEMENTATION
 #include <Python.h>
 #include "../ccharts.h"
 
+/* Python-side handle to a parsed OHLC array. */
 typedef struct {
     cc_ohlc_t* data;
     int size;
 } py_ohlc_data;
 
+/* PyCapsule destructor: frees the C memory when Python collects the capsule. */
 static void dealloc_ohlc(PyObject* capsule) {
     py_ohlc_data* od = (py_ohlc_data*)PyCapsule_GetPointer(capsule, "ccharts.ohlc");
     if (od) {
@@ -16,6 +37,7 @@ static void dealloc_ohlc(PyObject* capsule) {
     }
 }
 
+/* Parses a JSON string and returns a PyCapsule holding the cc_ohlc_t array. */
 static PyObject* py_parse_json(PyObject* self, PyObject* args) {
     const char* json;
     if (!PyArg_ParseTuple(args, "s", &json)) return NULL;
@@ -34,6 +56,9 @@ static PyObject* py_parse_json(PyObject* self, PyObject* args) {
     return PyCapsule_New(od, "ccharts.ohlc", &dealloc_ohlc);
 }
 
+/* Renders a line chart from the capsule and returns it as a str.
+ * Arg format "Oii|zzzziii": capsule, width, height, then optional
+ * rise/fall/bg/area colors (str or None) and the int settings flags. */
 static PyObject* py_create_line(PyObject* self, PyObject* args) {
     PyObject* capsule;
     int width, height;
@@ -73,6 +98,7 @@ static PyObject* py_create_line(PyObject* self, PyObject* args) {
     return result;
 }
 
+/* Same as py_create_line, but renders a candle chart. */
 static PyObject* py_create_candle(PyObject* self, PyObject* args) {
     PyObject* capsule;
     int width, height;
@@ -112,6 +138,7 @@ static PyObject* py_create_candle(PyObject* self, PyObject* args) {
     return result;
 }
 
+/* Module method table + module definition. */
 static PyMethodDef CChartsMethods[] = {
     {"parse_json", py_parse_json, METH_VARARGS, "convert JSON data into OHLC format"},
     {"create_line", py_create_line, METH_VARARGS, "create a line chart"},
