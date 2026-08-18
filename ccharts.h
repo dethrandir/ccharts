@@ -1,7 +1,7 @@
-// ccharts.h
+
 #ifndef CCHARTS_H
 #define CCHARTS_H
-// ansi color codes
+
 #define CC_COLOR_RESET "\x1b[0m"
 #define CC_COLOR_BLACK "\x1b[30m"
 #define CC_COLOR_RED "\x1b[31m"
@@ -20,7 +20,6 @@
 #define CC_COLOR_BRIGHT_CYAN "\x1b[96m"
 #define CC_COLOR_BRIGHT_WHITE "\x1b[97m"
 
-// block element characters
 #define CC_BLOCK_FULL "\u2588"
 #define CC_BLOCK_7_8 "\u2589"
 #define CC_BLOCK_3_4 "\u258A"
@@ -54,10 +53,10 @@ typedef struct cc_settings {
     const char* rise_color;
     const char* fall_color;
     const char* bg_color;
-    const char* area_color;   // çizgi altı doldurma rengi; NULL = kapalı
-    int single_color;         // 1 = tüm çizgi tek renk; 0 = segment bazlı (default)
-    int show_prices;          // 1 = Y ekseni min/max fiyat etiketi; 0 = kapalı
-    int show_times;           // 1 = X ekseni ilk/son zaman etiketi; 0 = kapalı
+    const char* area_color;
+    int single_color;
+    int show_prices;
+    int show_times;
 } cc_settings_t;
 cc_settings_t cc_settings_resolve(const cc_settings_t* settings);
 int cc_str_to_ohlc(const char* data, int size, cc_ohlc_t** ohlc,
@@ -80,7 +79,7 @@ struct cc_ohlc {
     double high;
     double low;
     double close;
-    long long timestamp;   // epoch saniye; 0 = yok
+    long long timestamp;
 };
 
 inline cc_settings_t cc_settings_resolve(const cc_settings_t* settings) {
@@ -96,23 +95,19 @@ inline cc_settings_t cc_settings_resolve(const cc_settings_t* settings) {
     return resolved;
 }
 
-// inline trim
 static inline char* cc_trim_whitespace(char* str) {
     if (str == NULL || *str == '\0') {
         return str;
     }
 
-    // Trim leading whitespace
     while (*str != '\0' && (*str == ' ' || *str == '\t' || *str == '\n' || *str == '\r')) {
         str++;
     }
 
-    // If the string became empty after trimming leading whitespace
     if (*str == '\0') {
         return str;
     }
 
-    // Trim trailing whitespace
     char* end = str + strlen(str) - 1;
     while (end >= str && (*end == ' ' || *end == '\t' || *end == '\n' || *end == '\r')) {
         end--;
@@ -122,7 +117,6 @@ static inline char* cc_trim_whitespace(char* str) {
     return str;
 }
 
-// ISO8601 "YYYY-MM-DDTHH:MM:SS..." -> epoch saniye (zaman dilimi yok sayılır)
 static inline long long cc_iso8601_to_epoch(const char* s) {
     int y = 0, mo = 0, d = 0, h = 0, mi = 0, se = 0;
     if (sscanf(s, "%d-%d-%dT%d:%d:%d", &y, &mo, &d, &h, &mi, &se) < 3) {
@@ -132,18 +126,16 @@ static inline long long cc_iso8601_to_epoch(const char* s) {
         return 0;
     }
 
-    // Howard Hinnant civil_date -> days from epoch
     long long yy = y - (mo <= 2);
     long long era = (yy >= 0 ? yy : yy - 399) / 400;
-    long long yoe = yy - era * 400;                                   // [0, 399]
-    long long doy = (153 * (mo + (mo > 2 ? -3 : 9)) + 2) / 5 + d - 1; // [0, 365]
-    long long doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;            // [0, 146096]
+    long long yoe = yy - era * 400;
+    long long doy = (153 * (mo + (mo > 2 ? -3 : 9)) + 2) / 5 + d - 1;
+    long long doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
     long long days = era * 146097 + doe - 719468;
 
     return days * 86400 + (long long)h * 3600 + (long long)mi * 60 + se;
 }
 
-// Sayısal epoch veya ISO8601 string -> epoch saniye
 static inline long long cc_parse_ts(const char* s) {
     if (s == NULL || *s == '\0') {
         return 0;
@@ -156,8 +148,6 @@ static inline long long cc_parse_ts(const char* s) {
     return (long long)atoll(s);
 }
 
-
-// chari const yap sonra datayi
 inline int cc_str_to_ohlc(const char* data, int size, cc_ohlc_t** ohlc, char val_seperator, char line_seperator)
 {
     *ohlc = (cc_ohlc_t*)calloc(size, sizeof(cc_ohlc_t));
@@ -178,8 +168,6 @@ inline int cc_str_to_ohlc(const char* data, int size, cc_ohlc_t** ohlc, char val
             continue;
         }
 
-
-        // line seperator
         end = i;
         int len = end - start;
         strncpy(tokens[num], data + start, len);
@@ -187,7 +175,6 @@ inline int cc_str_to_ohlc(const char* data, int size, cc_ohlc_t** ohlc, char val
         num++;
         start=end +1;
         i++;
-
 
     }
 
@@ -207,7 +194,6 @@ inline int cc_str_to_ohlc(const char* data, int size, cc_ohlc_t** ohlc, char val
 
         cc_ohlc_t _ohlc = {0};
 
-        // Alan sayısı (ayraç sayısı + 1), en fazla 5 (5.si timestamp)
         int field_count = 1;
         for (int k = 0; token[k] != '\0'; k++) {
             if (token[k] == val_seperator) field_count++;
@@ -224,7 +210,6 @@ inline int cc_str_to_ohlc(const char* data, int size, cc_ohlc_t** ohlc, char val
                 continue;
             }
 
-            // val seperator
             end = j;
             int len = end -start;
             char val_str[64];
@@ -258,7 +243,6 @@ inline int cc_str_to_ohlc(const char* data, int size, cc_ohlc_t** ohlc, char val
     return 0;
 }
 
-// start konumundan itibaren "key" alanının değerini buf'a kopyalar; değerin bitişinden sonraki konumu döndürür
 static inline const char* cc_json_field(const char* start, const char* key, char* buf, size_t buf_n) {
     const char* p = strstr(start, key);
     if (!p) return NULL;
@@ -285,7 +269,6 @@ static inline const char* cc_json_field(const char* start, const char* key, char
     return e;
 }
 
-// Sabit şema JSON parser: [{ts,open,high,low,close,volume}, ...] (volume yok sayılır)
 inline int cc_json_to_ohlc(const char* json, cc_ohlc_t** ohlc, int* size) {
     *ohlc = NULL;
     *size = 0;
@@ -337,7 +320,6 @@ inline int cc_json_to_ohlc(const char* json, cc_ohlc_t** ohlc, int* size) {
     return 0;
 }
 
-
 static inline double find_min(double arr[], int n) {
 	double min = arr[0];
 	for (int i =1; i<n;i++) {
@@ -368,10 +350,10 @@ static inline int cc_pixel(double val, double min, double max, double range, int
 
 static inline void cc_render_cell(char out[32], unsigned char bodybits, unsigned char wickbits, const char* fg, const char* bg) {
     const char *block;
-    if (bodybits == 3)          block = CC_BLOCK_FULL;        // her iki yarım da dolu
-    else if (bodybits == 2)     block = CC_BLOCK_UPPER_HALF;  // sadece üst yarım
-    else if (bodybits == 1)     block = CC_BLOCK_LOWER_HALF;  // sadece alt yarım
-    else if (wickbits != 0)     block = CC_LINE_VERTICAL;     // ince fitil
+    if (bodybits == 3)          block = CC_BLOCK_FULL;
+    else if (bodybits == 2)     block = CC_BLOCK_UPPER_HALF;
+    else if (bodybits == 1)     block = CC_BLOCK_LOWER_HALF;
+    else if (wickbits != 0)     block = CC_LINE_VERTICAL;
     else                        block = NULL;
 
     if (block != NULL) {
@@ -400,7 +382,7 @@ static cc_ohlc_t cc_agg_ohlc(const cc_ohlc_t* data, int start, int end) {
 }
 
 static inline const char* cc_lower_eighth(int n) {
-    // n = 1..8 hücre içi yükseklik (8 = tam)
+
     static const char* table[] = {
         CC_BLOCK_LOWER_1_8, CC_BLOCK_LOWER_2_8, CC_BLOCK_LOWER_3_8, CC_BLOCK_LOWER_HALF,
         CC_BLOCK_LOWER_5_8, CC_BLOCK_LOWER_6_8, CC_BLOCK_LOWER_7_8, CC_BLOCK_FULL
@@ -410,20 +392,18 @@ static inline const char* cc_lower_eighth(int n) {
     return table[n - 1];
 }
 
-// Ortalama mum aralığına göre zaman etiketi formatı
 static inline const char* cc_time_format(long long first, long long last, int count) {
     long long span = last - first;
     long long interval = (count > 1) ? span / (count - 1) : 0;
-    if (interval >= 72000) {         // >= 20 saat: günlük/haftalık/aylık
+    if (interval >= 72000) {
         return "%Y-%m-%d";
     }
-    if (span >= 86400) {             // birden çok gün sürüyor: tarih + saat
+    if (span >= 86400) {
         return "%m-%d %H:%M";
     }
-    return "%H:%M";                  // aynı gün içi
+    return "%H:%M";
 }
 
-// columns -> çıktı string; opsiyonel sol fiyat margin'i + alt zaman footer'ı
 static char* cc_assemble_chart(int width, int height, char columns[width][height][32],
                                const cc_settings_t* s,
                                long long ts_first, long long ts_last, int count,
@@ -453,7 +433,7 @@ static char* cc_assemble_chart(int width, int height, char columns[width][height
     size_t total_size = (size_t)(width + margin) * (height + footer) * 32 + height + footer + 1;
     char* chart = (char*)calloc(total_size, sizeof(char));
 
-    for (int y = height - 1; y >= 0; y--) { // Grafiği yukarıdan aşağıya tara
+    for (int y = height - 1; y >= 0; y--) {
         if (margin > 0) {
             char mlabel[16] = "";
             if (y == height - 1) snprintf(mlabel, sizeof(mlabel), "%8s", max_label);
@@ -493,7 +473,8 @@ inline char* cc_line_create(const cc_ohlc_t* data, int size, int width, int heig
     }
 
     double vals[width];
-    // Her sütuna düşen ortalama değer:
+    memset(vals, 0, sizeof(vals));
+
     for (int w = 0; w < width; w++) {
         int start_idx = (w * size) / width;
         int end_idx = ((w + 1) * size) / width;
@@ -512,7 +493,6 @@ inline char* cc_line_create(const cc_ohlc_t* data, int size, int width, int heig
 
     cc_settings_t s = cc_settings_resolve(settings);
 
-    // Renk: single_color=1 ise genel değişime göre tek renk, değilse segment bazlı
     const char* col_color[width];
     if (s.single_color) {
         double change = (size > 1) ? (closes[size-1] - closes[size-2]) : 0.0;
@@ -527,20 +507,17 @@ inline char* cc_line_create(const cc_ohlc_t* data, int size, int width, int heig
         }
     }
 
-    // Dikey çözünürlük: her hücre 8 kademe (alt-1/8 blok ailesi)
     int pixel_height = height * 8;
 
-    // Her sütunun 1/8 kademesindeki yüksekliği (0 = alt, pixel_height-1 = üst)
     int py[width];
     for (int i = 0; i < width; i++) {
         py[i] = cc_pixel(vals[i], min, max, diff_range, pixel_height);
     }
 
-    // Her hücre ANSI kodu + UTF-8 blok + \0 alacak kadar yer tutsun (32 bayt yeterli)
     char columns[width][height][32];
 
     for (int i = 0; i < width; i++) {
-        // Komşu sütunlar ortak pikseli paylaşır -> boşluk kalmaz
+
         int lo = py[i];
         int hi = py[i];
         if (i + 1 < width) {
@@ -551,7 +528,6 @@ inline char* cc_line_create(const cc_ohlc_t* data, int size, int width, int heig
         int cell_lo = lo / 8;
         int cell_hi = hi / 8;
 
-        // Çizginin altındaki hücreler: alan doldurma veya boş
         for (int r = 0; r < cell_lo && r < height; r++) {
             if (s.area_color != NULL) {
                 snprintf(columns[i][r], sizeof(columns[i][r]), "%s %s", s.area_color, CC_COLOR_RESET);
@@ -562,12 +538,10 @@ inline char* cc_line_create(const cc_ohlc_t* data, int size, int width, int heig
             }
         }
 
-        // Gövde: alt kenar hücre sınırına çakılır, tam blok
         for (int r = cell_lo; r < cell_hi && r < height; r++) {
             snprintf(columns[i][r], sizeof(columns[i][r]), "%s%s%s", col_color[i], CC_BLOCK_FULL, CC_COLOR_RESET);
         }
 
-        // Üst kısmi hücre: 8 kademe pürüzsüz kenar
         if (cell_hi >= 0 && cell_hi < height) {
             int count = hi - cell_hi * 8 + 1;
             if (count > 8) count = 8;
@@ -575,7 +549,6 @@ inline char* cc_line_create(const cc_ohlc_t* data, int size, int width, int heig
                      col_color[i], cc_lower_eighth(count), CC_COLOR_RESET);
         }
 
-        // Boş hücreler: bg veya boşluk
         for (int r = cell_hi + 1; r < height; r++) {
             if (s.bg_color != NULL) {
                 snprintf(columns[i][r], sizeof(columns[i][r]), "%s %s", s.bg_color, CC_COLOR_RESET);
@@ -585,7 +558,6 @@ inline char* cc_line_create(const cc_ohlc_t* data, int size, int width, int heig
         }
     }
 
-    // columns to lines, then 1D text (opsiyonel fiyat/zaman etiketleriyle)
     long long ts_first = (size > 0) ? data[0].timestamp : 0;
     long long ts_last = (size > 0) ? data[size-1].timestamp : 0;
     return cc_assemble_chart(width, height, columns, &s,
@@ -601,7 +573,6 @@ inline char* cc_candle_create(const cc_ohlc_t* data, int size, int width, int he
     cc_settings_t s = cc_settings_resolve(settings);
     int pixel_height = height * 2;
 
-    // Fitiller taşmasın diye aralık tüm high/low üzerinden
     double min = data[0].low;
     double max = data[0].high;
     for (int i = 1; i < size; i++) {
@@ -610,8 +581,6 @@ inline char* cc_candle_create(const cc_ohlc_t* data, int size, int width, int he
     }
     double range = max - min;
 
-    // body_mask[i][j]: bit0 = alt yarım piksel dolu, bit1 = üst yarım piksel dolu (gövde)
-    // wick_mask[i][j]:  hücreden fitil geçiyor mu (ince çizgi)
     unsigned char body_mask[width][height];
     unsigned char wick_mask[width][height];
     memset(body_mask, 0, sizeof(body_mask));
@@ -620,7 +589,7 @@ inline char* cc_candle_create(const cc_ohlc_t* data, int size, int width, int he
     const char* col_color[width];
 
     if (width >= size) {
-        // Kalın gövde: her mum kendi kolon aralığına yayılır, cw>=2 ise son kolon boşluk
+
         for (int i = 0; i < size; i++) {
             int cs = (i * width) / size;
             int ce = ((i + 1) * width) / size;
@@ -647,13 +616,12 @@ inline char* cc_candle_create(const cc_ohlc_t* data, int size, int width, int he
                 }
             }
 
-            // Fitil: ortadaki kolonda high..low
             for (int p = pl; p <= ph; p++) {
                 wick_mask[cmid][p / 2] |= (p % 2) ? 2 : 1;
             }
         }
     } else {
-        // Kompresyon: her kolon birden fazla mumu sanal muma indirger
+
         for (int w = 0; w < width; w++) {
             int ss = (w * size) / width;
             int se = ((w + 1) * size) / width;
@@ -679,7 +647,6 @@ inline char* cc_candle_create(const cc_ohlc_t* data, int size, int width, int he
         }
     }
 
-    // Maskeyi blok karakterlere dönüştür
     char columns[width][height][32];
     for (int i = 0; i < width; i++) {
         for (int j = 0; j < height; j++) {
@@ -687,7 +654,6 @@ inline char* cc_candle_create(const cc_ohlc_t* data, int size, int width, int he
         }
     }
 
-    // columns to lines, then 1D text (opsiyonel fiyat/zaman etiketleriyle)
     long long ts_first = (size > 0) ? data[0].timestamp : 0;
     long long ts_last = (size > 0) ? data[size-1].timestamp : 0;
     return cc_assemble_chart(width, height, columns, &s,
