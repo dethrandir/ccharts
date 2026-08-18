@@ -1,0 +1,11 @@
+# Files needed to build the C extension from the sdist.
+# (setuptools only includes Python files by default; the C sources and the
+# single-header library must be listed explicitly. MANIFEST.in affects the
+# sdist only, never the wheel.)
+include LICENSE
+include README.md
+include ccharts.h
+include main.c
+include Makefile
+include prices.txt
+recursive-include ccharts *.c *.h
