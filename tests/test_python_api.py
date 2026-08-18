@@ -98,5 +98,124 @@ class TestCCharts(unittest.TestCase):
         self.assertEqual(len(lines), 3)
 
 
+class TestInputValidation(unittest.TestCase):
+    """Dimension and payload guards added during the hardening pass."""
+
+    def setUp(self):
+        self.chart = Chart(SAMPLE_JSON)
+
+    def test_zero_width_line_raises(self):
+        with self.assertRaises(ValueError):
+            self.chart.line(width=0)
+
+    def test_negative_width_line_raises(self):
+        with self.assertRaises(ValueError):
+            self.chart.line(width=-5)
+
+    def test_zero_height_candle_raises(self):
+        with self.assertRaises(ValueError):
+            self.chart.candle(height=0)
+
+    def test_negative_height_line_raises(self):
+        with self.assertRaises(ValueError):
+            self.chart.line(height=-2)
+
+    def test_huge_dimensions_raise(self):
+        # width beyond CC_MAX_DIM (100000) must fail cleanly, not segfault.
+        with self.assertRaises(ValueError):
+            self.chart.line(width=200000, height=10)
+        with self.assertRaises(ValueError):
+            self.chart.candle(width=1000, height=2000)  # > CC_MAX_CELLS
+
+    def test_non_integer_dimensions_raise(self):
+        with self.assertRaises(TypeError):
+            self.chart.line(width="wide")
+
+    def test_empty_json_array_raises(self):
+        with self.assertRaises(ValueError):
+            Chart("[]")
+
+    def test_object_not_array_raises(self):
+        with self.assertRaises(ValueError):
+            Chart('{"open": 1}')
+
+    def test_non_string_input_raises(self):
+        with self.assertRaises(TypeError):
+            Chart(42)
+
+    def test_keyword_substring_not_false_positive(self):
+        # A string value containing a key name ("opened" contains "open")
+        # must not be mistaken for the open field or break parsing.
+        tricky = ('[{"ts": "opened", "open": 1, "high": 2, "low": 0.5,'
+                  ' "close": 1.5, "note": "a high low open close", "volume": 7}]')
+        c = Chart(tricky)
+        out = c.line(show_times=True)
+        self.assertGreater(len(out), 0)
+        self.assertNotIn("1970", out)  # bogus ts must not parse to epoch 0
+
+
+class TestTimezones(unittest.TestCase):
+    """ISO8601 offsets must shift the stored instant (wall time -> UTC)."""
+
+    def test_offset_changes_footer_date(self):
+        # 2026-07-20T00:00:00+03:00 is 2026-07-19T21:00:00 UTC, so a daily
+        # chart labeled with +03:00 shows the previous day in the footer.
+        shifted = SAMPLE_JSON.replace("+00:00", "+03:00")
+        out_utc = Chart(SAMPLE_JSON).line(show_times=True)
+        out_plus3 = Chart(shifted).line(show_times=True)
+
+        self.assertIn("2026-07-20", out_utc)
+        self.assertIn("2026-07-19", out_plus3)
+        self.assertNotIn("2026-07-20", out_plus3)
+        self.assertNotEqual(out_utc, out_plus3)
+
+    def test_negative_offset_shifts_forward(self):
+        # 2026-07-20T22:00:00-05:00 is 2026-07-21T03:00:00 UTC, so a late
+        # evening local time labeled -05:00 rolls into the NEXT day.
+        evening = SAMPLE_JSON.replace("T00:00:00", "T22:00:00")
+        shifted = evening.replace("+00:00", "-05:00")
+        out_utc = Chart(evening).line(show_times=True)
+        out_minus5 = Chart(shifted).line(show_times=True)
+        self.assertIn("2026-07-20", out_utc)
+        self.assertIn("2026-07-21", out_minus5)
+        self.assertNotEqual(out_utc, out_minus5)
+
+    def test_z_suffix_equals_utc(self):
+        shifted = SAMPLE_JSON.replace("+00:00", "Z")
+        out_z = Chart(shifted).line(show_times=True)
+        self.assertIn("2026-07-20", out_z)
+        self.assertIn("2026-07-24", out_z)
+
+
+class TestDownsampling(unittest.TestCase):
+    """Many candles into a narrow width must still render on both charts."""
+
+    def _many_candles(self, n=200):
+        rows = ",".join(
+            '{"ts": %d, "open": %d, "high": %d, "low": %d, "close": %d}'
+            % (i, i, i + 1, i - 1, i)
+            for i in range(n)
+        )
+        return Chart("[" + rows + "]")
+
+    def test_line_downsampling(self):
+        c = self._many_candles(200)
+        out = c.line(width=10, height=3)
+        lines = out.strip("\n").split("\n")
+        self.assertEqual(len(lines), 3)
+        self.assertGreater(len(out), 0)
+
+    def test_candle_downsampling(self):
+        c = self._many_candles(200)
+        out = c.candle(width=10, height=3)
+        self.assertGreater(len(out), 0)
+        self.assertIn("\n", out)
+
+    def test_single_candle(self):
+        c = Chart('[{"open": 1, "high": 2, "low": 0.5, "close": 1.5}]')
+        self.assertGreater(len(c.line(width=10, height=3)), 0)
+        self.assertGreater(len(c.candle(width=10, height=3)), 0)
+
+
 if __name__ == "__main__":
     unittest.main()

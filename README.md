@@ -5,6 +5,8 @@ with optional Python bindings. Line and candlestick charts are rendered as
 ANSI-colored strings of Unicode block characters and printed straight to a
 terminal.
 
+Licensed under the [MIT License](LICENSE).
+
 ## Features
 
 - **Line charts** — smooth curves using 8-level vertical resolution
@@ -48,7 +50,8 @@ exactly one translation unit; every other unit can include the header as-is.
 C++ code can use the header for declarations (see the doc comment in
 ccharts.h for details).
 
-Run the demo with `make test` (reads `prices.txt`).
+Run the demo with `make test` — it compiles `main.c` **and runs the binary**,
+rendering `prices.txt` as a line chart and two candlestick variants.
 
 ## Python usage
 
@@ -62,6 +65,12 @@ from ccharts import Chart
 chart = Chart(open("prices.txt").read())
 print(chart.line(width=60, height=8, show_prices=True, show_times=True))
 print(chart.candle(width=60, height=8))
+```
+
+To build a wheel:
+
+```sh
+python3 -m pip wheel . --no-deps -w /tmp/ccharts_wheel
 ```
 
 ## Settings
@@ -79,6 +88,33 @@ print(chart.candle(width=60, height=8))
 Any unset field falls back to its default, so only the fields you want to
 override need to be set (see `cc_settings_resolve`).
 
+## Input constraints
+
+- **Timestamps** — ISO8601 strings may carry a UTC offset (`+03:00`, `+0300`,
+  `+03`, `Z`; a missing offset is treated as UTC). The offset is applied, so
+  the stored epoch is the true instant: `2026-07-20T00:00:00+03:00` becomes
+  `2026-07-19T21:00:00` UTC. Plain epoch-seconds numbers (including
+  negative) are accepted as-is. Malformed timestamps parse to `0`.
+- **Dimensions** — `width`/`height` must be positive and are capped at
+  `CC_MAX_DIM` (100000) per side and `CC_MAX_CELLS` (1000000) total cells.
+  Invalid dimensions make the C chart functions return an empty string and
+  make the Python bindings raise `ValueError` — no unchecked giant
+  allocation, no stack overflow.
+- **CSV** — lines may be arbitrarily long and at most `size` lines are read.
+- **JSON** — must be an array of objects with `ts`, `open`, `high`, `low`,
+  `close` (plus optional ignored fields like `volume`). The parser is an
+  iterative mini-scanner: keys are matched exactly, so a substring like
+  `"open"` inside a string value can never cause a false match. Malformed or
+  empty documents make the parsers fail cleanly.
+
+## Windows / MSVC
+
+The header is VLA-free and uses only portable C89 constructs, so it compiles
+with MSVC out of the box: `gmtime_r` is swapped for `gmtime_s` on `_WIN32`
+and all functions get internal linkage (`static`) through the `CC_INLINE`
+macro, sidestepping MSVC's lack of C11 inline semantics. No extra flags or
+libraries are required beyond the standard ones.
+
 ## Repository layout
 
 - `ccharts.h` — the whole C library (single header, heavily documented).
@@ -86,5 +122,4 @@ override need to be set (see `cc_settings_resolve`).
 - `prices.txt` — sample JSON OHLC data (THYAO).
 - `ccharts/` — Python package: `__init__.py` (high-level `Chart`) and
   `wrapper.c` (CPython extension `ccharts._core`).
-- `tests/` — Python test suite (`python3 -m unittest tests.test_python_api`).
-- `setup.py`, `pyproject.toml` — packaging for the Python bindings.
+- `tests/` — Python test suite (`tests/test_python_api.py`).
