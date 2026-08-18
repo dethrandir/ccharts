@@ -66,8 +66,10 @@ build = "cp39-* cp310-* cp311-* cp312-* cp313-* cp314-*"
 test-skip = "*-manylinux_aarch64"
 test-command = "python -m unittest discover -s {project}/tests -v"
 
+# QEMU-emulated aarch64 builds are pathologically slow on GH runners;
+# native ARM64 runners can add them later.
 [tool.cibuildwheel.linux]
-archs = ["x86_64", "aarch64"]
+archs = ["x86_64"]
 
 [tool.cibuildwheel.macos]
 archs = ["x86_64", "arm64"]
