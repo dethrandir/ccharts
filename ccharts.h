@@ -44,7 +44,6 @@ extern "C" {
 // timestamp ekle
 typedef struct cc_chart_settings cc_chart_settings_t;
 typedef struct cc_ohlc cc_ohlc_t;
-// float mi double mi yapsam
 int cc_str_to_ohlc(const char* data, int size, cc_ohlc_t** ohlc,
                    char val_seperator, char line_seperator);
 char* cc_line_create(const cc_ohlc_t* data, int size, int width, int height);
@@ -64,10 +63,10 @@ struct cc_chart_settings {
 };
 
 struct cc_ohlc {
-    float open;
-    float high;
-    float low;
-    float close;
+    double open;
+    double high;
+    double low;
+    double close;
 };
 
 // inline trim
