@@ -55,11 +55,11 @@ Bugs = "https://github.com/dethrandir/ccharts/issues"
 packages = ["ccharts"]
 
 # cibuildwheel (CI only). Build CPython 3.9-3.14 for the archs below and run
-# the unit suite against each built wheel. The `!cp314t-*` selector keeps the
-# free-threaded 3.14 build out (the extension is not verified under the GIL
-# disabled build until ccharts declares support for it).
+# the unit suite against each built wheel. `cp314-*` already excludes the
+# free-threaded 3.14 builds (`cp314t-*`); an explicit `!cp314t-*` token is
+# invalid selector syntax and is intentionally omitted.
 [tool.cibuildwheel]
-build = "cp39-* cp310-* cp311-* cp312-* cp313-* cp314-* !cp314t-*"
+build = "cp39-* cp310-* cp311-* cp312-* cp313-* cp314-*"
 test-command = "python -m unittest discover -s {project}/tests -v"
 
 [tool.cibuildwheel.linux]
