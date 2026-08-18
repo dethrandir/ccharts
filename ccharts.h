@@ -54,6 +54,26 @@
  * MEMORY OWNERSHIP
  *   cc_str_to_ohlc / cc_json_to_ohlc allocate the cc_ohlc_t array (free it).
  *   cc_line_create / cc_candle_create return a malloc'd string (free it).
+ *
+ * INPUT CONSTRAINTS
+ *   - size (number of candles) must be positive for the renderers and the
+ *     CSV parser; the JSON parser requires at least one object.
+ *   - width/height are clamped to CC_MAX_DIM cells per side and
+ *     CC_MAX_CELLS total; invalid dimensions make the chart functions fail
+ *     cleanly (empty string) instead of attempting a giant allocation.
+ *   - CSV lines may be arbitrarily long (each line is heap-copied), and at
+ *     most `size` lines are read.
+ *   - JSON must match the fixed schema (see cc_json_to_ohlc); the scanner is
+ *     an iterative mini-parser, so stray substrings in string values cannot
+ *     cause false key matches.
+ *   - ISO8601 timestamps may carry a UTC offset: "+HH:MM", "+HHMM", "+HH"
+ *     or "Z" (a missing offset is treated as UTC). The offset is applied, so
+ *     the stored epoch is the true instant, not the local wall time.
+ *
+ * PORTABILITY
+ *   Plain C89-compatible code (no VLAs, no C99-only features), so it builds
+ *   with GCC, Clang and MSVC out of the box; on Windows gmtime_s replaces
+ *   gmtime_r and functions use internal (static) linkage via CC_INLINE.
  */
 
 #ifndef CCHARTS_H
@@ -109,6 +129,31 @@
 #include <math.h>
 #include <time.h>
 
+/* ============================ Portability macros ============================
+ * CC_INLINE: MSVC's C mode has no C11 inline-linkage semantics, so on
+ * Windows all functions get internal linkage (static). Everywhere else they
+ * are static inline, which keeps each translation unit self-contained and
+ * avoids any duplicate-symbol or emission problems on any compiler.
+ * CC_GMTIME_R: POSIX gmtime_r vs MSVC gmtime_s (note the argument order). */
+#if defined(_MSC_VER)
+#define CC_INLINE static
+#else
+#define CC_INLINE static inline
+#endif
+
+#ifdef _WIN32
+#define CC_GMTIME_R(t, tm) (gmtime_s((tm), (t)) == 0)
+#else
+#define CC_GMTIME_R(t, tm) (gmtime_r((t), (tm)) != NULL)
+#endif
+
+/* Chart dimensions are bounded to keep allocations sane and to avoid
+ * integer-overflow surprises. A terminal chart needs nowhere near these
+ * sizes; dimension checks fail cleanly (empty string / NULL) instead of
+ * attempting a giant allocation. */
+#define CC_MAX_DIM   100000     /* max width or height in cells */
+#define CC_MAX_CELLS 1000000    /* max width * height (total cells) */
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -142,7 +187,7 @@ typedef struct cc_settings {
 /* Fills missing fields of `settings` with defaults and returns the result.
  * Never NULL — passing NULL yields a struct with all defaults. Used
  * internally by every chart function; safe to call directly. */
-cc_settings_t cc_settings_resolve(const cc_settings_t* settings);
+CC_INLINE cc_settings_t cc_settings_resolve(const cc_settings_t* settings);
 
 /* Parses CSV text into a heap-allocated cc_ohlc_t array.
  *
@@ -150,44 +195,52 @@ cc_settings_t cc_settings_resolve(const cc_settings_t* settings);
  *     open,high,low,close          (timestamp = 0)
  *     open,high,low,close,timestamp (ISO8601 or epoch seconds)
  *
- * `size` is the expected number of lines. On success returns 0 and stores a
- * calloc'd array of exactly `size` entries in *ohlc (caller frees it).
- * Returns non-zero on allocation failure. */
-int cc_str_to_ohlc(const char* data, int size, cc_ohlc_t** ohlc,
-                   char val_seperator, char line_seperator);
+ * `size` is the expected number of lines; at most `size` lines are read
+ * (extra lines are ignored, not overflowed). Lines may be arbitrarily long.
+ * On success returns 0 and stores a calloc'd array in *ohlc (caller frees
+ * it). Returns non-zero on invalid arguments or allocation failure. */
+CC_INLINE int cc_str_to_ohlc(const char* data, int size, cc_ohlc_t** ohlc,
+                             char val_seperator, char line_seperator);
 
 /* Parses a fixed-schema JSON document into a heap-allocated cc_ohlc_t array.
  *
  * Expected schema — an array of objects with string timestamps:
  *     [{"ts":"2026-07-20T00:00:00+00:00","open":328.75,"high":330.0,
  *       "low":323.75,"close":328.0,"volume":46622936}, ...]
- * The "volume" field is ignored. On success returns 0 and stores the number
- * of candles in *size and a calloc'd array in *ohlc (caller frees both).
- * Returns non-zero on malformed input or allocation failure. */
-int cc_json_to_ohlc(const char* json, cc_ohlc_t** ohlc, int* size);
+ * The "volume" field is ignored; unknown keys are skipped by value. Keys are
+ * matched exactly, so a substring inside a string value can never be
+ * mistaken for a key. On success returns 0 and stores the number of candles
+ * in *size and a calloc'd array in *ohlc (caller frees both). Returns
+ * non-zero on malformed input or allocation failure. */
+CC_INLINE int cc_json_to_ohlc(const char* json, cc_ohlc_t** ohlc, int* size);
 
 /* Renders a smooth line chart of the close prices.
- * `width`/`height` are the chart plot area in cells. Returns a malloc'd
- * string (caller frees) that may additionally contain a left price margin
- * and a time footer depending on the settings flags. */
-char* cc_line_create(const cc_ohlc_t* data, int size, int width, int height,
-                     const cc_settings_t* settings);
+ * `width`/`height` are the chart plot area in cells, bounded by
+ * CC_MAX_DIM / CC_MAX_CELLS. Returns a malloc'd string (caller frees) that
+ * may additionally contain a left price margin and a time footer depending
+ * on the settings flags; invalid dimensions yield an empty string. */
+CC_INLINE char* cc_line_create(const cc_ohlc_t* data, int size, int width, int height,
+                               const cc_settings_t* settings);
 
 /* Renders a candlestick chart from the OHLC data.
- * `width`/`height` are the chart plot area in cells. When width >= size each
- * candle is a few cells wide with a gap between neighbors; when width < size
- * neighboring candles are aggregated into virtual candles (like the line
- * chart's downsampling). Returns a malloc'd string (caller frees). */
-char* cc_candle_create(const cc_ohlc_t* data, int size, int width, int height,
-                       const cc_settings_t* settings);
+ * `width`/`height` are the chart plot area in cells, bounded by
+ * CC_MAX_DIM / CC_MAX_CELLS. When width >= size each candle is a few cells
+ * wide with a gap between neighbors; when width < size neighboring candles
+ * are aggregated into virtual candles (like the line chart's downsampling).
+ * Returns a malloc'd string (caller frees); invalid dimensions yield an
+ * empty string. */
+CC_INLINE char* cc_candle_create(const cc_ohlc_t* data, int size, int width, int height,
+                                 const cc_settings_t* settings);
+
 #ifdef __cplusplus
-extern "C" {
+}
 #endif
-#endif
+
 #ifdef CCHARTS_IMPLEMENTATION
-#ifdef __cplusplus
-extern "C" {
-#endif
+
+/* ============================ Public constants ============================ */
+/* (CC_MAX_DIM / CC_MAX_CELLS are defined above, outside the implementation
+ * block, so the Python wrapper and other clients can also use them.) */
 
 /* One candlestick. `timestamp` is epoch seconds, 0 when unknown. */
 struct cc_ohlc {
@@ -198,7 +251,7 @@ struct cc_ohlc {
     long long timestamp;
 };
 
-inline cc_settings_t cc_settings_resolve(const cc_settings_t* settings) {
+CC_INLINE cc_settings_t cc_settings_resolve(const cc_settings_t* settings) {
     cc_settings_t resolved = {
         .rise_color   = (settings && settings->rise_color)   ? settings->rise_color   : CC_COLOR_GREEN,
         .fall_color   = (settings && settings->fall_color)   ? settings->fall_color   : CC_COLOR_RED,
@@ -215,15 +268,23 @@ inline cc_settings_t cc_settings_resolve(const cc_settings_t* settings) {
  * Everything below CCHARTS_IMPLEMENTATION is private. The pieces build on
  * each other in this order:
  *   1. cc_settings_resolve  -> normalize settings to full defaults
- *   2. parsing helpers      -> whitespace trim + timestamp conversion
- *   3. cc_str_to_ohlc       -> CSV  -> cc_ohlc_t[]
- *   4. cc_json_field/to_ohlc-> JSON -> cc_ohlc_t[]
- *   5. rendering helpers    -> value-to-pixel math + cell string builders
- *   6. cc_line_create       -> line chart renderer
- *   7. cc_candle_create     -> candle chart renderer
+ *   2. capacity/dim helpers -> allocation and dimension sanity checks
+ *   3. parsing helpers      -> whitespace trim + timestamp conversion
+ *   4. cc_str_to_ohlc       -> CSV  -> cc_ohlc_t[]
+ *   5. JSON mini-scanner    -> JSON -> cc_ohlc_t[]
+ *   6. rendering helpers    -> value-to-pixel math + cell string builders
+ *   7. cc_line_create       -> line chart renderer
+ *   8. cc_candle_create     -> candle chart renderer
  * ========================================================================== */
 
-static inline char* cc_trim_whitespace(char* str) {
+/* Validates chart dimensions against the public limits. */
+CC_INLINE int cc_dim_ok(int width, int height) {
+    return width > 0 && height > 0 &&
+           width <= CC_MAX_DIM && height <= CC_MAX_DIM &&
+           (long long)width * (long long)height <= CC_MAX_CELLS;
+}
+
+CC_INLINE char* cc_trim_whitespace(char* str) {
     if (str == NULL || *str == '\0') {
         return str;
     }
@@ -245,17 +306,52 @@ static inline char* cc_trim_whitespace(char* str) {
     return str;
 }
 
-static inline long long cc_iso8601_to_epoch(const char* s) {
-    /* Parses "YYYY-MM-DDTHH:MM:SS[+ZZ:ZZ]" and converts to epoch seconds
-     * using Howard Hinnant's civil_date algorithm (timezone is ignored).
-     * Returns 0 for malformed input. */
-    int y = 0, mo = 0, d = 0, h = 0, mi = 0, se = 0;
-    if (sscanf(s, "%d-%d-%dT%d:%d:%d", &y, &mo, &d, &h, &mi, &se) < 3) {
+/* Days in a month, leap-year aware (used to validate ISO8601 input). */
+CC_INLINE int cc_days_in_month(int year, int month) {
+    static const int days[12] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    if (month == 2) {
+        int leap = (year % 4 == 0 && (year % 100 != 0 || year % 400 == 0));
+        return leap ? 29 : 28;
+    }
+    return days[month - 1];
+}
+
+CC_INLINE long long cc_iso8601_to_epoch(const char* s) {
+    /* Parses "YYYY-MM-DDTHH:MM:SS[+ZZ:ZZ|+ZZZZ|+ZZ|Z]" and converts the
+     * wall-clock time to epoch seconds using Howard Hinnant's civil_date
+     * algorithm, applying the UTC offset:
+     *     epoch = civil_days(wall) * 86400 + seconds(wall) - offset
+     * A missing offset (or "Z") is UTC. Returns 0 for malformed input. */
+    int y = 0, mo = 0, d = 0, h = 0, mi = 0, se = 0, consumed = 0;
+    if (sscanf(s, "%d-%d-%dT%d:%d:%d%n", &y, &mo, &d, &h, &mi, &se, &consumed) < 6) {
         return 0;
     }
-    if (mo < 1 || mo > 12 || d < 1 || d > 31) {
+    if (mo < 1 || mo > 12 || d < 1 || d > cc_days_in_month(y, mo) ||
+        h < 0 || h > 23 || mi < 0 || mi > 59 || se < 0 || se > 60) {
         return 0;
     }
+
+    long long offset = 0;
+    const char* tz = s + consumed;
+    if (*tz == 'Z' || *tz == 'z') {
+        tz++;
+    } else if (*tz == '+' || *tz == '-') {
+        int oh = 0, om = 0, n2 = 0;
+        int sign = (*tz == '-') ? -1 : 1;
+        if (sscanf(tz + 1, "%d:%d%n", &oh, &om, &n2) == 2) {
+            /* "+HH:MM" */
+        } else if (sscanf(tz + 1, "%d%n", &oh, &n2) == 1) {
+            if (n2 == 4) { om = oh % 100; oh = oh / 100; }   /* "+HHMM" */
+            else if (n2 == 2) { om = 0; }                     /* "+HH" */
+            else return 0;
+        } else {
+            return 0;
+        }
+        if (oh > 23 || om > 59) return 0;
+        offset = sign * ((long long)oh * 3600 + (long long)om * 60);
+        tz += 1 + n2;
+    }
+    if (*tz != '\0') return 0;   /* trailing garbage after the offset */
 
     long long yy = y - (mo <= 2);
     long long era = (yy >= 0 ? yy : yy - 399) / 400;
@@ -264,228 +360,353 @@ static inline long long cc_iso8601_to_epoch(const char* s) {
     long long doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
     long long days = era * 146097 + doe - 719468;
 
-    return days * 86400 + (long long)h * 3600 + (long long)mi * 60 + se;
+    return days * 86400 + (long long)h * 3600 + (long long)mi * 60 + se - offset;
 }
 
-static inline long long cc_parse_ts(const char* s) {
-    /* Accepts either an ISO8601 string ("2026-07-20T21:00:00+00:00") or a
-     * plain epoch-seconds number, and returns epoch seconds (0 = none). */
+CC_INLINE long long cc_parse_ts(const char* s) {
+    /* Accepts either an ISO8601 string ("2026-07-20T21:00:00+03:00") or a
+     * plain epoch-seconds number (possibly negative), and returns epoch
+     * seconds (0 = none). ISO detection looks for the exact YYYY-MM-DD
+     * prefix so a negative number like "-500" cannot be mistaken for one. */
     if (s == NULL || *s == '\0') {
         return 0;
     }
-    for (const char* p = s; *p; p++) {
-        if (*p == '-' || *p == 'T' || *p == ':') {
-            return cc_iso8601_to_epoch(s);
-        }
+    size_t len = strlen(s);
+    if (len >= 10 && s[4] == '-' && s[7] == '-' &&
+        s[0] >= '0' && s[0] <= '9' && s[1] >= '0' && s[1] <= '9' &&
+        s[2] >= '0' && s[2] <= '9' && s[3] >= '0' && s[3] <= '9') {
+        return cc_iso8601_to_epoch(s);
     }
     return (long long)atoll(s);
 }
 
 /* ------------------------------ CSV parser ------------------------------ */
 
-inline int cc_str_to_ohlc(const char* data, int size, cc_ohlc_t** ohlc, char val_seperator, char line_seperator)
+CC_INLINE int cc_str_to_ohlc(const char* data, int size, cc_ohlc_t** ohlc,
+                             char val_seperator, char line_seperator)
 {
-    *ohlc = (cc_ohlc_t*)calloc(size, sizeof(cc_ohlc_t));
-    if (*ohlc == NULL) {
-        printf("Memory allocation failed.\n");
+    /* Splits `data` on `line_seperator` (at most `size` lines) and parses
+     * up to 5 `val_seperator`-separated fields per line:
+     * open,high,low,close[,timestamp]. Empty lines are skipped. Each line
+     * and field is heap/slice-based, so there is no fixed-size buffer that
+     * a long line could overflow. */
+    if (data == NULL || ohlc == NULL || size <= 0) {
         return 1;
     }
 
-    char tokens[size][256];
-
-    int start = 0;
-    int end = 0;
-    int i = 0;
-    int num = 0;
-    while (data[i] != '\0') {
-        if (data[i] != line_seperator) {
-            i++;
-            continue;
-        }
-
-        end = i;
-        int len = end - start;
-        strncpy(tokens[num], data + start, len);
-        tokens[num][len] = '\0';
-        num++;
-        start=end +1;
-        i++;
-
+    *ohlc = (cc_ohlc_t*)calloc((size_t)size, sizeof(cc_ohlc_t));
+    if (*ohlc == NULL) {
+        fprintf(stderr, "ccharts: memory allocation failed\n");
+        return 1;
     }
 
-    if (start < i) {
-        int len = i - start;
-        strncpy(tokens[num], data + start, len);
-        tokens[num][len] = '\0';
-        num++;
-    }
+    const char* line_start = data;
+    int idx = 0;
 
-    int token_count = num;
-    for (int i = 0; i<token_count;i++) {
-        char* token = tokens[i];
+    while (*line_start != '\0' && idx < size) {
+        const char* eol = strchr(line_start, line_seperator);
+        size_t len = eol ? (size_t)(eol - line_start) : strlen(line_start);
 
-        char* trimmed = cc_trim_whitespace(token);
-        memmove(token, trimmed, strlen(trimmed) + 1);
-
-        cc_ohlc_t _ohlc = {0};
-
-        int field_count = 1;
-        for (int k = 0; token[k] != '\0'; k++) {
-            if (token[k] == val_seperator) field_count++;
-        }
-        if (field_count > 5) field_count = 5;
-
-        int start = 0;
-        int end = 0;
-        int j = 0;
-        int num = 0;
-        while (num < field_count) {
-            if (token[j] != val_seperator && token[j] != '\0') {
-                j++;
-                continue;
+        if (len > 0) {
+            char* line = (char*)malloc(len + 1);
+            if (line == NULL) {
+                free(*ohlc);
+                *ohlc = NULL;
+                return 1;
             }
+            memcpy(line, line_start, len);
+            line[len] = '\0';
 
-            end = j;
-            int len = end -start;
-            char val_str[64];
-            strncpy(val_str, token+start, len);
-            val_str[len] = '\0';
-            start=end +1;
-            j++;
+            char* tok = cc_trim_whitespace(line);
+            if (*tok != '\0') {
+                cc_ohlc_t o = {0};
+                int field = 0;
+                char* field_start = tok;
+                while (field < 5) {
+                    char* field_end = strchr(field_start, val_seperator);
+                    if (field_end != NULL) *field_end = '\0';
 
-            if (num == 4) {
-                _ohlc.timestamp = cc_parse_ts(val_str);
-            } else {
-                double val = atof(val_str);
-                if (num == 0) {
-                    _ohlc.open=val;
-                } else if (num == 1) {
-                    _ohlc.high=val;
-                } else if (num == 2) {
-                    _ohlc.low=val;
-                } else if (num == 3) {
-                    _ohlc.close=val;
+                    char* f = cc_trim_whitespace(field_start);
+                    if (field == 4) {
+                        o.timestamp = cc_parse_ts(f);
+                    } else {
+                        double v = atof(f);
+                        if (field == 0)      o.open = v;
+                        else if (field == 1) o.high = v;
+                        else if (field == 2) o.low = v;
+                        else if (field == 3) o.close = v;
+                    }
+                    field++;
+                    if (field_end == NULL) break;
+                    field_start = field_end + 1;
                 }
+                (*ohlc)[idx++] = o;
             }
-
-            num++;
-
+            free(line);
         }
 
-        (*ohlc)[i] = _ohlc;
+        if (eol == NULL) break;
+        line_start = eol + 1;
     }
 
     return 0;
 }
 
-/* ------------------------------ JSON parser ------------------------------ */
+/* ------------------------------ JSON parser ------------------------------
+ * A small iterative scanner for the fixed schema (no recursion, no strstr):
+ * string literals are the only things that can hide braces or commas, and
+ * every value is skipped by structure instead of by substring search, so
+ * content like "open" inside a string value can never be misread as a key.
+ * ------------------------------------------------------------------------- */
 
-static inline const char* cc_json_field(const char* start, const char* key, char* buf, size_t buf_n) {
-    /* Finds `"key": value` after `start`, copies the value into buf (both
-     * quoted strings and bare numbers are handled), and returns the position
-     * just past the value, or NULL when the key is absent. */
-    const char* p = strstr(start, key);
-    if (!p) return NULL;
-    p = strchr(p + strlen(key), ':');
-    if (!p) return NULL;
-    p++;
-    while (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r') p++;
-    if (*p == '"') {
-        p++;
-        const char* e = strchr(p, '"');
-        if (!e) return NULL;
-        size_t len = (size_t)(e - p);
-        if (len >= buf_n) len = buf_n - 1;
-        memcpy(buf, p, len);
-        buf[len] = '\0';
-        return e + 1;
-    }
-    const char* e = p;
-    while (*e && *e != ',' && *e != '}' && *e != ']' && *e != '\n' && *e != '\r' && *e != ' ') e++;
-    size_t len = (size_t)(e - p);
-    if (len >= buf_n) len = buf_n - 1;
-    memcpy(buf, p, len);
-    buf[len] = '\0';
-    return e;
+/* Skips JSON whitespace. */
+CC_INLINE void cc_json_skip_ws(const char** p) {
+    while (**p == ' ' || **p == '\t' || **p == '\n' || **p == '\r') (*p)++;
 }
 
-inline int cc_json_to_ohlc(const char* json, cc_ohlc_t** ohlc, int* size) {
+/* Parses a JSON string literal at *p into out (max n-1 chars + NUL) and
+ * advances *p past the closing quote. Escape sequences are consumed but not
+ * decoded (the fixed schema never needs them). Returns 0 on malformed input. */
+CC_INLINE int cc_json_parse_string(const char** p, char* out, size_t n) {
+    const char* s = *p;
+    if (*s != '"') return 0;
+    s++;
+    size_t k = 0;
+    for (;;) {
+        if (*s == '\0') return 0;
+        if (*s == '\\') {
+            s++;
+            if (*s == '\0') return 0;
+            if (*s == 'u') {                /* consume \uXXXX */
+                for (int i = 0; i < 4; i++) { s++; if (*s == '\0') return 0; }
+            }
+            s++;
+            continue;
+        }
+        if (*s == '"') break;
+        if (k + 1 < n) out[k++] = *s;
+        s++;
+    }
+    out[k] = '\0';
+    *p = s + 1;
+    return 1;
+}
+
+/* Skips a complete JSON value (string, number, literal, or nested
+ * object/array) at *p and advances past it. Iterative — no recursion. */
+CC_INLINE int cc_json_skip_value(const char** p) {
+    const char* s = *p;
+    cc_json_skip_ws(&s);
+    if (*s == '\0') return 0;
+
+    if (*s == '"') {
+        s++;
+        while (*s != '"') {
+            if (*s == '\0') return 0;
+            if (*s == '\\') { s++; if (*s == '\0') return 0; }
+            s++;
+        }
+        s++;
+        *p = s;
+        return 1;
+    }
+
+    if (*s == '{' || *s == '[') {
+        int depth = 0;
+        for (;;) {
+            if (*s == '\0') return 0;
+            if (*s == '"') {
+                s++;
+                while (*s != '"') {
+                    if (*s == '\0') return 0;
+                    if (*s == '\\') { s++; if (*s == '\0') return 0; }
+                    s++;
+                }
+            } else if (*s == '{' || *s == '[') {
+                depth++;
+            } else if (*s == '}' || *s == ']') {
+                depth--;
+                if (depth == 0) { s++; break; }
+            }
+            s++;
+        }
+        *p = s;
+        return 1;
+    }
+
+    /* Bare token: number / true / false / null. */
+    while (*s != '\0' && *s != ',' && *s != '}' && *s != ']' &&
+           *s != ' ' && *s != '\t' && *s != '\n' && *s != '\r') s++;
+    if (s == *p) return 0;   /* nothing consumed */
+    *p = s;
+    return 1;
+}
+
+/* Copies a bare JSON number token starting at *p into out (max n-1 chars)
+ * and advances *p past it. Returns 0 when no number is present. */
+CC_INLINE int cc_json_read_number_token(const char** p, char* out, size_t n) {
+    const char* s = *p;
+    size_t k = 0;
+    while (*s == '-' || *s == '+' || (*s >= '0' && *s <= '9') ||
+           *s == '.' || *s == 'e' || *s == 'E') {
+        if (k + 1 < n) out[k++] = *s;
+        s++;
+    }
+    if (k == 0) return 0;
+    out[k] = '\0';
+    *p = s;
+    return 1;
+}
+
+CC_INLINE int cc_json_to_ohlc(const char* json, cc_ohlc_t** ohlc, int* size) {
     *ohlc = NULL;
     *size = 0;
     if (json == NULL) {
         return 1;
     }
 
+    const char* p = json;
+    cc_json_skip_ws(&p);
+    if (*p != '[') return 1;
+    p++;
+    cc_json_skip_ws(&p);
+
+    /* Pass 1: count the objects in the top-level array. */
     int count = 0;
-    for (const char* p = json; (p = strstr(p, "\"open\"")) != NULL; p += 6) {
-        count++;
+    if (*p != ']') {
+        for (;;) {
+            cc_json_skip_ws(&p);
+            if (*p != '{') return 1;
+            int depth = 0;
+            for (;;) {   /* skim to the matching '}' */
+                if (*p == '\0') return 1;
+                if (*p == '"') {
+                    p++;
+                    while (*p != '"') {
+                        if (*p == '\0') return 1;
+                        if (*p == '\\') { p++; if (*p == '\0') return 1; }
+                        p++;
+                    }
+                } else if (*p == '{') {
+                    depth++;
+                } else if (*p == '}') {
+                    depth--;
+                    if (depth == 0) { p++; break; }
+                }
+                p++;
+            }
+            count++;
+            cc_json_skip_ws(&p);
+            if (*p == ',') { p++; continue; }
+            if (*p == ']') break;
+            return 1;
+        }
     }
-    if (count <= 0) {
-        return 1;
-    }
+    if (count <= 0) return 1;
 
-    *ohlc = (cc_ohlc_t*)calloc(count, sizeof(cc_ohlc_t));
+    *ohlc = (cc_ohlc_t*)calloc((size_t)count, sizeof(cc_ohlc_t));
     if (*ohlc == NULL) {
-        printf("Memory allocation failed.\n");
+        fprintf(stderr, "ccharts: memory allocation failed\n");
         return 1;
     }
 
-    const char* cur = json;
-    for (int i = 0; i < count; i++) {
-        cc_ohlc_t c = {0};
-        char buf[64];
+    /* Pass 2: parse each object into a cc_ohlc_t. */
+    p = json;
+    cc_json_skip_ws(&p);
+    p++; /* '[' */
+    cc_json_skip_ws(&p);
+    int idx = 0;
+    int valid = 1;
+    if (*p != ']') {
+        for (;;) {
+            cc_json_skip_ws(&p);
+            if (*p != '{') { valid = 0; break; }
+            p++;
+            cc_ohlc_t o = {0};
+            for (;;) {
+                cc_json_skip_ws(&p);
+                if (*p == '}') { p++; break; }
+                if (*p != '"') { valid = 0; break; }
+                char key[16];
+                if (!cc_json_parse_string(&p, key, sizeof(key))) { valid = 0; break; }
+                cc_json_skip_ws(&p);
+                if (*p != ':') { valid = 0; break; }
+                p++; /* ':' */
+                cc_json_skip_ws(&p);
 
-        if (cc_json_field(cur, "\"ts\"", buf, sizeof(buf))) {
-            c.timestamp = cc_parse_ts(buf);
+                if (strcmp(key, "ts") == 0) {
+                    char sval[64];
+                    if (*p == '"') {
+                        if (!cc_json_parse_string(&p, sval, sizeof(sval))) { valid = 0; break; }
+                    } else {
+                        if (!cc_json_read_number_token(&p, sval, sizeof(sval))) { valid = 0; break; }
+                    }
+                    o.timestamp = cc_parse_ts(sval);
+                } else if (strcmp(key, "open") == 0 || strcmp(key, "high") == 0 ||
+                           strcmp(key, "low") == 0 || strcmp(key, "close") == 0) {
+                    char nval[32];
+                    if (!cc_json_read_number_token(&p, nval, sizeof(nval))) { valid = 0; break; }
+                    double v = atof(nval);
+                    if (strcmp(key, "open") == 0)      o.open = v;
+                    else if (strcmp(key, "high") == 0) o.high = v;
+                    else if (strcmp(key, "low") == 0)  o.low = v;
+                    else                               o.close = v;
+                } else {
+                    /* Unknown key — "volume" and friends are skipped. */
+                    if (!cc_json_skip_value(&p)) { valid = 0; break; }
+                }
+
+                cc_json_skip_ws(&p);
+                if (*p == ',') { p++; continue; }
+                if (*p == '}') { p++; break; }
+                valid = 0;
+                break;
+            }
+            if (!valid) break;
+            (*ohlc)[idx++] = o;
+            cc_json_skip_ws(&p);
+            if (*p == ',') { p++; continue; }
+            if (*p == ']') break;
+            valid = 0;
+            break;
         }
-        if (cc_json_field(cur, "\"open\"", buf, sizeof(buf))) {
-            c.open = atof(buf);
-        }
-        if (cc_json_field(cur, "\"high\"", buf, sizeof(buf))) {
-            c.high = atof(buf);
-        }
-        if (cc_json_field(cur, "\"low\"", buf, sizeof(buf))) {
-            c.low = atof(buf);
-        }
-        const char* after = cc_json_field(cur, "\"close\"", buf, sizeof(buf));
-        if (after) {
-            c.close = atof(buf);
-            const char* brace = strchr(after, '}');
-            cur = brace ? brace + 1 : after;
-        }
-        (*ohlc)[i] = c;
+    }
+    if (!valid) {
+        free(*ohlc);
+        *ohlc = NULL;
+        return 1;
     }
 
-    *size = count;
+    *size = idx;
     return 0;
 }
 
 /* --------------------------- Rendering helpers --------------------------- */
 
 /* Smallest / largest value in arr[0..n-1]. */
-static inline double find_min(double arr[], int n) {
-	double min = arr[0];
-	for (int i =1; i<n;i++) {
-		if (arr[i] < min) {
-			min = arr[i];
-		}
-	}
-	return min;
+CC_INLINE double find_min(double arr[], int n) {
+    double min = arr[0];
+    for (int i = 1; i < n; i++) {
+        if (arr[i] < min) {
+            min = arr[i];
+        }
+    }
+    return min;
 }
 
-static inline double find_max(double arr[], int n) {
-	double max = arr[0];
-	for (int i =1; i<n; i++) {
-		if (arr[i] > max) {
-			max = arr[i];
-		}
-	}
-	return max;
+CC_INLINE double find_max(double arr[], int n) {
+    double max = arr[0];
+    for (int i = 1; i < n; i++) {
+        if (arr[i] > max) {
+            max = arr[i];
+        }
+    }
+    return max;
 }
 
 /* Maps a value in [min, max] to a pixel row in [0, pixel_height-1].
  * `range` is max - min; a flat range is centered to avoid divide-by-zero. */
-static inline int cc_pixel(double val, double min, double max, double range, int pixel_height) {
+CC_INLINE int cc_pixel(double val, double min, double max, double range, int pixel_height) {
     double t = (range == 0.0) ? 0.5 : (val - min) / range;
     int p = (int)lround(t * (pixel_height - 1));
     if (p < 0) p = 0;
@@ -493,12 +714,12 @@ static inline int cc_pixel(double val, double min, double max, double range, int
     return p;
 }
 
-static inline void cc_render_cell(char out[32], unsigned char bodybits, unsigned char wickbits, const char* fg, const char* bg) {
+CC_INLINE void cc_render_cell(char out[32], unsigned char bodybits, unsigned char wickbits, const char* fg, const char* bg) {
     /* Turns a candle cell's mask bits into a ready-to-print string.
      * bodybits: bit0 = lower half filled, bit1 = upper half filled (body).
      * wickbits: non-zero means a wick passes through this cell. Body wins
      * over wick so a partial body still reads as a solid block. */
-    const char *block;
+    const char* block;
     if (bodybits == 3)          block = CC_BLOCK_FULL;
     else if (bodybits == 2)     block = CC_BLOCK_UPPER_HALF;
     else if (bodybits == 1)     block = CC_BLOCK_LOWER_HALF;
@@ -520,7 +741,7 @@ static inline void cc_render_cell(char out[32], unsigned char bodybits, unsigned
     }
 }
 
-static cc_ohlc_t cc_agg_ohlc(const cc_ohlc_t* data, int start, int end) {
+CC_INLINE cc_ohlc_t cc_agg_ohlc(const cc_ohlc_t* data, int start, int end) {
     /* Aggregates candles [start, end) into one virtual candle:
      * open = first open, high = max high, low = min low, close = last close.
      * Used to compress many candles into a few columns (width < size). */
@@ -533,7 +754,7 @@ static cc_ohlc_t cc_agg_ohlc(const cc_ohlc_t* data, int start, int end) {
     return v;
 }
 
-static inline const char* cc_lower_eighth(int n) {
+CC_INLINE const char* cc_lower_eighth(int n) {
     /* Returns the lower 1/8 block whose bar height is n/8 (n in 1..8).
      * These characters give the line chart its 8-level vertical resolution:
      * ▁▂▃▄▅▆▇█. */
@@ -546,7 +767,7 @@ static inline const char* cc_lower_eighth(int n) {
     return table[n - 1];
 }
 
-static inline const char* cc_time_format(long long first, long long last, int count) {
+CC_INLINE const char* cc_time_format(long long first, long long last, int count) {
     /* Picks a strftime format from the average interval between candles:
      *   >= 20 hours (daily/weekly/monthly)  -> "YYYY-MM-DD"
      *   intraday spanning > 1 day           -> "MM-DD HH:MM"
@@ -562,15 +783,16 @@ static inline const char* cc_time_format(long long first, long long last, int co
     return "%H:%M";
 }
 
-static char* cc_assemble_chart(int width, int height, char columns[width][height][32],
-                               const cc_settings_t* s,
-                               long long ts_first, long long ts_last, int count,
-                               double max, double min) {
-    /* Joins the per-cell strings (columns[x][y], y counted from the bottom)
-     * into the final chart string, printing rows top-to-bottom. Optionally
-     * adds a left price margin (max on the top row, min on the bottom row)
-     * and a footer row with the first/last timestamps. Allocates the result
-     * with calloc; the caller frees it. */
+CC_INLINE char* cc_assemble_chart(int width, int height, char* columns,
+                                  const cc_settings_t* s,
+                                  long long ts_first, long long ts_last, int count,
+                                  double max, double min) {
+    /* Joins the per-cell strings (columns[(x*height + y)*32 .. +32), y
+     * counted from the bottom) into the final chart string, printing rows
+     * top-to-bottom. Optionally adds a left price margin (max on the top
+     * row, min on the bottom row) and a footer with the first/last
+     * timestamps. Allocates the result with a pointer cursor (no strcat
+     * re-scans); the caller frees it. */
     int margin = 0;
     char max_label[16] = "";
     char min_label[16] = "";
@@ -588,42 +810,49 @@ static char* cc_assemble_chart(int width, int height, char columns[width][height
         time_t a = (time_t)ts_first;
         time_t b = (time_t)ts_last;
         struct tm tmv;
-        if (gmtime_r(&a, &tmv)) strftime(t_first, sizeof(t_first), fmt, &tmv);
-        if (gmtime_r(&b, &tmv)) strftime(t_last, sizeof(t_last), fmt, &tmv);
+        if (CC_GMTIME_R(&a, &tmv)) strftime(t_first, sizeof(t_first), fmt, &tmv);
+        if (CC_GMTIME_R(&b, &tmv)) strftime(t_last, sizeof(t_last), fmt, &tmv);
         footer = 1;
     }
 
-    size_t total_size = (size_t)(width + margin) * (height + footer) * 32 + height + footer + 1;
-    char* chart = (char*)calloc(total_size, sizeof(char));
+    const int line_len = width + margin;
+    const int rows = height + footer;
+    /* Bounded by CC_MAX_CELLS: width*height <= 1e6, so this is <= ~32 MB. */
+    size_t total_size = (size_t)line_len * (size_t)rows * 32 + (size_t)rows + 1;
+    char* chart = (char*)calloc(total_size, 1);
+    if (chart == NULL) return NULL;
 
+    char* w = chart;
     for (int y = height - 1; y >= 0; y--) {
         if (margin > 0) {
             char mlabel[16] = "";
             if (y == height - 1) snprintf(mlabel, sizeof(mlabel), "%8s", max_label);
             else if (y == 0)     snprintf(mlabel, sizeof(mlabel), "%8s", min_label);
-            else                 snprintf(mlabel, sizeof(mlabel), "        ");
-            strcat(chart, mlabel);
+            else { memset(mlabel, ' ', 8); mlabel[8] = '\0'; }
+            size_t ml = strlen(mlabel);
+            memcpy(w, mlabel, ml);
+            w += ml;
         }
         for (int x = 0; x < width; x++) {
-            strcat(chart, columns[x][y]);
+            const char* cell = columns + ((size_t)x * height + (size_t)y) * 32;
+            size_t cl = strlen(cell);
+            memcpy(w, cell, cl);
+            w += cl;
         }
-        strcat(chart, "\n");
+        *w++ = '\n';
     }
 
     if (footer) {
-        int line_len = width + margin;
-        char line[512];
-        snprintf(line, sizeof(line), "%*s", line_len, "");
+        for (int i = 0; i < line_len; i++) *w++ = ' ';
         size_t t1 = strlen(t_first);
-        if (t1 > (size_t)line_len) t1 = line_len;
-        memcpy(line, t_first, t1);
+        if (t1 > (size_t)line_len) t1 = (size_t)line_len;
         size_t t2 = strlen(t_last);
-        if (t2 > (size_t)line_len) t2 = line_len;
-        memcpy(line + line_len - t2, t_last, t2);
-        strcat(chart, line);
-        strcat(chart, "\n");
+        if (t2 > (size_t)line_len) t2 = (size_t)line_len;
+        if (t1 > 0) memcpy(w - line_len, t_first, t1);
+        if (t2 > 0) memcpy(w - t2, t_last, t2);
+        *w++ = '\n';
     }
-
+    *w = '\0';
     return chart;
 }
 
@@ -635,22 +864,35 @@ static char* cc_assemble_chart(int width, int height, char columns[width][height
  * smooth. Adjacent columns share pixels to avoid gaps. With area_color set,
  * cells below the line are filled. Colors come from cc_settings_t: either
  * one color for the whole chart (single_color) or per segment.
+ * All scratch buffers are heap-allocated (no VLAs) and freed on every path.
  * ------------------------------------------------------------------------- */
 
-inline char* cc_line_create(const cc_ohlc_t* data, int size, int width, int height,
-                            const cc_settings_t* settings) {
+CC_INLINE char* cc_line_create(const cc_ohlc_t* data, int size, int width, int height,
+                               const cc_settings_t* settings) {
+    if (data == NULL || size <= 0 || !cc_dim_ok(width, height)) {
+        return (char*)calloc(1, sizeof(char));
+    }
 
-    double closes[size];
+    cc_settings_t s = cc_settings_resolve(settings);
+
+    double* closes = (double*)malloc((size_t)size * sizeof(double));
+    double* vals = (double*)calloc((size_t)width, sizeof(double));
+    const char** col_color = (const char**)malloc((size_t)width * sizeof(char*));
+    int* py = (int*)malloc((size_t)width * sizeof(int));
+    char* columns = (char*)malloc((size_t)width * (size_t)height * 32);
+    if (closes == NULL || vals == NULL || col_color == NULL ||
+        py == NULL || columns == NULL) {
+        free(closes); free(vals); free(col_color); free(py); free(columns);
+        return NULL;
+    }
+
     for (int i = 0; i < size; i++) {
         closes[i] = data[i].close;
     }
 
-    double vals[width];
-    memset(vals, 0, sizeof(vals));
-
     for (int w = 0; w < width; w++) {
-        int start_idx = (w * size) / width;
-        int end_idx = ((w + 1) * size) / width;
+        int start_idx = (int)(((long long)w * size) / width);
+        int end_idx = (int)((((long long)w + 1) * size) / width);
         if (end_idx <= start_idx) end_idx = start_idx + 1;
 
         double sum = 0.0;
@@ -664,9 +906,6 @@ inline char* cc_line_create(const cc_ohlc_t* data, int size, int width, int heig
     double max = find_max(vals, width);
     double diff_range = max - min;
 
-    cc_settings_t s = cc_settings_resolve(settings);
-
-    const char* col_color[width];
     if (s.single_color) {
         double change = (size > 1) ? (closes[size-1] - closes[size-2]) : 0.0;
         const char* color = (change >= 0.0) ? s.rise_color : s.fall_color;
@@ -682,15 +921,11 @@ inline char* cc_line_create(const cc_ohlc_t* data, int size, int width, int heig
 
     int pixel_height = height * 8;
 
-    int py[width];
     for (int i = 0; i < width; i++) {
         py[i] = cc_pixel(vals[i], min, max, diff_range, pixel_height);
     }
 
-    char columns[width][height][32];
-
     for (int i = 0; i < width; i++) {
-
         int lo = py[i];
         int hi = py[i];
         if (i + 1 < width) {
@@ -700,41 +935,46 @@ inline char* cc_line_create(const cc_ohlc_t* data, int size, int width, int heig
 
         int cell_lo = lo / 8;
         int cell_hi = hi / 8;
+        char* col = columns + (size_t)i * height * 32;
 
         for (int r = 0; r < cell_lo && r < height; r++) {
+            char* cell = col + (size_t)r * 32;
             if (s.area_color != NULL) {
-                snprintf(columns[i][r], sizeof(columns[i][r]), "%s %s", s.area_color, CC_COLOR_RESET);
+                snprintf(cell, 32, "%s %s", s.area_color, CC_COLOR_RESET);
             } else if (s.bg_color != NULL) {
-                snprintf(columns[i][r], sizeof(columns[i][r]), "%s %s", s.bg_color, CC_COLOR_RESET);
+                snprintf(cell, 32, "%s %s", s.bg_color, CC_COLOR_RESET);
             } else {
-                snprintf(columns[i][r], sizeof(columns[i][r]), " ");
+                snprintf(cell, 32, " ");
             }
         }
 
         for (int r = cell_lo; r < cell_hi && r < height; r++) {
-            snprintf(columns[i][r], sizeof(columns[i][r]), "%s%s%s", col_color[i], CC_BLOCK_FULL, CC_COLOR_RESET);
+            snprintf(col + (size_t)r * 32, 32, "%s%s%s", col_color[i], CC_BLOCK_FULL, CC_COLOR_RESET);
         }
 
         if (cell_hi >= 0 && cell_hi < height) {
             int count = hi - cell_hi * 8 + 1;
             if (count > 8) count = 8;
-            snprintf(columns[i][cell_hi], sizeof(columns[i][cell_hi]), "%s%s%s",
+            snprintf(col + (size_t)cell_hi * 32, 32, "%s%s%s",
                      col_color[i], cc_lower_eighth(count), CC_COLOR_RESET);
         }
 
         for (int r = cell_hi + 1; r < height; r++) {
+            char* cell = col + (size_t)r * 32;
             if (s.bg_color != NULL) {
-                snprintf(columns[i][r], sizeof(columns[i][r]), "%s %s", s.bg_color, CC_COLOR_RESET);
+                snprintf(cell, 32, "%s %s", s.bg_color, CC_COLOR_RESET);
             } else {
-                snprintf(columns[i][r], sizeof(columns[i][r]), " ");
+                snprintf(cell, 32, " ");
             }
         }
     }
 
-    long long ts_first = (size > 0) ? data[0].timestamp : 0;
-    long long ts_last = (size > 0) ? data[size-1].timestamp : 0;
-    return cc_assemble_chart(width, height, columns, &s,
-                             ts_first, ts_last, size, max, min);
+    long long ts_first = data[0].timestamp;
+    long long ts_last = data[size-1].timestamp;
+    char* chart = cc_assemble_chart(width, height, columns, &s,
+                                    ts_first, ts_last, size, max, min);
+    free(closes); free(vals); free(col_color); free(py); free(columns);
+    return chart;
 }
 
 /* ----------------------------- Candle renderer -----------------------------
@@ -746,11 +986,12 @@ inline char* cc_line_create(const cc_ohlc_t* data, int size, int width, int heig
  *     (cc_agg_ohlc), one per column.
  * The vertical price range covers the whole high/low span so wicks never
  * clip. Rises use rise_color, falls use fall_color (close >= open).
+ * All scratch buffers are heap-allocated (no VLAs) and freed on every path.
  * ------------------------------------------------------------------------- */
 
-inline char* cc_candle_create(const cc_ohlc_t* data, int size, int width, int height,
-                              const cc_settings_t* settings) {
-    if (size <= 0 || width <= 0 || height <= 0) {
+CC_INLINE char* cc_candle_create(const cc_ohlc_t* data, int size, int width, int height,
+                                 const cc_settings_t* settings) {
+    if (data == NULL || size <= 0 || !cc_dim_ok(width, height)) {
         return (char*)calloc(1, sizeof(char));
     }
 
@@ -765,18 +1006,21 @@ inline char* cc_candle_create(const cc_ohlc_t* data, int size, int width, int he
     }
     double range = max - min;
 
-    unsigned char body_mask[width][height];
-    unsigned char wick_mask[width][height];
-    memset(body_mask, 0, sizeof(body_mask));
-    memset(wick_mask, 0, sizeof(wick_mask));
-
-    const char* col_color[width];
+    size_t cells = (size_t)width * (size_t)height;
+    unsigned char* body_mask = (unsigned char*)calloc(cells, 1);
+    unsigned char* wick_mask = (unsigned char*)calloc(cells, 1);
+    const char** col_color = (const char**)malloc((size_t)width * sizeof(char*));
+    char* columns = (char*)malloc(cells * 32);
+    if (body_mask == NULL || wick_mask == NULL || col_color == NULL || columns == NULL) {
+        free(body_mask); free(wick_mask); free(col_color); free(columns);
+        return NULL;
+    }
 
     if (width >= size) {
 
         for (int i = 0; i < size; i++) {
-            int cs = (i * width) / size;
-            int ce = ((i + 1) * width) / size;
+            int cs = (int)(((long long)i * width) / size);
+            int ce = (int)((((long long)i + 1) * width) / size);
             if (ce <= cs) ce = cs + 1;
             int gap = (ce - cs >= 2) ? (ce - 1) : ce;
             int cmid = cs + (gap - cs - 1) / 2;
@@ -794,21 +1038,23 @@ inline char* cc_candle_create(const cc_ohlc_t* data, int size, int width, int he
             for (int c = cs; c < ce; c++) {
                 col_color[c] = color;
                 if (c < gap) {
+                    unsigned char* bm = body_mask + (size_t)c * height;
                     for (int p = blo; p <= bhi; p++) {
-                        body_mask[c][p / 2] |= (p % 2) ? 2 : 1;
+                        bm[p / 2] |= (unsigned char)((p % 2) ? 2 : 1);
                     }
                 }
             }
 
+            unsigned char* wm = wick_mask + (size_t)cmid * height;
             for (int p = pl; p <= ph; p++) {
-                wick_mask[cmid][p / 2] |= (p % 2) ? 2 : 1;
+                wm[p / 2] |= (unsigned char)((p % 2) ? 2 : 1);
             }
         }
     } else {
 
         for (int w = 0; w < width; w++) {
-            int ss = (w * size) / width;
-            int se = ((w + 1) * size) / width;
+            int ss = (int)(((long long)w * size) / width);
+            int se = (int)((((long long)w + 1) * size) / width);
             if (se <= ss) se = ss + 1;
 
             cc_ohlc_t v = cc_agg_ohlc(data, ss, se);
@@ -822,29 +1068,32 @@ inline char* cc_candle_create(const cc_ohlc_t* data, int size, int width, int he
             int blo = (po < pc) ? po : pc;
             int bhi = (po > pc) ? po : pc;
 
+            unsigned char* bm = body_mask + (size_t)w * height;
             for (int p = blo; p <= bhi; p++) {
-                body_mask[w][p / 2] |= (p % 2) ? 2 : 1;
+                bm[p / 2] |= (unsigned char)((p % 2) ? 2 : 1);
             }
+            unsigned char* wm = wick_mask + (size_t)w * height;
             for (int p = pl; p <= ph; p++) {
-                wick_mask[w][p / 2] |= (p % 2) ? 2 : 1;
+                wm[p / 2] |= (unsigned char)((p % 2) ? 2 : 1);
             }
         }
     }
 
-    char columns[width][height][32];
     for (int i = 0; i < width; i++) {
+        char* col = columns + (size_t)i * height * 32;
         for (int j = 0; j < height; j++) {
-            cc_render_cell(columns[i][j], body_mask[i][j], wick_mask[i][j], col_color[i], s.bg_color);
+            cc_render_cell(col + (size_t)j * 32, body_mask[(size_t)i * height + j],
+                           wick_mask[(size_t)i * height + j], col_color[i], s.bg_color);
         }
     }
 
-    long long ts_first = (size > 0) ? data[0].timestamp : 0;
-    long long ts_last = (size > 0) ? data[size-1].timestamp : 0;
-    return cc_assemble_chart(width, height, columns, &s,
-                             ts_first, ts_last, size, max, min);
+    long long ts_first = data[0].timestamp;
+    long long ts_last = data[size-1].timestamp;
+    char* chart = cc_assemble_chart(width, height, columns, &s,
+                                    ts_first, ts_last, size, max, min);
+    free(body_mask); free(wick_mask); free(col_color); free(columns);
+    return chart;
 }
 
-#ifdef __cplusplus
-}
-#endif
-#endif
+#endif /* CCHARTS_IMPLEMENTATION */
+#endif /* CCHARTS_H */
