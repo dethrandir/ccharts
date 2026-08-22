@@ -277,16 +277,43 @@ libraries are required beyond the standard ones.
 
 ## Releases
 
-Releases are published automatically from GitHub Actions: pushing a tag
-`v<version>` (e.g. `v0.2.0`) runs `.github/workflows/publish.yml`, which
-verifies that the tag matches the version in `pyproject.toml`, builds the
-sdist and all platform wheels with cibuildwheel, and uploads them to PyPI.
+One tag releases everything. Pushing `v<version>` (e.g. `v0.2.0`) runs
+`.github/workflows/publish.yml`, which first refuses the build unless the tag
+and **every** manifest agree on the version (`scripts/check_versions.py`), then
+publishes each package:
 
-Publishing currently authenticates with the `PYPI_API_TOKEN` repository
-secret (an API token scoped to the `ccharts` project). An alternative is
-[trusted publishing](https://docs.pypi.org/trusted-publishers/), which
-removes the token entirely: link the `pypi` GitHub environment to PyPI,
-then delete the `password` input from the publish step in the workflow.
+| Registry | Package | Secret |
+| -------- | ------- | ------ |
+| PyPI | `ccharts` (sdist + cibuildwheel wheels) | `PYPI_API_TOKEN` |
+| crates.io | `ccharts` | `CARGO_REGISTRY_TOKEN` |
+| npm | `ccharts` (published with provenance) | `NPM_TOKEN` |
+| NuGet | `Ccharts` | `NUGET_API_KEY` |
+| Maven Central | `io.github.dethrandir:ccharts` | `MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD`, `MAVEN_GPG_PRIVATE_KEY`, `MAVEN_GPG_PASSPHRASE` |
+
+The Go module has no registry — it is served from the repository — but a module
+in a subdirectory needs a tag carrying that prefix, so the workflow also pushes
+`bindings/go/v<version>`.
+
+The C# and Java packages are the only ones carrying binaries:
+`.github/workflows/natives.yml` builds the shared library for linux-x64,
+osx-x64, osx-arm64 and win-x64, and `scripts/pack_natives.py` arranges them
+into `runtimes/{rid}/native/` for NuGet and `native/{os}-{arch}/` for the jar.
+Both publish jobs then verify the packed artifact actually contains every
+platform before it leaves the runner — a package that quietly lost its natives
+would install fine and fail on the first call. (Linux aarch64 is not built, for
+the same reason the Python wheels skip it: QEMU emulation on GitHub-hosted
+runners is far too slow. It can be added once native ARM runners are
+available.)
+
+`workflow_dispatch` runs every build job without uploading anything, so a
+release can be rehearsed in full.
+
+Two notes on credentials: PyPI could drop `PYPI_API_TOKEN` entirely by moving
+to [trusted publishing](https://docs.pypi.org/trusted-publishers/) — link the
+`pypi` GitHub environment and delete the `password` input. Maven Central
+requires a verified `io.github.dethrandir` namespace on the
+[Central Portal](https://central.sonatype.com) and a published GPG key before
+the first deploy will be accepted.
 
 ## Repository layout
 

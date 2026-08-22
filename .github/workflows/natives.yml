@@ -1,0 +1,68 @@
+name: Native libraries
+
+# Builds the shared C ABI library for every platform the C# and Java packages
+# ship, and uploads one artifact per target. Those two bindings link the
+# library rather than compiling it (unlike Rust, Go and the WebAssembly build),
+# so their packages have to carry prebuilt binaries.
+#
+# Called by publish.yml before packing, and runnable on its own to check that
+# every target still builds.
+#
+# Linux aarch64 is deliberately absent, for the same reason the Python wheels
+# skip it: QEMU emulation on GitHub-hosted runners is pathologically slow. Add
+# it here once native ARM runners are available for this repository.
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.rid }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest,  rid: linux-x64,  file: libccharts_abi.so }
+          - { os: macos-13,       rid: osx-x64,    file: libccharts_abi.dylib }
+          - { os: macos-latest,   rid: osx-arm64,  file: libccharts_abi.dylib }
+          - { os: windows-latest, rid: win-x64,    file: ccharts_abi.dll }
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --config Release
+
+      # The Release subdirectory is where multi-config generators (MSVC) put
+      # the output; single-config generators put it directly in build/.
+      - name: Collect
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          for candidate in "build/${{ matrix.file }}" "build/Release/${{ matrix.file }}"; do
+            if [ -f "${candidate}" ]; then
+              cp "${candidate}" "out/${{ matrix.file }}"
+              break
+            fi
+          done
+          test -f "out/${{ matrix.file }}" || {
+            echo "::error::${{ matrix.file }} not found in build/"
+            ls -R build
+            exit 1
+          }
+
+      - name: Smoke test
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.rid }}
+          path: out/${{ matrix.file }}
+          if-no-files-found: error

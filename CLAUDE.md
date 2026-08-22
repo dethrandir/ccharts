@@ -230,9 +230,22 @@ instant. Malformed input parses to `0`, which suppresses the footer.
 
 ## Releasing
 
-Bump `version` in `pyproject.toml`, then push a tag `v<version>`.
-`.github/workflows/publish.yml` fails the release if the tag and the pyproject
-version disagree, then builds the sdist plus cibuildwheel wheels (CPython
-3.9–3.14; Linux x86_64, macOS x86_64/arm64, Windows AMD64) and uploads to PyPI
-with the `PYPI_API_TOKEN` secret. Linux aarch64 is intentionally not built (QEMU
+**One version, one tag, six registries.** Bump the version in every manifest
+(`pyproject.toml`, `abi/ccharts_abi.h`, `bindings/rust/Cargo.toml`,
+`bindings/js/package.json`, the csproj, the pom) and push `v<version>`.
+`scripts/check_versions.py` is what makes the single-tag release safe: the
+workflow refuses to build if any of them disagree, so run it after any bump.
+
+`.github/workflows/publish.yml` then publishes PyPI, crates.io, npm, NuGet and
+Maven Central, and pushes the `bindings/go/v<version>` tag Go requires for a
+subdirectory module. `workflow_dispatch` runs every build without uploading.
+
+The C# and Java packages are the only ones shipping binaries:
+`natives.yml` builds the shared library per platform and
+`scripts/pack_natives.py` arranges the artifacts into `runtimes/{rid}/native/`
+(NuGet) and `native/{os}-{arch}/` (jar) — those directory names are load-bearing,
+matched by `NativeLibraryResolver` and `Native.platformDirectory()`
+respectively. Both publish jobs assert the packed artifact contains every
+platform, since a package missing its natives installs cleanly and only fails
+at the first call. Linux aarch64 is intentionally not built anywhere (QEMU
 emulation on GitHub runners is too slow).

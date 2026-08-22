@@ -35,7 +35,8 @@
     and NativeLibraryResolver falls back to probing the CMake output.
   -->
   <ItemGroup>
-    <None Include="runtimes/**/*" Pack="true" PackagePath="runtimes/" Condition="Exists('runtimes')" />
+    <None Include="runtimes/**/*.*" Pack="true"
+          PackagePath="runtimes/%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
 
 </Project>
