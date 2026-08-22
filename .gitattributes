@@ -1,0 +1,15 @@
+# Line endings must not depend on the platform.
+#
+# conformance/golden/*.txt is compared to rendered output byte for byte, and
+# the renderer emits "\n" everywhere. A CRLF checkout — which is what Windows
+# gets by default — fails every conformance case in every binding at once, and
+# makes gofmt reject every .go file. Forcing LF is what keeps the "all seven
+# languages produce identical bytes" guarantee true on Windows too.
+* text=auto eol=lf
+
+# The goldens carry raw ANSI escape sequences and exist to be compared as
+# bytes: never let any normalization touch them.
+conformance/golden/*.txt -text
+
+# Generated: the base64-encoded WebAssembly module.
+bindings/js/src/wasm-binary.js -diff

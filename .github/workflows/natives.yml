@@ -32,7 +32,7 @@ jobs:
           - { os: macos-latest,   rid: osx-arm64,  file: libccharts_abi.dylib }
           - { os: windows-latest, rid: win-x64,    file: ccharts_abi.dll }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Build
         run: |
@@ -61,7 +61,7 @@ jobs:
       - name: Smoke test
         run: ctest --test-dir build -C Release --output-on-failure
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: native-${{ matrix.rid }}
           path: out/${{ matrix.file }}
