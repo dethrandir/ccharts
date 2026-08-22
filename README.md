@@ -184,7 +184,8 @@ flat ranges and single-candle input. The goldens are generated from the ABI
 | Rust     | `bindings/rust/` | builds and passes conformance; not published yet |
 | Go       | `bindings/go/` | builds and passes conformance; not published yet |
 | JavaScript (WASM) | `bindings/js/` | builds and passes conformance; not published yet |
-| C#, Java | — | planned |
+| C# (.NET 8) | `bindings/dotnet/` | builds and passes conformance; not published yet |
+| Java (JDK 22+) | `bindings/java/` | builds and passes conformance; not published yet |
 
 Rust and Go compile the vendored C sources with their own toolchains (the `cc`
 crate and cgo), so neither needs a prebuilt library:
@@ -209,6 +210,22 @@ import { Chart, Color } from "ccharts";
 const chart = Chart.fromArrays(open, high, low, close, ts);
 console.log(chart.candle({ width: 60, height: 8, showPrices: true }));
 chart.free();
+```
+
+C# uses source-generated P/Invoke and Java the Foreign Function & Memory API
+(no JNI code at all). Both link the shared library rather than compiling the C,
+so both ship prebuilt natives — `runtimes/{rid}/native/` in the NuGet package,
+`native/{os}-{arch}/` in the jar:
+
+```csharp
+using var chart = Chart.FromArrays(open, high, low, close, ts);
+Console.Write(chart.Line(new ChartOptions { RiseColor = Color.Blue, ShowPrices = true }));
+```
+
+```java
+try (Chart chart = Chart.fromArrays(open, high, low, close, ts)) {
+    System.out.print(chart.line(ChartOptions.builder().rise(Color.BLUE).build()));
+}
 ```
 
 Each binding vendors its own copy of `ccharts.h` and the ABI — Go needs cgo
@@ -277,7 +294,8 @@ then delete the `password` input from the publish step in the workflow.
 - `main.c` — C demo using `prices.txt`.
 - `prices.txt` — sample JSON OHLC data (THYAO).
 - `abi/` — flat C ABI (`ccharts_abi.h`/`.c`) for non-Python bindings.
-- `bindings/` — language bindings built on that ABI (`rust/`, `go/`, `js/`).
+- `bindings/` — language bindings built on that ABI (`rust/`, `go/`, `js/`,
+  `dotnet/`, `java/`).
 - `conformance/` — cross-language case list, goldens and a C smoke test.
 - `scripts/` — golden generation, vendored-source sync, version consistency.
 - `ccharts/` — Python package: `__init__.py` (high-level `Chart`),

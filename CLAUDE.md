@@ -58,6 +58,10 @@ cd bindings/go && go test ./...         # API tests + the golden suite
 cd bindings/go && go test -run TestConformance -v ./...   # one golden case each
 cd bindings/js && node --test            # API tests + the golden suite
 cd bindings/js && EMCC=/path/to/emcc npm run build   # rebuild the .wasm
+
+# These two need the CMake build first (cmake --build build):
+CCHARTS_NATIVE_DIR=$PWD/build dotnet test bindings/dotnet/tests/Ccharts.Tests
+cd bindings/java && CCHARTS_NATIVE_DIR=$PWD/../../build mvn test
 ```
 
 ## Architecture
@@ -145,6 +149,22 @@ re-reads `exports.memory.buffer` instead of caching a view. `src/wasm-binary.js`
 is checked in — CI needs only Node — and the conformance test is what catches a
 stale one: change the C and regenerate the goldens, and the JS suite fails until
 `npm run build` (which needs emscripten) is re-run.
+
+**C# and Java link the library; they do not compile it.** Unlike Rust, Go and
+the WASM build, `bindings/dotnet` (source-generated P/Invoke, net8.0) and
+`bindings/java` (FFM, JDK 22+, zero JNI code) consume the shared library the
+root CMake build produces. Both therefore need prebuilt natives to ship —
+`runtimes/{rid}/native/` in the NuGet package, `native/{os}-{arch}/` in the jar
+— and both fall back, when those are absent, to `CCHARTS_NATIVE_DIR` and then
+to probing for `build/` above the assembly or working directory, which is how
+their tests run in-repo. That CI matrix which fills those directories is the
+remaining work before either can be published; the projects already read from
+them. Two mechanics that cost time to find: in Java, `invokeExact` matches the
+argument's *static* type, so a conditional expression passed straight to it is
+typed `Object` and throws `WrongMethodTypeException` — the optional timestamp
+column goes through a typed local; and the .NET test project sets
+`RollForward` because the library targets net8.0 while a machine may only have
+a newer runtime.
 
 **Single-header discipline.** `CCHARTS_IMPLEMENTATION` must be defined in exactly
 one translation unit — currently `main.c` and `wrapper.c`, which are separate

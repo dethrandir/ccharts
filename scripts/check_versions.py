@@ -22,7 +22,8 @@ MANIFESTS = {
     # Go modules carry no version field — they are versioned by git tag
     # (bindings/go/vX.Y.Z), so there is nothing to check here.
     "bindings/js/package.json": r'^"version"\s*:\s*"([^"]+)"',
-    # Still to come: bindings/dotnet/Ccharts.csproj, bindings/java/pom.xml
+    "bindings/dotnet/src/Ccharts/Ccharts.csproj": r'^<Version>([^<]+)</Version>',
+    "bindings/java/pom.xml": r'^<version>([^<]+)</version>',
 }
 
 REFERENCE = "pyproject.toml"

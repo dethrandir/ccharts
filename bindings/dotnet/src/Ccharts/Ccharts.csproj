@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>12.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <PackageId>Ccharts</PackageId>
+    <Version>0.2.0</Version>
+    <Authors>dethrandir</Authors>
+    <Description>Terminal charts for financial OHLC data (line and candlestick), rendered as ANSI-colored Unicode block characters.</Description>
+    <PackageTags>chart;candlestick;ohlc;terminal;console;financial;trading</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/dethrandir/ccharts</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/dethrandir/ccharts</RepositoryUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+
+  <!--
+    The native library is built by CMake at the repository root and packed per
+    runtime identifier into runtimes/{rid}/native/. CI fills this directory
+    from the platform build matrix; a local build simply has nothing to pack,
+    and NativeLibraryResolver falls back to probing the CMake output.
+  -->
+  <ItemGroup>
+    <None Include="runtimes/**/*" Pack="true" PackagePath="runtimes/" Condition="Exists('runtimes')" />
+  </ItemGroup>
+
+</Project>

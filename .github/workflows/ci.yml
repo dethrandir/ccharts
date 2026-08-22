@@ -158,6 +158,47 @@ jobs:
           node-version: ${{ matrix.node }}
       - run: node --test
 
+  # C# and Java both link the shared library from the CMake build rather than
+  # compiling the C themselves, so both jobs build it first and point at it
+  # with CCHARTS_NATIVE_DIR.
+  dotnet:
+    name: .NET binding
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Build the native library
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --config Release
+      - name: Test
+        env:
+          CCHARTS_NATIVE_DIR: ${{ github.workspace }}/build
+        run: dotnet test bindings/dotnet/tests/Ccharts.Tests/Ccharts.Tests.csproj
+
+  java:
+    name: Java binding (FFM)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          # java.lang.foreign is final in 22; 25 is the current LTS.
+          java-version: "25"
+          distribution: temurin
+          cache: maven
+      - name: Build the native library
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --config Release
+      - name: Test
+        working-directory: bindings/java
+        env:
+          CCHARTS_NATIVE_DIR: ${{ github.workspace }}/build
+        run: mvn -B test
+
   # The extension must compile and pass under every supported CPython.
   test-matrix:
     name: Python ${{ matrix.python }}
