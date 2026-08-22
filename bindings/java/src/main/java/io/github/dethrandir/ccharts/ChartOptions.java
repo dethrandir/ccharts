@@ -28,6 +28,7 @@ public final class ChartOptions {
     private final boolean singleColor;
     private final boolean showPrices;
     private final boolean showTimes;
+    private final boolean plain;
 
     private ChartOptions(Builder builder) {
         this.width = builder.width;
@@ -39,6 +40,7 @@ public final class ChartOptions {
         this.singleColor = builder.singleColor;
         this.showPrices = builder.showPrices;
         this.showTimes = builder.showTimes;
+        this.plain = builder.plain;
     }
 
     /** A new builder. */
@@ -84,6 +86,10 @@ public final class ChartOptions {
         return showTimes;
     }
 
+    boolean plain() {
+        return plain;
+    }
+
     /** Builder for {@link ChartOptions}. */
     public static final class Builder {
         private int width = 60;
@@ -95,6 +101,7 @@ public final class ChartOptions {
         private boolean singleColor;
         private boolean showPrices;
         private boolean showTimes;
+        private boolean plain;
 
         private Builder() {
         }
@@ -168,6 +175,16 @@ public final class ChartOptions {
         /** Print the first and last timestamp under the chart. */
         public Builder showTimes(boolean yes) {
             this.showTimes = yes;
+            return this;
+        }
+
+        /**
+         * Render with no ANSI escapes at all, overriding every color. Use it
+         * when the chart is going somewhere that does not interpret escapes —
+         * a log file, an HTML block, a commit message.
+         */
+        public Builder plain(boolean yes) {
+            this.plain = yes;
             return this;
         }
 

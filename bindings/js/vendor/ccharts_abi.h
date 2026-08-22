@@ -3,6 +3,9 @@
 /*
  * ccharts_abi.h — flat C ABI for the ccharts single-header library.
  *
+ * ccharts turns financial OHLC data into a string; this layer is what lets a
+ * language other than C ask it to.
+ *
  * WHY THIS EXISTS
  * ---------------
  * ccharts.h exports nothing: CC_INLINE makes every function `static inline`,

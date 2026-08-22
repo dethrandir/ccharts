@@ -27,6 +27,12 @@ export interface ChartOptions {
   showPrices?: boolean;
   /** Print the first and last timestamp under the chart. Default false. */
   showTimes?: boolean;
+  /**
+   * Render with no ANSI escapes at all, overriding every color. Use it when
+   * the chart is going somewhere that does not interpret escapes — a log
+   * file, an HTML block, a commit message. Default false.
+   */
+  plain?: boolean;
 }
 
 /** An error reported by the chart library. */

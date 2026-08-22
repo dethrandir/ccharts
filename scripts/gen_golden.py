@@ -127,11 +127,14 @@ def render(lib, case, datasets):
     handle = build_data(lib, datasets[case["dataset"]], case["source"])
     try:
         cfg = case["settings"]
+        # An empty C string means "emit no escape at all", which is different
+        # from NULL (use the default color).
+        plain = b"" if cfg.get("plain") else None
         settings = Settings(
-            rise_color=color(lib, cfg["rise_color"]),
-            fall_color=color(lib, cfg["fall_color"]),
-            bg_color=color(lib, cfg["bg_color"]),
-            area_color=color(lib, cfg["area_color"]),
+            rise_color=plain if plain is not None else color(lib, cfg["rise_color"]),
+            fall_color=plain if plain is not None else color(lib, cfg["fall_color"]),
+            bg_color=plain if plain is not None else color(lib, cfg["bg_color"]),
+            area_color=plain if plain is not None else color(lib, cfg["area_color"]),
             single_color=int(cfg["single_color"]),
             show_prices=int(cfg["show_prices"]),
             show_times=int(cfg["show_times"]),

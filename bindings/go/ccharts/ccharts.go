@@ -1,6 +1,9 @@
-// Package ccharts renders financial OHLC data as terminal charts: line and
-// candlestick charts returned as ANSI-colored strings of Unicode block
-// characters, ready to print.
+// Package ccharts renders financial OHLC data to a string: line and
+// candlestick charts drawn with Unicode block characters, with ANSI color
+// optional.
+//
+// Nothing is printed for you — Line and Candle return a string, so the chart
+// goes wherever text goes.
 //
 // It wraps the C library https://github.com/dethrandir/ccharts through its
 // flat ABI. The C sources are vendored in this directory and built by cgo, so
@@ -124,6 +127,10 @@ type Options struct {
 	ShowPrices bool
 	// ShowTimes prints the first and last timestamp under the chart.
 	ShowTimes bool
+	// Plain renders with no ANSI escapes at all, overriding every color. Use
+	// it when the chart is going somewhere that does not interpret escapes —
+	// a log file, an HTML block, a commit message.
+	Plain bool
 }
 
 // Chart is a parsed OHLC dataset that can be rendered repeatedly.
@@ -272,6 +279,14 @@ func setColors(settings *C.ccharts_settings, opts *Options) func() {
 
 	var allocated []*C.char
 	set := func(dst **C.char, color Color) {
+		// An empty C string tells the library to emit no escape at all, which
+		// is different from a NULL pointer (use the default color).
+		if opts.Plain {
+			cs := C.CString("")
+			allocated = append(allocated, cs)
+			*dst = cs
+			return
+		}
 		if color == "" {
 			return
 		}

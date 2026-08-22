@@ -37,6 +37,7 @@ type suite struct {
 			SingleColor bool    `json:"single_color"`
 			ShowPrices  bool    `json:"show_prices"`
 			ShowTimes   bool    `json:"show_times"`
+			Plain       bool    `json:"plain"`
 		} `json:"settings"`
 	} `json:"cases"`
 }
@@ -108,6 +109,7 @@ func TestConformance(t *testing.T) {
 				SingleColor:     tc.Settings.SingleColor,
 				ShowPrices:      tc.Settings.ShowPrices,
 				ShowTimes:       tc.Settings.ShowTimes,
+				Plain:           tc.Settings.Plain,
 			}
 
 			var got string

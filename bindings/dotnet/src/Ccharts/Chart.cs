@@ -178,10 +178,12 @@ public sealed class Chart : IDisposable
         var colors = new IntPtr[4];
         try
         {
-            colors[0] = Utf8(options.RiseColor);
-            colors[1] = Utf8(options.FallColor);
-            colors[2] = Utf8(options.BackgroundColor);
-            colors[3] = Utf8(options.AreaColor);
+            // An empty C string means "emit no escape at all", which is
+            // different from a null pointer (use the default color).
+            colors[0] = options.Plain ? Empty() : Utf8(options.RiseColor);
+            colors[1] = options.Plain ? Empty() : Utf8(options.FallColor);
+            colors[2] = options.Plain ? Empty() : Utf8(options.BackgroundColor);
+            colors[3] = options.Plain ? Empty() : Utf8(options.AreaColor);
 
             var settings = new NativeSettings
             {
@@ -224,6 +226,8 @@ public sealed class Chart : IDisposable
 
     private static IntPtr Utf8(string? value) =>
         string.IsNullOrEmpty(value) ? IntPtr.Zero : Marshal.StringToCoTaskMemUTF8(value);
+
+    private static IntPtr Empty() => Marshal.StringToCoTaskMemUTF8(string.Empty);
 
     /// <summary>Releases the native dataset. Safe to call more than once.</summary>
     public void Dispose()

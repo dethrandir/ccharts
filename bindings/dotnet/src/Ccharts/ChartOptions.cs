@@ -86,4 +86,11 @@ public sealed record ChartOptions
 
     /// <summary>Print the first and last timestamp under the chart.</summary>
     public bool ShowTimes { get; init; }
+
+    /// <summary>
+    /// Render with no ANSI escapes at all, overriding every color. Use it when
+    /// the chart is going somewhere that does not interpret escapes — a log
+    /// file, an HTML block, a commit message.
+    /// </summary>
+    public bool Plain { get; init; }
 }

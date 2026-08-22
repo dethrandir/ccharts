@@ -128,6 +128,32 @@ class TestCCharts(unittest.TestCase):
         self.assertGreater(len(lines[0]), 0)
 
 
+class TestPlainOutput(unittest.TestCase):
+    """plain=True must produce text with no escape bytes at all."""
+
+    def setUp(self):
+        self.chart = Chart(SAMPLE_JSON)
+
+    def test_line_has_no_escapes(self):
+        out = self.chart.line(width=40, height=5, show_prices=True,
+                              show_times=True, plain=True)
+        self.assertNotIn("\x1b", out)
+        self.assertIn("2026-07-20", out)
+
+    def test_candle_has_no_escapes(self):
+        out = self.chart.candle(width=40, height=5, plain=True)
+        self.assertNotIn("\x1b", out)
+        self.assertIn("\u2502", out)  # wicks are still drawn
+
+    def test_plain_overrides_explicit_colors(self):
+        out = self.chart.line(width=40, height=5, plain=True,
+                              rise_color="\x1b[34m", area_color="\x1b[90m")
+        self.assertNotIn("\x1b", out)
+
+    def test_colored_output_still_has_escapes(self):
+        self.assertIn("\x1b", self.chart.line(width=40, height=5))
+
+
 class TestInputValidation(unittest.TestCase):
     """Dimension and payload guards added during the hardening pass."""
 

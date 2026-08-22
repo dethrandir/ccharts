@@ -1,5 +1,8 @@
-//! Terminal charts for financial OHLC data — line and candlestick charts
-//! rendered as ANSI-colored strings of Unicode block characters.
+//! Financial OHLC data as a string — line and candlestick charts drawn with
+//! Unicode block characters, with ANSI color optional.
+//!
+//! Nothing is printed for you: [`Chart::line`] and [`Chart::candle`] return a
+//! [`String`], so the chart goes wherever text goes.
 //!
 //! This crate wraps the C library [`ccharts`](https://github.com/dethrandir/ccharts)
 //! through its flat ABI. The C sources are vendored and compiled by
@@ -161,6 +164,7 @@ pub struct Settings {
     single_color: bool,
     show_prices: bool,
     show_times: bool,
+    plain: bool,
 }
 
 macro_rules! color_setter {
@@ -224,10 +228,28 @@ impl Settings {
         self
     }
 
+    /// Render with no ANSI escapes at all, overriding every color.
+    ///
+    /// Use it when the chart is going somewhere that does not interpret
+    /// escapes — a log file, an HTML block, a commit message.
+    pub fn plain(mut self, yes: bool) -> Self {
+        self.plain = yes;
+        self
+    }
+
     fn to_raw(&self) -> ffi::ccharts_settings {
-        fn ptr(spec: &Option<ColorSpec>) -> *const c_char {
-            spec.as_ref().map_or(std::ptr::null(), ColorSpec::as_ptr)
-        }
+        // An empty string tells the C layer to emit no escape at all, which
+        // is different from NULL (use the default color).
+        const EMPTY: &[u8] = b"\0";
+        let plain = EMPTY.as_ptr() as *const c_char;
+
+        let ptr = |spec: &Option<ColorSpec>| -> *const c_char {
+            if self.plain {
+                plain
+            } else {
+                spec.as_ref().map_or(std::ptr::null(), ColorSpec::as_ptr)
+            }
+        };
         ffi::ccharts_settings {
             rise_color: ptr(&self.rise),
             fall_color: ptr(&self.fall),

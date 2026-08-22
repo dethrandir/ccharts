@@ -1,6 +1,6 @@
 {
   "format": 1,
-  "comment": "Conformance cases shared by every ccharts binding. Each case is rendered through the binding under test and compared byte for byte against conformance/golden/<name>.txt. Colors are ccharts_color() index names; null means the library default.",
+  "comment": "Conformance cases shared by every ccharts binding. Each case is rendered through the binding under test and compared byte for byte against conformance/golden/<name>.txt. Colors are ccharts_color() index names; null means the library default. `plain` renders with no ANSI escapes at all and overrides every color.",
   "datasets": {
     "daily": {
       "open": [
@@ -277,7 +277,8 @@
         "area_color": null,
         "single_color": false,
         "show_prices": false,
-        "show_times": false
+        "show_times": false,
+        "plain": false
       }
     },
     {
@@ -294,7 +295,8 @@
         "area_color": null,
         "single_color": false,
         "show_prices": false,
-        "show_times": false
+        "show_times": false,
+        "plain": false
       }
     },
     {
@@ -311,7 +313,8 @@
         "area_color": null,
         "single_color": false,
         "show_prices": false,
-        "show_times": false
+        "show_times": false,
+        "plain": false
       }
     },
     {
@@ -328,7 +331,8 @@
         "area_color": null,
         "single_color": false,
         "show_prices": false,
-        "show_times": false
+        "show_times": false,
+        "plain": false
       }
     },
     {
@@ -345,7 +349,8 @@
         "area_color": null,
         "single_color": false,
         "show_prices": true,
-        "show_times": true
+        "show_times": true,
+        "plain": false
       }
     },
     {
@@ -362,7 +367,8 @@
         "area_color": null,
         "single_color": false,
         "show_prices": true,
-        "show_times": true
+        "show_times": true,
+        "plain": false
       }
     },
     {
@@ -379,7 +385,8 @@
         "area_color": "bright_black",
         "single_color": false,
         "show_prices": false,
-        "show_times": false
+        "show_times": false,
+        "plain": false
       }
     },
     {
@@ -396,7 +403,8 @@
         "area_color": null,
         "single_color": true,
         "show_prices": false,
-        "show_times": false
+        "show_times": false,
+        "plain": false
       }
     },
     {
@@ -413,7 +421,8 @@
         "area_color": null,
         "single_color": false,
         "show_prices": false,
-        "show_times": false
+        "show_times": false,
+        "plain": false
       }
     },
     {
@@ -430,7 +439,8 @@
         "area_color": null,
         "single_color": false,
         "show_prices": true,
-        "show_times": true
+        "show_times": true,
+        "plain": false
       }
     },
     {
@@ -447,7 +457,8 @@
         "area_color": null,
         "single_color": false,
         "show_prices": true,
-        "show_times": true
+        "show_times": true,
+        "plain": false
       }
     },
     {
@@ -464,7 +475,8 @@
         "area_color": null,
         "single_color": false,
         "show_prices": false,
-        "show_times": true
+        "show_times": true,
+        "plain": false
       }
     },
     {
@@ -481,7 +493,8 @@
         "area_color": null,
         "single_color": false,
         "show_prices": true,
-        "show_times": true
+        "show_times": true,
+        "plain": false
       }
     },
     {
@@ -498,7 +511,8 @@
         "area_color": null,
         "single_color": false,
         "show_prices": true,
-        "show_times": false
+        "show_times": false,
+        "plain": false
       }
     },
     {
@@ -515,7 +529,8 @@
         "area_color": null,
         "single_color": false,
         "show_prices": true,
-        "show_times": false
+        "show_times": false,
+        "plain": false
       }
     },
     {
@@ -532,7 +547,8 @@
         "area_color": null,
         "single_color": false,
         "show_prices": false,
-        "show_times": false
+        "show_times": false,
+        "plain": false
       }
     },
     {
@@ -549,7 +565,8 @@
         "area_color": null,
         "single_color": false,
         "show_prices": false,
-        "show_times": false
+        "show_times": false,
+        "plain": false
       }
     },
     {
@@ -566,7 +583,8 @@
         "area_color": null,
         "single_color": false,
         "show_prices": true,
-        "show_times": true
+        "show_times": true,
+        "plain": false
       }
     },
     {
@@ -583,7 +601,8 @@
         "area_color": null,
         "single_color": false,
         "show_prices": true,
-        "show_times": true
+        "show_times": true,
+        "plain": false
       }
     },
     {
@@ -600,7 +619,80 @@
         "area_color": null,
         "single_color": false,
         "show_prices": true,
-        "show_times": false
+        "show_times": false,
+        "plain": false
+      }
+    },
+    {
+      "name": "line_daily_plain",
+      "dataset": "daily",
+      "source": "arrays",
+      "chart": "line",
+      "width": 60,
+      "height": 8,
+      "settings": {
+        "rise_color": null,
+        "fall_color": null,
+        "bg_color": null,
+        "area_color": null,
+        "single_color": false,
+        "show_prices": true,
+        "show_times": true,
+        "plain": true
+      }
+    },
+    {
+      "name": "candle_daily_plain",
+      "dataset": "daily",
+      "source": "arrays",
+      "chart": "candle",
+      "width": 60,
+      "height": 8,
+      "settings": {
+        "rise_color": null,
+        "fall_color": null,
+        "bg_color": null,
+        "area_color": null,
+        "single_color": false,
+        "show_prices": true,
+        "show_times": true,
+        "plain": true
+      }
+    },
+    {
+      "name": "line_daily_plain_overrides_colors",
+      "dataset": "daily",
+      "source": "json",
+      "chart": "line",
+      "width": 40,
+      "height": 5,
+      "settings": {
+        "rise_color": "blue",
+        "fall_color": "red",
+        "bg_color": null,
+        "area_color": "bright_black",
+        "single_color": false,
+        "show_prices": false,
+        "show_times": false,
+        "plain": true
+      }
+    },
+    {
+      "name": "candle_hourly_plain_narrow",
+      "dataset": "hourly",
+      "source": "arrays",
+      "chart": "candle",
+      "width": 7,
+      "height": 4,
+      "settings": {
+        "rise_color": null,
+        "fall_color": null,
+        "bg_color": null,
+        "area_color": null,
+        "single_color": false,
+        "show_prices": true,
+        "show_times": true,
+        "plain": true
       }
     }
   ]

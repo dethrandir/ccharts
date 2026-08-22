@@ -1,8 +1,8 @@
 /**
- * ccharts — terminal charts for financial OHLC data.
+ * ccharts — financial OHLC data as a string.
  *
- * Line and candlestick charts rendered as ANSI-colored strings of Unicode
- * block characters, ready to print. This is the C library
+ * Line and candlestick charts drawn with Unicode block characters, with ANSI
+ * color optional; nothing is printed for you. This is the C library
  * https://github.com/dethrandir/ccharts compiled to WebAssembly, so the same
  * package runs in Node, Deno, Bun and the browser with no native build step
  * and no platform-specific binaries.
@@ -322,6 +322,7 @@ export class Chart {
       width = 60, height = 8,
       riseColor, fallColor, backgroundColor, areaColor,
       singleColor = false, showPrices = false, showTimes = false,
+      plain = false,
     } = options;
 
     if (!Number.isInteger(width) || !Number.isInteger(height)) {
@@ -330,6 +331,13 @@ export class Chart {
 
     const owned = [];
     const colorPtr = (color) => {
+      // An empty C string means "emit no escape at all", which is different
+      // from a null pointer (use the default color).
+      if (plain) {
+        const ptr = writeCString("");
+        owned.push(ptr);
+        return ptr;
+      }
       if (color === undefined || color === null || color === "") return 0;
       const ptr = writeCString(String(color));
       owned.push(ptr);

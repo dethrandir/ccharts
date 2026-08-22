@@ -87,6 +87,7 @@ class TestConformance(unittest.TestCase):
             single_color=cfg["single_color"],
             show_prices=cfg["show_prices"],
             show_times=cfg["show_times"],
+            plain=cfg.get("plain", False),
         )
 
     def test_every_case_matches_its_golden(self):

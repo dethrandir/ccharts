@@ -1,8 +1,9 @@
-"""ccharts — terminal charts for financial OHLC data (Python bindings).
+"""ccharts — financial OHLC data as a string (Python bindings).
 
 Thin wrapper around the C single-header library `ccharts.h`. Parse OHLC data
-once, then render line or candlestick charts as ANSI-colored strings that can
-be printed directly to a terminal.
+once, then render line or candlestick charts as text: what comes back is a
+plain ``str``, so it can be printed, logged, embedded in an HTML block or
+written to a file. Nothing is printed for you.
 
 Quickstart:
     from ccharts import Chart
@@ -24,7 +25,8 @@ either float64-buffer-backed or iterable. pandas is an optional dependency
 All color and flag arguments are optional. Colors are ANSI escape strings
 (e.g. ``"\\x1b[34m"``); the ``CC_COLOR_*`` constants from the C header have
 no Python equivalent, so pass raw escapes or ``None`` for the defaults
-(green/red).
+(green/red). Pass ``plain=True`` for text with no escapes at all, for output
+that is not going to a terminal.
 
 ISO8601 timestamps may carry a UTC offset (``+03:00``, ``Z``, ...); the
 offset is applied, so `show_times` always displays the true UTC instant.
@@ -115,7 +117,7 @@ class Chart:
 
     def line(self, width=60, height=8, rise_color=None, fall_color=None,
              bg_color=None, area_color=None, single_color=False,
-             show_prices=False, show_times=False):
+             show_prices=False, show_times=False, plain=False):
         """Draw a line chart and return it as a string.
 
         Args:
@@ -128,8 +130,14 @@ class Chart:
                 the overall change; False = color each segment individually.
             show_prices: print max/min price labels in a left margin.
             show_times: print first/last timestamp under the chart.
+            plain: return text with no ANSI escapes at all, overriding every
+                color. Use it when the chart is going somewhere that does not
+                interpret escapes — a log file, an HTML block, a commit
+                message.
         """
         _check_dimensions(width, height)
+        if plain:
+            rise_color = fall_color = bg_color = area_color = ""
         return create_line(
             self._capsule, width, height,
             rise_color, fall_color, bg_color, area_color,
@@ -138,7 +146,7 @@ class Chart:
 
     def candle(self, width=60, height=8, rise_color=None, fall_color=None,
                bg_color=None, area_color=None, single_color=False,
-               show_prices=False, show_times=False):
+               show_prices=False, show_times=False, plain=False):
         """Draw a candle chart and return it as a string.
 
         Same arguments as :meth:`line`. When ``width >= len(data)`` each
@@ -146,6 +154,8 @@ class Chart:
         neighboring candles are aggregated to fit.
         """
         _check_dimensions(width, height)
+        if plain:
+            rise_color = fall_color = bg_color = area_color = ""
         return create_candle(
             self._capsule, width, height,
             rise_color, fall_color, bg_color, area_color,

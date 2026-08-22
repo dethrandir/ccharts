@@ -117,6 +117,7 @@ class ConformanceTest {
                         .singleColor(settings.get("single_color").asBoolean())
                         .showPrices(settings.get("show_prices").asBoolean())
                         .showTimes(settings.get("show_times").asBoolean())
+                        .plain(settings.path("plain").asBoolean(false))
                         .build();
 
                 String rendered = testCase.get("chart").asText().equals("line")

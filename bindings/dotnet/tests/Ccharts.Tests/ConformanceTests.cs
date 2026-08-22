@@ -93,6 +93,8 @@ public class ConformanceTests
                 SingleColor = settings.GetProperty("single_color").GetBoolean(),
                 ShowPrices = settings.GetProperty("show_prices").GetBoolean(),
                 ShowTimes = settings.GetProperty("show_times").GetBoolean(),
+                Plain = settings.TryGetProperty("plain", out var plain)
+                    && plain.GetBoolean(),
             };
 
             var rendered = testCase.GetProperty("chart").GetString() == "line"

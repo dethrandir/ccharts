@@ -65,6 +65,27 @@ fn custom_escapes_are_passed_through() {
 }
 
 #[test]
+fn plain_output_has_no_escapes() {
+    let chart = sample();
+    let settings = Settings::new()
+        .plain(true)
+        .rise(Color::Blue)
+        .area(Color::BrightBlack)
+        .show_prices(true)
+        .show_times(true);
+    let line = chart.line(40, 5, &settings).unwrap();
+    let candle = chart.candle(40, 5, &settings).unwrap();
+    assert!(!line.contains('\u{1b}'), "plain must override every color");
+    assert!(!candle.contains('\u{1b}'));
+    assert!(line.contains("2026-07-20"), "labels are still drawn");
+    // Without plain, the same settings do color the output.
+    let colored = chart
+        .line(40, 5, &Settings::new().rise(Color::Blue))
+        .unwrap();
+    assert!(colored.contains('\u{1b}'));
+}
+
+#[test]
 fn mismatched_columns_are_rejected() {
     let err = Chart::from_arrays(&[1.0, 2.0], &[2.0], &[0.5, 1.0], &[1.5, 2.0], None).unwrap_err();
     assert!(matches!(err, Error::InvalidArgument(_)));

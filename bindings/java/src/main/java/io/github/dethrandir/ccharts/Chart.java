@@ -238,10 +238,17 @@ public final class Chart implements AutoCloseable {
 
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment settings = arena.allocate(Native.SETTINGS);
-            settings.set(ValueLayout.ADDRESS, 0, text(arena, options.riseColor()));
-            settings.set(ValueLayout.ADDRESS, 8, text(arena, options.fallColor()));
-            settings.set(ValueLayout.ADDRESS, 16, text(arena, options.backgroundColor()));
-            settings.set(ValueLayout.ADDRESS, 24, text(arena, options.areaColor()));
+            // An empty C string means "emit no escape at all", which is
+            // different from a null pointer (use the default color).
+            String forced = options.plain() ? "" : null;
+            settings.set(ValueLayout.ADDRESS, 0,
+                    text(arena, forced != null ? forced : options.riseColor()));
+            settings.set(ValueLayout.ADDRESS, 8,
+                    text(arena, forced != null ? forced : options.fallColor()));
+            settings.set(ValueLayout.ADDRESS, 16,
+                    text(arena, forced != null ? forced : options.backgroundColor()));
+            settings.set(ValueLayout.ADDRESS, 24,
+                    text(arena, forced != null ? forced : options.areaColor()));
             settings.set(ValueLayout.JAVA_INT, 32, options.singleColor() ? 1 : 0);
             settings.set(ValueLayout.JAVA_INT, 36, options.showPrices() ? 1 : 0);
             settings.set(ValueLayout.JAVA_INT, 40, options.showTimes() ? 1 : 0);
@@ -270,9 +277,9 @@ public final class Chart implements AutoCloseable {
         }
     }
 
+    /** null means "library default" (NULL); "" means "emit no escape". */
     private static MemorySegment text(Arena arena, String value) {
-        return value == null || value.isEmpty() ? MemorySegment.NULL
-                : arena.allocateFrom(value);
+        return value == null ? MemorySegment.NULL : arena.allocateFrom(value);
     }
 
     /** Releases the native dataset. Safe to call more than once. */

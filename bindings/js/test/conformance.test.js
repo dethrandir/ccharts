@@ -57,6 +57,7 @@ test("matches the shared goldens", { skip: !existsSync(join(SUITE_DIR, "cases.js
           singleColor: settings.single_color,
           showPrices: settings.show_prices,
           showTimes: settings.show_times,
+          plain: settings.plain ?? false,
         };
         const rendered = testCase.chart === "line"
           ? chart.line(options)

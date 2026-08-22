@@ -92,7 +92,8 @@ fn matches_the_shared_goldens() {
         let mut settings = Settings::new()
             .single_color(cfg["single_color"].as_bool().unwrap())
             .show_prices(cfg["show_prices"].as_bool().unwrap())
-            .show_times(cfg["show_times"].as_bool().unwrap());
+            .show_times(cfg["show_times"].as_bool().unwrap())
+            .plain(cfg["plain"].as_bool().unwrap_or(false));
         if let Some(c) = color(&cfg["rise_color"]) {
             settings = settings.rise(c);
         }
