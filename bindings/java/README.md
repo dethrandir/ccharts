@@ -1,7 +1,9 @@
 # ccharts (Java)
 
-Terminal charts for financial OHLC data — line and candlestick charts as
-ANSI-colored strings of Unicode block characters, ready to print.
+Turns financial OHLC data into a string — line and candlestick charts drawn
+with Unicode block characters. Nothing is printed for you, so the chart goes
+wherever text goes: a terminal, a log line, a chat message, an HTML `<pre>`,
+a file.
 
 Java bindings for the C library [ccharts](https://github.com/dethrandir/ccharts),
 built on the Foreign Function & Memory API. **There is no JNI code at all** —
@@ -34,6 +36,8 @@ try (Chart chart = Chart.fromArrays(open, high, low, close, epochSeconds)) {
   `Chart.fromCsv`.
 - `Color` exposes the sixteen ANSI colors; `riseAnsi(...)` and friends take a
   raw escape sequence, so 256-color and truecolor work.
+- `.plain(true)` renders with no ANSI escapes at all, for output that is not
+  going to a terminal.
 - A `Chart` is immutable once built and safe to render from several threads.
 - `close()` releases the native memory; a `Cleaner` covers a forgotten call.
 

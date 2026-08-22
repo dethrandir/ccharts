@@ -1,8 +1,9 @@
 # Ccharts
 
-Terminal charts for financial OHLC data — line and candlestick charts as
-ANSI-colored strings of Unicode block characters, ready to write to the
-console.
+Turns financial OHLC data into a string — line and candlestick charts drawn
+with Unicode block characters. Nothing is printed for you, so the chart goes
+wherever text goes: a terminal, a log line, a chat message, an HTML `<pre>`,
+a file.
 
 .NET bindings for the C library [ccharts](https://github.com/dethrandir/ccharts),
 using source-generated P/Invoke (`[LibraryImport]`) over its flat C ABI.
@@ -31,6 +32,8 @@ Console.Write(chart.Candle(new ChartOptions { Width = 60, Height = 8 }));
   `Chart.FromCsv`.
 - `Color` exposes the sixteen ANSI colors; any escape string works, so
   256-color and truecolor do too.
+- `new ChartOptions { Plain = true }` renders with no ANSI escapes at all, for
+  output that is not going to a console.
 - A `Chart` is immutable once built and safe to render from several threads.
 - `Dispose` releases the native memory; a finalizer covers a forgotten call.
 

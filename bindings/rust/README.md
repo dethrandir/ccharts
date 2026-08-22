@@ -1,7 +1,9 @@
 # ccharts
 
-Terminal charts for financial OHLC data — line and candlestick charts rendered
-as ANSI-colored strings of Unicode block characters, ready to print.
+Turns financial OHLC data into a string — line and candlestick charts drawn
+with Unicode block characters. Nothing is printed for you, so the chart goes
+wherever text goes: a terminal, a log line, a chat message, an HTML `<pre>`,
+a file.
 
 Rust bindings for the C library [ccharts](https://github.com/dethrandir/ccharts).
 The C sources are vendored and compiled by `build.rs`, so there is no system
@@ -36,6 +38,8 @@ println!("{}", chart.candle(60, 8, &Settings::new())?);
   `Chart::from_csv`.
 - Colors are `Color` variants or raw escape sequences via `rise_ansi` and
   friends, so 256-color and truecolor work.
+- `Settings::new().plain(true)` renders with no ANSI escapes at all, for
+  output that is not going to a terminal.
 
 A `Chart` is immutable once built and is `Send + Sync`.
 

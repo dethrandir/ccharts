@@ -5,8 +5,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 `ccharts` is a single-header C library (`ccharts.h`) that renders financial OHLC
-data as ANSI-colored terminal charts, plus a thin CPython extension that exposes
-it to Python. The C header is the only place chart logic lives;
+data to a **string** — line and candlestick charts drawn with Unicode block
+characters, with ANSI color optional. It never prints or writes to a stream;
+callers decide where the text goes. Around it sit a flat C ABI and bindings for
+Python, Rust, Go, JavaScript, C# and Java. The C header is the only place chart logic lives;
 `ccharts/wrapper.c` and `ccharts/__init__.py` only marshal arguments and manage
 memory, and `ccharts/_pandas.py` only reshapes DataFrames into columns.
 

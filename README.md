@@ -1,9 +1,30 @@
 # ccharts
 
-Terminal charts for financial OHLC data, written as a single-header C library
-with optional Python bindings. Line and candlestick charts are rendered as
-ANSI-colored strings of Unicode block characters and printed straight to a
-terminal.
+**Financial OHLC data in, a string out.** Line and candlestick charts drawn
+with Unicode block characters and returned as text — so the chart goes wherever
+text goes: a terminal, a log line, a chat message, an HTML `<pre>`, a commit
+comment, a `.txt` file, a `printf`.
+
+```
+  328.00████████████
+                   █
+                   █           █████████████▁▁▁▁▁▁▁▁▁▁▁▁
+                   █████████████                       █
+                                                       █
+  301.00                                               █▁▁▁▁▁▁▁▁▁▁▁▁
+2026-07-20                                                2026-07-24
+```
+
+Color is optional: by default rising and falling segments carry ANSI escapes,
+and `plain` renders with none at all, for the destinations where escapes would
+only be noise.
+
+There is no canvas, no image, no renderer to drive and nothing to draw into —
+one call returns a string, and what you do with it is your business.
+
+Written as a single-header C library with a flat C ABI and bindings for
+Python, Rust, Go, JavaScript, C# and Java. Every one of them produces
+byte-identical output.
 
 Licensed under the [MIT License](LICENSE).
 
@@ -33,6 +54,11 @@ single-header library `ccharts.h`.
 
 ## Features
 
+- **Strings, not output** — every entry point returns a string. Nothing is
+  printed, no stream is written to, no terminal is detected or resized around.
+- **Plain or colored** — `plain` yields text with no ANSI escapes at all;
+  otherwise colors are escape strings you choose, including 256-color and
+  truecolor.
 - **Line charts** — smooth curves using 8-level vertical resolution
   (`▁▂▃▄▅▆▇█`), per-segment coloring, optional area fill under the line.
 - **Candlestick charts** — solid bodies between open/close, thin vertical
@@ -72,8 +98,10 @@ int main(void) {
 }
 ```
 
-Compile with `-lm` (math lib). `CCHARTS_IMPLEMENTATION` must be defined in
-exactly one translation unit; every other unit can include the header as-is.
+`cc_line_create` hands back a `char*` you own: print it, log it, embed it,
+`free()` it. Compile with `-lm` (math lib). `CCHARTS_IMPLEMENTATION` must be
+defined in exactly one translation unit; every other unit can include the
+header as-is.
 C++ code can use the header for declarations (see the doc comment in
 ccharts.h for details).
 
@@ -244,6 +272,15 @@ drifts.
 | `single_color`| 1 = one line color; 0 = per-segment colors                  | 0               |
 | `show_prices` | print max/min price labels                                 | 0               |
 | `show_times`  | print first/last timestamp footer                          | 0               |
+
+Setting a color to the **empty string** (rather than leaving it unset) makes
+that element carry no escape sequence at all — no color, and no reset either.
+Set all four and the chart comes out as plain text. The bindings expose that as
+a single `plain` option:
+
+```python
+chart.line(width=60, height=8, plain=True)   # not one escape byte
+```
 
 Any unset field falls back to its default, so only the fields you want to
 override need to be set (see `cc_settings_resolve`).

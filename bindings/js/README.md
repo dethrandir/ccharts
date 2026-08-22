@@ -1,7 +1,9 @@
 # ccharts
 
-Terminal charts for financial OHLC data — line and candlestick charts as
-ANSI-colored strings of Unicode block characters, ready to print.
+Turns financial OHLC data into a string — line and candlestick charts drawn
+with Unicode block characters. Nothing is printed for you, so the chart goes
+wherever text goes: a terminal, a log line, a chat message, an HTML `<pre>`,
+a file.
 
 This is the C library [ccharts](https://github.com/dethrandir/ccharts) compiled
 to WebAssembly. One package works everywhere — Node, Deno, Bun and the browser —
@@ -33,6 +35,8 @@ chart.free();
   `Chart.fromCsv`.
 - `Color` holds the sixteen ANSI colors; any escape string works, so
   256-color and truecolor do too: `{ riseColor: "\x1b[38;5;208m" }`.
+- `{ plain: true }` renders with no ANSI escapes at all, for output that is
+  not going to a terminal.
 - Plain arrays, `Float64Array` and `BigInt64Array` are all accepted.
 - `free()` releases the WebAssembly memory. A `FinalizationRegistry` covers a
   forgotten call, but it runs whenever the GC feels like it.

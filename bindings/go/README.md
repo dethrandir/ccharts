@@ -1,7 +1,9 @@
 # ccharts (Go)
 
-Terminal charts for financial OHLC data — line and candlestick charts returned
-as ANSI-colored strings of Unicode block characters, ready to print.
+Turns financial OHLC data into a string — line and candlestick charts drawn
+with Unicode block characters. Nothing is printed for you, so the chart goes
+wherever text goes: a terminal, a log line, a chat message, an HTML `<pre>`,
+a file.
 
 Go bindings for the C library [ccharts](https://github.com/dethrandir/ccharts).
 The C sources live in this package and are built by cgo, so there is nothing to
@@ -43,6 +45,8 @@ func main() {
 - Data can also come from `FromJSON` (fixed-schema JSON) or `FromCSV`.
 - Colors are the `Color*` values or any escape sequence, so 256-color and
   truecolor work: `Options{RiseColor: "\x1b[38;5;208m"}`.
+- `Options{Plain: true}` renders with no ANSI escapes at all, for output that
+  is not going to a terminal.
 - A `Chart` is immutable once built and safe for concurrent rendering.
 - `Close` releases the C memory; a finalizer covers the case where it is
   forgotten, but relying on it holds the memory longer than necessary.
