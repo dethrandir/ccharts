@@ -1,0 +1,24 @@
+[package]
+name = "ccharts"
+version = "0.2.0"
+edition = "2021"
+rust-version = "1.70"
+license = "MIT"
+description = "Terminal charts for financial OHLC data (line and candlestick)"
+repository = "https://github.com/dethrandir/ccharts"
+homepage = "https://github.com/dethrandir/ccharts"
+readme = "README.md"
+keywords = ["chart", "candlestick", "ohlc", "terminal", "tui"]
+categories = ["visualization", "command-line-interface"]
+# The C sources are compiled by build.rs, so they have to travel with the
+# crate; vendor/ is refreshed by scripts/sync_sources.py at the repo root.
+# tests/conformance.rs is intentionally left out: it reads the shared suite
+# at the repository root, which a published crate does not carry.
+include = ["src/**", "build.rs", "vendor/**", "README.md", "tests/api.rs"]
+links = "ccharts_abi"
+
+[build-dependencies]
+cc = "1"
+
+[dev-dependencies]
+serde_json = "1"

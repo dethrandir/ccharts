@@ -1,0 +1,137 @@
+//! Behavioral tests for the safe wrapper. The rendering itself is checked
+//! against the shared goldens in conformance.rs.
+
+use ccharts::{Chart, Color, Error, Settings};
+
+fn sample() -> Chart {
+    Chart::from_arrays(
+        &[328.75, 330.0, 317.25, 320.0, 306.0],
+        &[330.0, 330.25, 321.0, 328.75, 307.25],
+        &[323.75, 317.5, 314.5, 317.75, 300.75],
+        &[328.0, 317.5, 321.0, 318.0, 301.0],
+        Some(&[1784505600, 1784592000, 1784678400, 1784764800, 1784851200]),
+    )
+    .expect("dataset")
+}
+
+#[test]
+fn renders_both_chart_types() {
+    let chart = sample();
+    assert_eq!(chart.len(), 5);
+    let line = chart.line(40, 4, &Settings::new()).unwrap();
+    let candle = chart.candle(40, 4, &Settings::new()).unwrap();
+    assert_eq!(line.lines().count(), 4);
+    assert!(!candle.is_empty());
+    assert!(candle.contains('\u{2502}'), "candles draw wicks");
+}
+
+#[test]
+fn json_and_arrays_agree() {
+    let json = r#"[{"ts":"2026-07-20T00:00:00+00:00","open":328.75,"high":330.0,"low":323.75,"close":328.0},
+                   {"ts":"2026-07-21T00:00:00+00:00","open":330.0,"high":330.25,"low":317.5,"close":317.5},
+                   {"ts":"2026-07-22T00:00:00+00:00","open":317.25,"high":321.0,"low":314.5,"close":321.0},
+                   {"ts":"2026-07-23T00:00:00+00:00","open":320.0,"high":328.75,"low":317.75,"close":318.0},
+                   {"ts":"2026-07-24T00:00:00+00:00","open":306.0,"high":307.25,"low":300.75,"close":301.0}]"#;
+    let settings = Settings::new().show_prices(true).show_times(true);
+    let from_json = Chart::from_json(json).unwrap();
+    assert_eq!(
+        from_json.line(60, 8, &settings).unwrap(),
+        sample().line(60, 8, &settings).unwrap()
+    );
+}
+
+#[test]
+fn csv_skips_blank_lines() {
+    let chart = Chart::from_csv("1,2,0.5,1.5\n\n   \n2,3,1,2.5\n", b',', b'\n').unwrap();
+    assert_eq!(chart.len(), 2, "blank lines must not become zeroed candles");
+}
+
+#[test]
+fn colors_come_from_the_c_library() {
+    assert_eq!(Color::Blue.as_str(), "\x1b[34m");
+    assert_eq!(Color::BrightWhite.as_str(), "\x1b[97m");
+    let out = sample()
+        .line(40, 4, &Settings::new().rise(Color::Blue).fall(Color::Red))
+        .unwrap();
+    assert!(out.contains("\x1b[34m") && out.contains("\x1b[31m"));
+}
+
+#[test]
+fn custom_escapes_are_passed_through() {
+    let out = sample()
+        .line(40, 4, &Settings::new().rise_ansi("\x1b[38;5;208m"))
+        .unwrap();
+    assert!(out.contains("\x1b[38;5;208m"), "truecolor/256 escapes work");
+}
+
+#[test]
+fn mismatched_columns_are_rejected() {
+    let err = Chart::from_arrays(&[1.0, 2.0], &[2.0], &[0.5, 1.0], &[1.5, 2.0], None).unwrap_err();
+    assert!(matches!(err, Error::InvalidArgument(_)));
+}
+
+#[test]
+fn empty_input_is_rejected() {
+    assert!(matches!(
+        Chart::from_arrays(&[], &[], &[], &[], None),
+        Err(Error::InvalidArgument(_))
+    ));
+}
+
+#[test]
+fn non_finite_prices_are_rejected() {
+    for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        assert_eq!(
+            Chart::from_arrays(&[bad], &[2.0], &[0.5], &[1.5], None).unwrap_err(),
+            Error::NonFinite
+        );
+    }
+}
+
+#[test]
+fn bad_dimensions_are_an_error_not_an_empty_string() {
+    let chart = sample();
+    assert_eq!(
+        chart.line(0, 5, &Settings::new()).unwrap_err(),
+        Error::Dimensions
+    );
+    assert_eq!(
+        chart.candle(5, 0, &Settings::new()).unwrap_err(),
+        Error::Dimensions
+    );
+    assert_eq!(
+        chart.line(1000, 2000, &Settings::new()).unwrap_err(),
+        Error::Dimensions
+    );
+}
+
+#[test]
+fn malformed_json_is_rejected() {
+    assert_eq!(Chart::from_json("not json").unwrap_err(), Error::Parse);
+    assert_eq!(Chart::from_json("[]").unwrap_err(), Error::Parse);
+}
+
+#[test]
+fn interior_nul_is_rejected() {
+    assert_eq!(Chart::from_json("[{\0}]").unwrap_err(), Error::InteriorNul);
+}
+
+#[test]
+fn charts_are_shareable_across_threads() {
+    let chart = std::sync::Arc::new(sample());
+    let handles: Vec<_> = (0..4)
+        .map(|_| {
+            let chart = std::sync::Arc::clone(&chart);
+            std::thread::spawn(move || chart.line(30, 4, &Settings::new()).unwrap())
+        })
+        .collect();
+    let outputs: Vec<String> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+    assert!(outputs.windows(2).all(|w| w[0] == w[1]));
+}
+
+#[test]
+fn exposes_library_metadata() {
+    assert_eq!(ccharts::version(), "0.2.0");
+    assert_eq!(ccharts::max_dim(), 100_000);
+    assert_eq!(ccharts::max_cells(), 1_000_000);
+}

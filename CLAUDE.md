@@ -46,6 +46,16 @@ python3 scripts/gen_golden.py                # regenerate conformance/golden/
 python3 scripts/gen_golden.py --check        # CI: fail on any render drift
 python3 scripts/sync_sources.py --check      # CI: vendored copies in sync
 python3 scripts/check_versions.py            # CI: one version everywhere
+python3 scripts/sync_sources.py              # refresh the bindings' C copies
+```
+
+The bindings:
+
+```sh
+cd bindings/rust && cargo test          # 13 API tests + the golden suite
+cd bindings/rust && cargo clippy --all-targets -- -D warnings
+cd bindings/go && go test ./...         # API tests + the golden suite
+cd bindings/go && go test -run TestConformance -v ./...   # one golden case each
 ```
 
 ## Architecture
@@ -106,6 +116,18 @@ change, and `sync_sources.py --check` fails when a binding's vendored copy of
 package directory, and `cargo package` only ships crate-local files, so the
 copies are unavoidable). `scripts/check_versions.py` does the same for the
 version string across manifests.
+
+**Bindings (`bindings/`).** Rust (`bindings/rust`, crate `ccharts`) and Go
+(`bindings/go`, module `github.com/dethrandir/ccharts/bindings/go`) both
+compile the vendored ABI from source — the `cc` crate and cgo respectively —
+so neither needs a prebuilt library and neither uses the CMake build. Both
+expose the same shape as the Python API (`from_arrays`/`from_json`/`from_csv`,
+then `line`/`candle`), both hold the dataset immutably and are safe to share
+across threads, and both run the shared conformance suite. Two constraints
+worth knowing before editing them: the Go module lives in a subdirectory, so
+its tags must be `bindings/go/vX.Y.Z`; and `cargo package` only ships
+crate-local files, which is why `bindings/rust/tests/conformance.rs` is
+excluded from the published crate while `tests/api.rs` is included.
 
 **Single-header discipline.** `CCHARTS_IMPLEMENTATION` must be defined in exactly
 one translation unit — currently `main.c` and `wrapper.c`, which are separate

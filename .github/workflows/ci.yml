@@ -87,6 +87,56 @@ jobs:
       - name: Version is consistent across manifests
         run: python3 scripts/check_versions.py
 
+  # Rust binding: compiles the vendored ABI with the cc crate, so no system
+  # library is involved. Runs on all three platforms because build.rs has an
+  # MSVC-specific path (/utf-8).
+  rust:
+    name: Rust binding (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    defaults:
+      run:
+        working-directory: bindings/rust
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test
+
+  # Go binding: cgo builds the vendored sources from the package directory.
+  # CGO_ENABLED=0 is unsupported by design and not tested.
+  go:
+    name: Go binding (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    defaults:
+      run:
+        working-directory: bindings/go
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.21"
+      - name: gofmt
+        shell: bash
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "${unformatted}" ]; then
+            echo "::error::gofmt needed for: ${unformatted}"
+            exit 1
+          fi
+      - run: go vet ./...
+      - run: go test ./...
+
   # The extension must compile and pass under every supported CPython.
   test-matrix:
     name: Python ${{ matrix.python }}

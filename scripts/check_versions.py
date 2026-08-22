@@ -18,8 +18,11 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MANIFESTS = {
     "pyproject.toml": r'^version\s*=\s*"([^"]+)"',
     "abi/ccharts_abi.h": r'^#define CCHARTS_VERSION "([^"]+)"',
-    # F2+: bindings/rust/Cargo.toml, bindings/js/package.json,
-    # bindings/dotnet/Ccharts.csproj, bindings/java/pom.xml
+    "bindings/rust/Cargo.toml": r'^version\s*=\s*"([^"]+)"',
+    # Go modules carry no version field — they are versioned by git tag
+    # (bindings/go/vX.Y.Z), so there is nothing to check here.
+    # Still to come: bindings/js/package.json, bindings/dotnet/Ccharts.csproj,
+    # bindings/java/pom.xml
 }
 
 REFERENCE = "pyproject.toml"

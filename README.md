@@ -176,8 +176,33 @@ flat ranges and single-candle input. The goldens are generated from the ABI
 (`scripts/gen_golden.py`) and every binding — the Python one included, see
 `tests/test_conformance.py` — must reproduce them byte for byte.
 
-Language bindings (Go, Rust, C#, Java, JavaScript/WASM) build on this ABI and
-are not published yet.
+### Language bindings
+
+| Language | Location | Status |
+| -------- | -------- | ------ |
+| Python   | `ccharts/` | published on PyPI |
+| Rust     | `bindings/rust/` | builds and passes conformance; not published yet |
+| Go       | `bindings/go/` | builds and passes conformance; not published yet |
+| JavaScript (WASM), C#, Java | — | planned |
+
+Rust and Go compile the vendored C sources with their own toolchains (the `cc`
+crate and cgo), so neither needs a prebuilt library:
+
+```rust
+let chart = Chart::from_arrays(&open, &high, &low, &close, Some(&ts))?;
+println!("{}", chart.line(60, 8, &Settings::new().rise(Color::Blue))?);
+```
+
+```go
+chart, _ := ccharts.FromArrays(open, high, low, close, ts)
+defer chart.Close()
+out, _ := chart.Candle(60, 8, &ccharts.Options{ShowPrices: true})
+```
+
+Each binding vendors its own copy of `ccharts.h` and the ABI — Go needs cgo
+sources inside the package directory and `cargo package` only ships crate-local
+files — so `scripts/sync_sources.py` refreshes them and CI fails if a copy
+drifts.
 
 ## Settings
 
@@ -240,6 +265,7 @@ then delete the `password` input from the publish step in the workflow.
 - `main.c` — C demo using `prices.txt`.
 - `prices.txt` — sample JSON OHLC data (THYAO).
 - `abi/` — flat C ABI (`ccharts_abi.h`/`.c`) for non-Python bindings.
+- `bindings/` — language bindings built on that ABI (`rust/`, `go/`).
 - `conformance/` — cross-language case list, goldens and a C smoke test.
 - `scripts/` — golden generation, vendored-source sync, version consistency.
 - `ccharts/` — Python package: `__init__.py` (high-level `Chart`),
