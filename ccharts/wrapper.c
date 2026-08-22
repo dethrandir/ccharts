@@ -9,6 +9,14 @@
  *       and wraps the result in a PyCapsule. The capsule owns the OHLC
  *       buffer and frees it when garbage collected.
  *
+ *   parse_arrays(open, high, low, close, ts=None) -> PyCapsule
+ *       Builds the same capsule from four equal-length columns instead of a
+ *       JSON document. Each column may be any float64 C-contiguous buffer
+ *       (numpy array, array.array, memoryview) or any Python sequence; `ts`
+ *       is epoch seconds (int64 buffer or sequence) and defaults to 0. This
+ *       is the path used by Chart.from_dataframe / Chart.from_arrays, so
+ *       DataFrames never have to be serialized to JSON first.
+ *
  *   create_line(capsule, width, height, rise, fall, bg, area, single, prices, times)
  *   create_candle(...)                                     -> str
  *       Renders a chart from the capsule's data and returns the ANSI-colored
@@ -22,6 +30,7 @@
 #define PY_SSIZE_T_CLEAN
 #define CCHARTS_IMPLEMENTATION
 #include <Python.h>
+#include <limits.h>
 #include "../ccharts.h"
 
 /* Python-side handle to a parsed OHLC array. */
@@ -70,6 +79,237 @@ static PyObject* py_parse_json(PyObject* self, PyObject* args) {
     od->size = size;
 
     return PyCapsule_New(od, "ccharts.ohlc", &dealloc_ohlc);
+}
+
+/* ========================== Array input path ==========================
+ * Columnar input (four price columns + optional timestamps) instead of a
+ * JSON document. Each column is read through the buffer protocol when it
+ * exposes a 1-D C-contiguous float64/int64 block (numpy, array.array), and
+ * falls back to the generic sequence protocol otherwise (list, tuple, or a
+ * buffer with a dtype we do not memcpy directly). Both paths end in the
+ * same cc_ohlc_t array and the same "ccharts.ohlc" capsule as parse_json.
+ * ====================================================================== */
+
+/* Length of a column argument, or -1 with an exception set. */
+static Py_ssize_t arg_len(PyObject* obj) {
+    Py_ssize_t n = PyObject_Length(obj);
+    if (n < 0) {
+        PyErr_SetString(PyExc_TypeError,
+                        "OHLC columns must be sized sequences or buffers");
+        return -1;
+    }
+    return n;
+}
+
+/* NaN/inf must never reach the renderers: cc_pixel() feeds them to lround(),
+ * whose behavior is undefined for non-finite input. */
+static int check_finite(const double* v, Py_ssize_t n) {
+    Py_ssize_t i;
+    for (i = 0; i < n; i++) {
+        if (!isfinite(v[i])) {
+            PyErr_SetString(PyExc_ValueError,
+                            "OHLC values must be finite (no NaN or inf)");
+            return -1;
+        }
+    }
+    return 0;
+}
+
+/* True when `obj` hands out exactly `n` native doubles as one flat block.
+ * PyBUF_STRIDES is deliberately not requested, so a non-contiguous buffer is
+ * rejected by the protocol itself rather than silently misread. */
+static int try_copy_doubles(PyObject* obj, double* out, Py_ssize_t n) {
+    Py_buffer view;
+    int copied = 0;
+
+    if (!PyObject_CheckBuffer(obj)) return 0;
+    if (PyObject_GetBuffer(obj, &view, PyBUF_ND | PyBUF_FORMAT) != 0) {
+        PyErr_Clear();
+        return 0;
+    }
+    if (view.ndim == 1 && view.buf != NULL && view.shape != NULL &&
+        view.shape[0] == n && view.itemsize == (Py_ssize_t)sizeof(double) &&
+        view.format != NULL && view.format[0] == 'd' && view.format[1] == '\0') {
+        memcpy(out, view.buf, (size_t)n * sizeof(double));
+        copied = 1;
+    }
+    PyBuffer_Release(&view);
+    return copied;
+}
+
+/* Same idea for epoch-second columns: 8-byte native ints ('q' or 'l'). */
+static int try_copy_longs(PyObject* obj, long long* out, Py_ssize_t n) {
+    Py_buffer view;
+    int copied = 0;
+
+    if (!PyObject_CheckBuffer(obj)) return 0;
+    if (PyObject_GetBuffer(obj, &view, PyBUF_ND | PyBUF_FORMAT) != 0) {
+        PyErr_Clear();
+        return 0;
+    }
+    if (view.ndim == 1 && view.buf != NULL && view.shape != NULL &&
+        view.shape[0] == n && view.itemsize == (Py_ssize_t)sizeof(long long) &&
+        view.format != NULL && view.format[1] == '\0' &&
+        (view.format[0] == 'q' || view.format[0] == 'l')) {
+        memcpy(out, view.buf, (size_t)n * sizeof(long long));
+        copied = 1;
+    }
+    PyBuffer_Release(&view);
+    return copied;
+}
+
+/* Fills `out` with n doubles from a buffer or any sequence. 0 = ok. */
+static int fill_doubles(PyObject* obj, double* out, Py_ssize_t n) {
+    PyObject* fast;
+    Py_ssize_t i;
+
+    if (!try_copy_doubles(obj, out, n)) {
+        fast = PySequence_Fast(obj, "OHLC columns must be sequences or buffers");
+        if (fast == NULL) return -1;
+        if (PySequence_Fast_GET_SIZE(fast) != n) {
+            Py_DECREF(fast);
+            PyErr_SetString(PyExc_ValueError, "OHLC columns changed size");
+            return -1;
+        }
+        for (i = 0; i < n; i++) {
+            double v = PyFloat_AsDouble(PySequence_Fast_GET_ITEM(fast, i));
+            if (v == -1.0 && PyErr_Occurred()) {
+                Py_DECREF(fast);
+                return -1;
+            }
+            out[i] = v;
+        }
+        Py_DECREF(fast);
+    }
+    return check_finite(out, n);
+}
+
+/* Fills `out` with n epoch seconds from a buffer or any sequence. 0 = ok.
+ * Floats are accepted and truncated, so a float64 timestamp column works. */
+static int fill_longs(PyObject* obj, long long* out, Py_ssize_t n) {
+    PyObject* fast;
+    Py_ssize_t i;
+
+    if (try_copy_longs(obj, out, n)) return 0;
+
+    fast = PySequence_Fast(obj, "ts must be a sequence or a buffer");
+    if (fast == NULL) return -1;
+    if (PySequence_Fast_GET_SIZE(fast) != n) {
+        Py_DECREF(fast);
+        PyErr_SetString(PyExc_ValueError, "ts changed size");
+        return -1;
+    }
+    for (i = 0; i < n; i++) {
+        PyObject* item = PySequence_Fast_GET_ITEM(fast, i);
+        if (PyFloat_Check(item)) {
+            out[i] = (long long)PyFloat_AS_DOUBLE(item);
+        } else {
+            PyObject* index = PyNumber_Index(item);
+            long long v;
+            if (index == NULL) {
+                Py_DECREF(fast);
+                return -1;
+            }
+            v = PyLong_AsLongLong(index);
+            Py_DECREF(index);
+            if (v == -1 && PyErr_Occurred()) {
+                Py_DECREF(fast);
+                return -1;
+            }
+            out[i] = v;
+        }
+    }
+    Py_DECREF(fast);
+    return 0;
+}
+
+/* Builds the OHLC capsule from four price columns and optional timestamps. */
+static PyObject* py_parse_arrays(PyObject* self, PyObject* args) {
+    PyObject* cols[4];
+    PyObject* o_ts = Py_None;
+    PyObject* capsule;
+    double* vals = NULL;
+    long long* ts = NULL;
+    cc_ohlc_t* ohlc = NULL;
+    py_ohlc_data* od = NULL;
+    Py_ssize_t n, i;
+    int c;
+
+    if (!PyArg_ParseTuple(args, "OOOO|O", &cols[0], &cols[1], &cols[2],
+                          &cols[3], &o_ts)) {
+        return NULL;
+    }
+
+    n = arg_len(cols[0]);
+    if (n < 0) return NULL;
+    for (c = 1; c < 4; c++) {
+        Py_ssize_t m = arg_len(cols[c]);
+        if (m < 0) return NULL;
+        if (m != n) {
+            PyErr_SetString(PyExc_ValueError,
+                            "open, high, low and close must have the same length");
+            return NULL;
+        }
+    }
+    if (o_ts != Py_None) {
+        Py_ssize_t m = arg_len(o_ts);
+        if (m < 0) return NULL;
+        if (m != n) {
+            PyErr_SetString(PyExc_ValueError,
+                            "ts must have the same length as the OHLC columns");
+            return NULL;
+        }
+    }
+    if (n <= 0) {
+        PyErr_SetString(PyExc_ValueError, "need at least one candle");
+        return NULL;
+    }
+    /* The C library carries the candle count as an int. */
+    if (n > (Py_ssize_t)(INT_MAX / (int)sizeof(cc_ohlc_t))) {
+        PyErr_SetString(PyExc_ValueError, "too many candles");
+        return NULL;
+    }
+
+    vals = (double*)malloc((size_t)n * 4 * sizeof(double));
+    ohlc = (cc_ohlc_t*)calloc((size_t)n, sizeof(cc_ohlc_t));
+    od = (py_ohlc_data*)malloc(sizeof(py_ohlc_data));
+    if (o_ts != Py_None) {
+        ts = (long long*)malloc((size_t)n * sizeof(long long));
+    }
+    if (vals == NULL || ohlc == NULL || od == NULL ||
+        (o_ts != Py_None && ts == NULL)) {
+        PyErr_NoMemory();
+        goto error;
+    }
+
+    for (c = 0; c < 4; c++) {
+        if (fill_doubles(cols[c], vals + (Py_ssize_t)c * n, n) != 0) goto error;
+    }
+    if (ts != NULL && fill_longs(o_ts, ts, n) != 0) goto error;
+
+    for (i = 0; i < n; i++) {
+        ohlc[i].open  = vals[i];
+        ohlc[i].high  = vals[n + i];
+        ohlc[i].low   = vals[2 * n + i];
+        ohlc[i].close = vals[3 * n + i];
+        ohlc[i].timestamp = (ts != NULL) ? ts[i] : 0;
+    }
+
+    od->data = ohlc;
+    od->size = (int)n;
+    capsule = PyCapsule_New(od, "ccharts.ohlc", &dealloc_ohlc);
+    if (capsule == NULL) goto error;
+
+    free(vals);
+    free(ts);
+    return capsule;
+
+error:
+    free(vals);
+    free(ts);
+    free(ohlc);
+    free(od);
+    return NULL;
 }
 
 /* Shared argument parsing + capsule handling for both renderers.
@@ -158,6 +398,7 @@ static PyObject* py_create_candle(PyObject* self, PyObject* args) {
 /* Module method table + module definition. */
 static PyMethodDef CChartsMethods[] = {
     {"parse_json", py_parse_json, METH_VARARGS, "convert JSON data into OHLC format"},
+    {"parse_arrays", py_parse_arrays, METH_VARARGS, "convert OHLC columns into OHLC format"},
     {"create_line", py_create_line, METH_VARARGS, "create a line chart"},
     {"create_candle", py_create_candle, METH_VARARGS, "create a candle chart"},
     {NULL, NULL, 0, NULL}

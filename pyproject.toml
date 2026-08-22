@@ -42,6 +42,11 @@ classifiers = [
     "Topic :: Terminals",
 ]
 
+# pandas support is opt-in: the package itself stays dependency-free, and
+# ccharts/_pandas.py is only imported when Chart.from_dataframe() is called.
+[project.optional-dependencies]
+pandas = ["pandas>=1.0"]
+
 [project.urls]
 Homepage = "https://github.com/dethrandir/ccharts"
 Repository = "https://github.com/dethrandir/ccharts"

@@ -28,11 +28,14 @@ jobs:
       - name: make test (C demo)
         run: make test
 
+      # The pandas extra is installed here only. The matrix job and the
+      # cibuildwheel wheel tests run without it, which also proves the
+      # pandas tests skip cleanly when pandas is absent.
       - name: Build extension and run unit tests
         run: |
           python3 -m pip install --upgrade pip
-          python3 -m pip install -e .
-          python3 -m unittest tests.test_python_api -v
+          python3 -m pip install -e ".[pandas]"
+          python3 -m unittest discover -s tests -v
 
   # The extension must compile and pass under every supported CPython.
   test-matrix:

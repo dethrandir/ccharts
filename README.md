@@ -17,6 +17,13 @@ Licensed under the [MIT License](LICENSE).
 pip install ccharts
 ```
 
+For pandas DataFrame support (optional — the package itself has no runtime
+dependencies):
+
+```sh
+pip install ccharts[pandas]
+```
+
 Pre-built wheels for Linux (x86_64 and aarch64), macOS (x86_64 and arm64)
 and Windows (x86_64), built on GitHub Actions CI for CPython 3.9-3.14, are
 published together with each release — no C toolchain is needed on the
@@ -38,6 +45,9 @@ single-header library `ccharts.h`.
   or a plain number.
 - **Parsers** — CSV (`cc_str_to_ohlc`) and a fixed-schema JSON parser
   (`cc_json_to_ohlc`).
+- **pandas / columnar input** (Python) — `Chart.from_dataframe(df)` and
+  `Chart.from_arrays(...)` copy price columns straight into the C array, with
+  no JSON round-trip. pandas is optional.
 
 ## C usage
 
@@ -82,6 +92,33 @@ from ccharts import Chart
 chart = Chart(open("prices.txt").read())
 print(chart.line(width=60, height=8, show_prices=True, show_times=True))
 print(chart.candle(width=60, height=8))
+```
+
+### DataFrames and raw columns
+
+A DataFrame does not have to be serialized to JSON first — the price columns
+are handed to C directly:
+
+```python
+import yfinance as yf
+from ccharts import Chart
+
+df = yf.download("THYAO.IS", period="3mo")     # Open/High/Low/Close columns
+print(Chart.from_dataframe(df).candle(width=80, height=12, show_times=True))
+```
+
+- Columns are matched case-insensitively (`Open`/`open`/`OPEN`); pass
+  `ohlc=("o", "h", "l", "c")` for anything else.
+- Timestamps come from a `DatetimeIndex`, or from `ts="column"`. Timezone-aware
+  values are converted to UTC, naive ones are treated as UTC.
+- Rows with NaN/inf in an OHLC column are dropped (indicator frames have NaN
+  warm-up rows); `dropna=False` raises instead.
+- Row order is used as-is — a descending frame renders right to left.
+
+The same path works without pandas, for lists, numpy arrays or `array.array`:
+
+```python
+Chart.from_arrays(opens, highs, lows, closes, ts=epoch_seconds)
 ```
 
 To develop locally (builds the extension in place):
@@ -156,6 +193,8 @@ then delete the `password` input from the publish step in the workflow.
 - `ccharts.h` — the whole C library (single header, heavily documented).
 - `main.c` — C demo using `prices.txt`.
 - `prices.txt` — sample JSON OHLC data (THYAO).
-- `ccharts/` — Python package: `__init__.py` (high-level `Chart`) and
-  `wrapper.c` (CPython extension `ccharts._core`).
-- `tests/` — Python test suite (`tests/test_python_api.py`).
+- `ccharts/` — Python package: `__init__.py` (high-level `Chart`),
+  `wrapper.c` (CPython extension `ccharts._core`) and `_pandas.py` (optional
+  DataFrame conversion, imported lazily).
+- `tests/` — Python test suite (`test_python_api.py`, plus `test_pandas_api.py`
+  which skips when pandas is not installed).

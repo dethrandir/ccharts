@@ -12,7 +12,7 @@ test: main.c
 # Builds the Python extension in place and runs the unit test suite.
 test-py:
 	python3 setup.py build_ext --inplace
-	python3 -m unittest tests.test_python_api -v
+	python3 -m unittest discover -s tests -v
 
 .PHONY: test test-py clean
 clean:

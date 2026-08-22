@@ -5,7 +5,10 @@ Run from the repo root (or via `make test-py`):
     python3 -m unittest tests.test_python_api -v
 """
 
+import array
+import json
 import unittest
+from datetime import datetime
 
 try:
     from ccharts import Chart
@@ -242,6 +245,83 @@ class TestDownsampling(unittest.TestCase):
         c = Chart('[{"open": 1, "high": 2, "low": 0.5, "close": 1.5}]')
         self.assertGreater(len(c.line(width=10, height=3)), 0)
         self.assertGreater(len(c.candle(width=10, height=3)), 0)
+
+
+class TestFromArrays(unittest.TestCase):
+    """Columnar input path (ccharts._core.parse_arrays), no pandas involved."""
+
+    def setUp(self):
+        rows = json.loads(SAMPLE_JSON)
+        self.rows = rows
+        self.open = [r["open"] for r in rows]
+        self.high = [r["high"] for r in rows]
+        self.low = [r["low"] for r in rows]
+        self.close = [r["close"] for r in rows]
+        self.ts = [
+            int(datetime.strptime(r["ts"], "%Y-%m-%dT%H:%M:%S%z").timestamp())
+            for r in rows
+        ]
+
+    def _from_lists(self, ts=None):
+        return Chart.from_arrays(self.open, self.high, self.low, self.close, ts=ts)
+
+    def test_lists_render(self):
+        out = self._from_lists().line(width=40, height=4)
+        self.assertIsInstance(out, str)
+        self.assertGreater(len(out), 0)
+
+    def test_matches_json_path_exactly(self):
+        # The new entry point must not change a single byte of the render.
+        json_chart = Chart(SAMPLE_JSON)
+        array_chart = self._from_lists(ts=self.ts)
+        for kwargs in ({}, {"show_prices": True, "show_times": True},
+                       {"width": 13, "height": 2}):
+            for method in ("line", "candle"):
+                self.assertEqual(getattr(json_chart, method)(**kwargs),
+                                 getattr(array_chart, method)(**kwargs),
+                                 "%s%r differs between the JSON and array paths"
+                                 % (method, kwargs))
+
+    def test_buffer_input(self):
+        # array.array('d') exercises the memcpy fast path, 'q' the ts one.
+        chart = Chart.from_arrays(
+            array.array("d", self.open), array.array("d", self.high),
+            array.array("d", self.low), array.array("d", self.close),
+            ts=array.array("q", self.ts),
+        )
+        self.assertEqual(chart.line(show_times=True),
+                         Chart(SAMPLE_JSON).line(show_times=True))
+
+    def test_integer_input(self):
+        # Plain ints must convert; they are not float64 buffers.
+        chart = Chart.from_arrays([1, 2, 3], [2, 3, 4], [0, 1, 2], [2, 1, 3])
+        self.assertGreater(len(chart.candle(width=10, height=3)), 0)
+
+    def test_without_ts_has_no_footer(self):
+        out = self._from_lists().line(width=20, height=3, show_times=True)
+        self.assertEqual(len(out.strip("\n").split("\n")), 3)
+        self.assertNotIn("2026", out)
+
+    def test_length_mismatch_raises(self):
+        with self.assertRaises(ValueError):
+            Chart.from_arrays([1.0, 2.0], [2.0], [0.5, 1.0], [1.5, 2.0])
+
+    def test_ts_length_mismatch_raises(self):
+        with self.assertRaises(ValueError):
+            Chart.from_arrays([1.0], [2.0], [0.5], [1.5], ts=[1, 2])
+
+    def test_empty_raises(self):
+        with self.assertRaises(ValueError):
+            Chart.from_arrays([], [], [], [])
+
+    def test_non_finite_raises(self):
+        for bad in (float("nan"), float("inf"), float("-inf")):
+            with self.assertRaises(ValueError):
+                Chart.from_arrays([bad], [2.0], [0.5], [1.5])
+
+    def test_non_numeric_raises(self):
+        with self.assertRaises(TypeError):
+            Chart.from_arrays(["a"], ["b"], ["c"], ["d"])
 
 
 if __name__ == "__main__":

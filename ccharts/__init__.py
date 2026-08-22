@@ -11,6 +11,16 @@ Quickstart:
     print(chart.line(width=60, height=8, show_prices=True, show_times=True))
     print(chart.candle(width=60, height=8))
 
+Columnar data skips JSON entirely and is copied straight into the C array:
+
+    Chart.from_arrays(opens, highs, lows, closes, ts=epoch_seconds)
+    Chart.from_dataframe(df)                   # requires pandas
+
+``from_arrays`` accepts lists, numpy arrays, array.array — anything sized and
+either float64-buffer-backed or iterable. pandas is an optional dependency
+(``pip install ccharts[pandas]``) and is imported only when
+``from_dataframe`` is called.
+
 All color and flag arguments are optional. Colors are ANSI escape strings
 (e.g. ``"\\x1b[34m"``); the ``CC_COLOR_*`` constants from the C header have
 no Python equivalent, so pass raw escapes or ``None`` for the defaults
@@ -24,7 +34,7 @@ width/height at 100000 cells per side and 1000000 total cells
 (``CC_MAX_DIM`` / ``CC_MAX_CELLS`` in ccharts.h).
 """
 
-from ._core import parse_json, create_line, create_candle
+from ._core import parse_json, parse_arrays, create_line, create_candle
 
 
 def _check_dimensions(width, height):
@@ -42,6 +52,54 @@ def _check_dimensions(width, height):
 
 class Chart:
     """A parsed OHLC dataset that can be rendered as a line or candle chart."""
+
+    @classmethod
+    def _from_capsule(cls, capsule):
+        """Wraps an already-built C capsule, bypassing the JSON constructor."""
+        self = cls.__new__(cls)
+        self._capsule = capsule
+        return self
+
+    @classmethod
+    def from_arrays(cls, open, high, low, close, ts=None):
+        """Build a Chart from four equal-length price columns.
+
+        Each column may be a list, tuple, numpy array, array.array or any
+        other sized sequence; float64 C-contiguous buffers are copied in one
+        block, everything else element by element. ``ts`` is optional epoch
+        seconds (0 means "unknown", which suppresses the ``show_times``
+        footer).
+
+        Raises ValueError on empty or mismatched columns and on non-finite
+        values (NaN/inf would corrupt the renderer's pixel math).
+        """
+        if ts is None:
+            return cls._from_capsule(parse_arrays(open, high, low, close))
+        return cls._from_capsule(parse_arrays(open, high, low, close, ts))
+
+    @classmethod
+    def from_dataframe(cls, df, ohlc=None, ts=None, dropna=True):
+        """Build a Chart from a pandas DataFrame.
+
+        Args:
+            df: the DataFrame. Row order is used as-is — nothing is sorted,
+                so a descending frame renders right-to-left.
+            ohlc: explicit ``(open, high, low, close)`` column names. When
+                None the columns are matched case-insensitively by name.
+            ts: name of a timestamp column. When None, a DatetimeIndex is
+                used if present; otherwise the chart has no timestamps.
+            dropna: True drops rows with NaN in any OHLC column (indicator
+                frames usually have NaN warm-up rows); False raises
+                ValueError instead.
+
+        Requires pandas (``pip install ccharts[pandas]``); it is imported
+        here, not at module import time.
+        """
+        from ._pandas import dataframe_to_arrays
+
+        o, h, l, c, epoch = dataframe_to_arrays(df, ohlc=ohlc, ts=ts,
+                                                dropna=dropna)
+        return cls.from_arrays(o, h, l, c, ts=epoch)
 
     def __init__(self, json_data: str):
         """Parse the given JSON string in C and hold the result in memory.
