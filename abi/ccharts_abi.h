@@ -1,0 +1,170 @@
+/*
+ * ccharts_abi.h — flat C ABI for the ccharts single-header library.
+ *
+ * WHY THIS EXISTS
+ * ---------------
+ * ccharts.h exports nothing: CC_INLINE makes every function `static inline`,
+ * so the implementation is compiled into whichever translation unit defines
+ * CCHARTS_IMPLEMENTATION. `struct cc_ohlc` is likewise private to that block.
+ * Neither is reachable from a foreign function interface. This layer defines
+ * CCHARTS_IMPLEMENTATION once, and re-exports a stable, cdecl, opaque-handle
+ * API that Go (cgo), Rust, C#, Java and WebAssembly can all bind to without
+ * repeating the same marshalling and ownership logic five times.
+ *
+ * CONTRACT
+ * --------
+ *   - Every entry point returns a ccharts_status; CCHARTS_OK is 0.
+ *   - Data handles are opaque, immutable once built, and thread-safe to share
+ *     (ccharts.h holds no mutable global state). Release with
+ *     ccharts_data_free.
+ *   - Rendered strings are heap-allocated by the library and released with
+ *     ccharts_string_free. The expected binding pattern is: render, copy into
+ *     a native string, free immediately.
+ *   - Invalid dimensions are an error here, not the empty string ccharts.h
+ *     returns, so the "empty means invalid" convention never reaches a
+ *     binding's users.
+ *   - NaN and inf are rejected at the boundary: cc_pixel() feeds values to
+ *     lround(), which is undefined for non-finite input.
+ *
+ * All structs are fixed-layout, no bitfields, and nothing is passed by value,
+ * which keeps the ABI describable in every foreign-function tool.
+ */
+
+#ifndef CCHARTS_ABI_H
+#define CCHARTS_ABI_H
+
+#include <stddef.h>
+#include <stdint.h>
+
+#define CCHARTS_VERSION "0.2.0"
+
+#if defined(_WIN32)
+#  if defined(CCHARTS_ABI_BUILD_SHARED)
+#    define CCHARTS_API __declspec(dllexport)
+#  elif defined(CCHARTS_ABI_USE_SHARED)
+#    define CCHARTS_API __declspec(dllimport)
+#  else
+#    define CCHARTS_API
+#  endif
+#elif defined(__GNUC__)
+#  define CCHARTS_API __attribute__((visibility("default")))
+#else
+#  define CCHARTS_API
+#endif
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/* An opaque, immutable OHLC dataset. */
+typedef struct ccharts_data ccharts_data;
+
+typedef enum ccharts_status {
+    CCHARTS_OK = 0,
+    CCHARTS_ERR_INVALID_ARG = 1,   /* NULL pointer, n <= 0, ... */
+    CCHARTS_ERR_PARSE = 2,         /* malformed or empty JSON/CSV */
+    CCHARTS_ERR_NOMEM = 3,
+    CCHARTS_ERR_NON_FINITE = 4,    /* NaN or inf among the prices */
+    CCHARTS_ERR_DIMENSIONS = 5     /* width/height <= 0 or over the limits */
+} ccharts_status;
+
+/* Indices for ccharts_color(). Bindings name these in their own enums instead
+ * of copying the ANSI escape sequences. */
+typedef enum ccharts_color_index {
+    CCHARTS_COLOR_BLACK = 0, CCHARTS_COLOR_RED, CCHARTS_COLOR_GREEN,
+    CCHARTS_COLOR_YELLOW, CCHARTS_COLOR_BLUE, CCHARTS_COLOR_MAGENTA,
+    CCHARTS_COLOR_CYAN, CCHARTS_COLOR_WHITE,
+    CCHARTS_COLOR_BRIGHT_BLACK, CCHARTS_COLOR_BRIGHT_RED,
+    CCHARTS_COLOR_BRIGHT_GREEN, CCHARTS_COLOR_BRIGHT_YELLOW,
+    CCHARTS_COLOR_BRIGHT_BLUE, CCHARTS_COLOR_BRIGHT_MAGENTA,
+    CCHARTS_COLOR_BRIGHT_CYAN, CCHARTS_COLOR_BRIGHT_WHITE,
+    CCHARTS_COLOR_RESET,
+    CCHARTS_COLOR_COUNT
+} ccharts_color_index;
+
+/* Rendering options. Every color is a NUL-terminated ANSI escape string or
+ * NULL for the library default, exactly like cc_settings_t; pass NULL for the
+ * whole struct to take every default. Arbitrary escapes (256-color,
+ * truecolor) are accepted — the strings are not interpreted here. */
+typedef struct ccharts_settings {
+    const char* rise_color;
+    const char* fall_color;
+    const char* bg_color;
+    const char* area_color;
+    int32_t single_color;
+    int32_t show_prices;
+    int32_t show_times;
+} ccharts_settings;
+
+/* ---------------------------- Building data ---------------------------- */
+
+/* Builds a dataset from four equal-length price columns. `ts` holds epoch
+ * seconds and may be NULL (all timestamps unknown). The arrays are copied
+ * immediately and never retained, which keeps cgo's pointer-passing rules and
+ * every GC's object lifetime out of the picture. */
+CCHARTS_API ccharts_status ccharts_from_arrays(const double* open,
+                                               const double* high,
+                                               const double* low,
+                                               const double* close,
+                                               const int64_t* ts,
+                                               int32_t n,
+                                               ccharts_data** out);
+
+/* Builds a dataset from the fixed-schema JSON accepted by cc_json_to_ohlc. */
+CCHARTS_API ccharts_status ccharts_parse_json(const char* json,
+                                              ccharts_data** out);
+
+/* Builds a dataset from CSV: open,high,low,close[,timestamp] per line.
+ * Unlike cc_str_to_ohlc, which fills a caller-sized array and never reports
+ * how many rows it actually parsed, this counts the parseable lines first, so
+ * the dataset never carries trailing zero-filled candles. */
+CCHARTS_API ccharts_status ccharts_parse_csv(const char* csv,
+                                             char value_separator,
+                                             char line_separator,
+                                             ccharts_data** out);
+
+/* Number of candles, or 0 for NULL. */
+CCHARTS_API int32_t ccharts_data_len(const ccharts_data* data);
+
+/* Releases a dataset. NULL is a no-op. */
+CCHARTS_API void ccharts_data_free(ccharts_data* data);
+
+/* ------------------------------ Rendering ------------------------------ */
+
+/* Renders a line chart. On CCHARTS_OK, *out points to a NUL-terminated UTF-8
+ * string owned by the caller (release with ccharts_string_free) and *out_len,
+ * when not NULL, receives its length in bytes. On error *out is set to NULL. */
+CCHARTS_API ccharts_status ccharts_line(const ccharts_data* data,
+                                        int32_t width, int32_t height,
+                                        const ccharts_settings* settings,
+                                        char** out, size_t* out_len);
+
+/* Renders a candlestick chart; same contract as ccharts_line. */
+CCHARTS_API ccharts_status ccharts_candle(const ccharts_data* data,
+                                          int32_t width, int32_t height,
+                                          const ccharts_settings* settings,
+                                          char** out, size_t* out_len);
+
+/* Releases a string returned by ccharts_line / ccharts_candle. */
+CCHARTS_API void ccharts_string_free(char* s);
+
+/* ---------------------------- Introspection ---------------------------- */
+
+/* ANSI escape for a ccharts_color_index, or NULL when out of range. */
+CCHARTS_API const char* ccharts_color(int32_t index);
+
+/* Human-readable message for a status code; never NULL. */
+CCHARTS_API const char* ccharts_error_message(int32_t status);
+
+/* Library version ("0.2.0"), shared by every binding. */
+CCHARTS_API const char* ccharts_version(void);
+
+/* CC_MAX_DIM / CC_MAX_CELLS, so bindings do not duplicate the limits. */
+CCHARTS_API int32_t ccharts_max_dim(void);
+CCHARTS_API int32_t ccharts_max_cells(void);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* CCHARTS_ABI_H */

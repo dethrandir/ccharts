@@ -1,0 +1,607 @@
+{
+  "format": 1,
+  "comment": "Conformance cases shared by every ccharts binding. Each case is rendered through the binding under test and compared byte for byte against conformance/golden/<name>.txt. Colors are ccharts_color() index names; null means the library default.",
+  "datasets": {
+    "daily": {
+      "open": [
+        328.75,
+        330.0,
+        317.25,
+        320.0,
+        306.0
+      ],
+      "high": [
+        330.0,
+        330.25,
+        321.0,
+        328.75,
+        307.25
+      ],
+      "low": [
+        323.75,
+        317.5,
+        314.5,
+        317.75,
+        300.75
+      ],
+      "close": [
+        328.0,
+        317.5,
+        321.0,
+        318.0,
+        301.0
+      ],
+      "ts": [
+        1784505600,
+        1784592000,
+        1784678400,
+        1784764800,
+        1784851200
+      ],
+      "json": "[{\"ts\":\"2026-07-20T00:00:00+00:00\",\"open\":328.75,\"high\":330.0,\"low\":323.75,\"close\":328.0},{\"ts\":\"2026-07-21T00:00:00+00:00\",\"open\":330.0,\"high\":330.25,\"low\":317.5,\"close\":317.5},{\"ts\":\"2026-07-22T00:00:00+00:00\",\"open\":317.25,\"high\":321.0,\"low\":314.5,\"close\":321.0},{\"ts\":\"2026-07-23T00:00:00+00:00\",\"open\":320.0,\"high\":328.75,\"low\":317.75,\"close\":318.0},{\"ts\":\"2026-07-24T00:00:00+00:00\",\"open\":306.0,\"high\":307.25,\"low\":300.75,\"close\":301.0}]"
+    },
+    "hourly": {
+      "open": [
+        100.0,
+        100.0,
+        101.56,
+        102.97,
+        104.12,
+        104.89,
+        105.23,
+        105.14,
+        104.64,
+        103.83,
+        102.81,
+        101.74,
+        100.74,
+        99.97,
+        99.53,
+        99.5,
+        99.91,
+        100.75,
+        101.94,
+        103.38,
+        104.95,
+        106.5,
+        107.88,
+        108.97
+      ],
+      "high": [
+        101.25,
+        102.81,
+        104.22,
+        105.37,
+        106.14,
+        106.48,
+        106.48,
+        106.39,
+        105.89,
+        105.08,
+        104.06,
+        102.99,
+        101.99,
+        101.22,
+        100.78,
+        101.16,
+        102.0,
+        103.19,
+        104.63,
+        106.2,
+        107.75,
+        109.13,
+        110.22,
+        110.93
+      ],
+      "low": [
+        98.5,
+        98.5,
+        100.06,
+        101.47,
+        102.62,
+        103.39,
+        103.64,
+        103.14,
+        102.33,
+        101.31,
+        100.24,
+        99.24,
+        98.47,
+        98.03,
+        98.0,
+        98.0,
+        98.41,
+        99.25,
+        100.44,
+        101.88,
+        103.45,
+        105.0,
+        106.38,
+        107.47
+      ],
+      "close": [
+        100.0,
+        101.56,
+        102.97,
+        104.12,
+        104.89,
+        105.23,
+        105.14,
+        104.64,
+        103.83,
+        102.81,
+        101.74,
+        100.74,
+        99.97,
+        99.53,
+        99.5,
+        99.91,
+        100.75,
+        101.94,
+        103.38,
+        104.95,
+        106.5,
+        107.88,
+        108.97,
+        109.68
+      ],
+      "ts": [
+        1784505600,
+        1784509200,
+        1784512800,
+        1784516400,
+        1784520000,
+        1784523600,
+        1784527200,
+        1784530800,
+        1784534400,
+        1784538000,
+        1784541600,
+        1784545200,
+        1784548800,
+        1784552400,
+        1784556000,
+        1784559600,
+        1784563200,
+        1784566800,
+        1784570400,
+        1784574000,
+        1784577600,
+        1784581200,
+        1784584800,
+        1784588400
+      ],
+      "json": "[{\"ts\":\"2026-07-20T00:00:00+00:00\",\"open\":100.0,\"high\":101.25,\"low\":98.5,\"close\":100.0},{\"ts\":\"2026-07-20T01:00:00+00:00\",\"open\":100.0,\"high\":102.81,\"low\":98.5,\"close\":101.56},{\"ts\":\"2026-07-20T02:00:00+00:00\",\"open\":101.56,\"high\":104.22,\"low\":100.06,\"close\":102.97},{\"ts\":\"2026-07-20T03:00:00+00:00\",\"open\":102.97,\"high\":105.37,\"low\":101.47,\"close\":104.12},{\"ts\":\"2026-07-20T04:00:00+00:00\",\"open\":104.12,\"high\":106.14,\"low\":102.62,\"close\":104.89},{\"ts\":\"2026-07-20T05:00:00+00:00\",\"open\":104.89,\"high\":106.48,\"low\":103.39,\"close\":105.23},{\"ts\":\"2026-07-20T06:00:00+00:00\",\"open\":105.23,\"high\":106.48,\"low\":103.64,\"close\":105.14},{\"ts\":\"2026-07-20T07:00:00+00:00\",\"open\":105.14,\"high\":106.39,\"low\":103.14,\"close\":104.64},{\"ts\":\"2026-07-20T08:00:00+00:00\",\"open\":104.64,\"high\":105.89,\"low\":102.33,\"close\":103.83},{\"ts\":\"2026-07-20T09:00:00+00:00\",\"open\":103.83,\"high\":105.08,\"low\":101.31,\"close\":102.81},{\"ts\":\"2026-07-20T10:00:00+00:00\",\"open\":102.81,\"high\":104.06,\"low\":100.24,\"close\":101.74},{\"ts\":\"2026-07-20T11:00:00+00:00\",\"open\":101.74,\"high\":102.99,\"low\":99.24,\"close\":100.74},{\"ts\":\"2026-07-20T12:00:00+00:00\",\"open\":100.74,\"high\":101.99,\"low\":98.47,\"close\":99.97},{\"ts\":\"2026-07-20T13:00:00+00:00\",\"open\":99.97,\"high\":101.22,\"low\":98.03,\"close\":99.53},{\"ts\":\"2026-07-20T14:00:00+00:00\",\"open\":99.53,\"high\":100.78,\"low\":98.0,\"close\":99.5},{\"ts\":\"2026-07-20T15:00:00+00:00\",\"open\":99.5,\"high\":101.16,\"low\":98.0,\"close\":99.91},{\"ts\":\"2026-07-20T16:00:00+00:00\",\"open\":99.91,\"high\":102.0,\"low\":98.41,\"close\":100.75},{\"ts\":\"2026-07-20T17:00:00+00:00\",\"open\":100.75,\"high\":103.19,\"low\":99.25,\"close\":101.94},{\"ts\":\"2026-07-20T18:00:00+00:00\",\"open\":101.94,\"high\":104.63,\"low\":100.44,\"close\":103.38},{\"ts\":\"2026-07-20T19:00:00+00:00\",\"open\":103.38,\"high\":106.2,\"low\":101.88,\"close\":104.95},{\"ts\":\"2026-07-20T20:00:00+00:00\",\"open\":104.95,\"high\":107.75,\"low\":103.45,\"close\":106.5},{\"ts\":\"2026-07-20T21:00:00+00:00\",\"open\":106.5,\"high\":109.13,\"low\":105.0,\"close\":107.88},{\"ts\":\"2026-07-20T22:00:00+00:00\",\"open\":107.88,\"high\":110.22,\"low\":106.38,\"close\":108.97},{\"ts\":\"2026-07-20T23:00:00+00:00\",\"open\":108.97,\"high\":110.93,\"low\":107.47,\"close\":109.68}]"
+    },
+    "single": {
+      "open": [
+        1.0
+      ],
+      "high": [
+        2.0
+      ],
+      "low": [
+        0.5
+      ],
+      "close": [
+        1.5
+      ],
+      "ts": [
+        1784505600
+      ],
+      "json": "[{\"ts\":\"2026-07-20T00:00:00+00:00\",\"open\":1.0,\"high\":2.0,\"low\":0.5,\"close\":1.5}]"
+    },
+    "notime": {
+      "open": [
+        1.0,
+        1.5,
+        1.2,
+        2.0
+      ],
+      "high": [
+        2.0,
+        2.5,
+        3.0,
+        2.2
+      ],
+      "low": [
+        0.5,
+        1.0,
+        1.1,
+        1.9
+      ],
+      "close": [
+        1.5,
+        1.2,
+        2.8,
+        2.0
+      ],
+      "json": "[{\"open\":1.0,\"high\":2.0,\"low\":0.5,\"close\":1.5},{\"open\":1.5,\"high\":2.5,\"low\":1.0,\"close\":1.2},{\"open\":1.2,\"high\":3.0,\"low\":1.1,\"close\":2.8},{\"open\":2.0,\"high\":2.2,\"low\":1.9,\"close\":2.0}]"
+    },
+    "flat": {
+      "open": [
+        5.0,
+        5.0,
+        5.0,
+        5.0,
+        5.0,
+        5.0
+      ],
+      "high": [
+        5.0,
+        5.0,
+        5.0,
+        5.0,
+        5.0,
+        5.0
+      ],
+      "low": [
+        5.0,
+        5.0,
+        5.0,
+        5.0,
+        5.0,
+        5.0
+      ],
+      "close": [
+        5.0,
+        5.0,
+        5.0,
+        5.0,
+        5.0,
+        5.0
+      ],
+      "ts": [
+        1784505600,
+        1784592000,
+        1784678400,
+        1784764800,
+        1784851200,
+        1784937600
+      ],
+      "json": "[{\"ts\":\"2026-07-20T00:00:00+00:00\",\"open\":5.0,\"high\":5.0,\"low\":5.0,\"close\":5.0},{\"ts\":\"2026-07-21T00:00:00+00:00\",\"open\":5.0,\"high\":5.0,\"low\":5.0,\"close\":5.0},{\"ts\":\"2026-07-22T00:00:00+00:00\",\"open\":5.0,\"high\":5.0,\"low\":5.0,\"close\":5.0},{\"ts\":\"2026-07-23T00:00:00+00:00\",\"open\":5.0,\"high\":5.0,\"low\":5.0,\"close\":5.0},{\"ts\":\"2026-07-24T00:00:00+00:00\",\"open\":5.0,\"high\":5.0,\"low\":5.0,\"close\":5.0},{\"ts\":\"2026-07-25T00:00:00+00:00\",\"open\":5.0,\"high\":5.0,\"low\":5.0,\"close\":5.0}]"
+    }
+  },
+  "cases": [
+    {
+      "name": "line_daily_arrays",
+      "dataset": "daily",
+      "source": "arrays",
+      "chart": "line",
+      "width": 60,
+      "height": 8,
+      "settings": {
+        "rise_color": null,
+        "fall_color": null,
+        "bg_color": null,
+        "area_color": null,
+        "single_color": false,
+        "show_prices": false,
+        "show_times": false
+      }
+    },
+    {
+      "name": "line_daily_json",
+      "dataset": "daily",
+      "source": "json",
+      "chart": "line",
+      "width": 60,
+      "height": 8,
+      "settings": {
+        "rise_color": null,
+        "fall_color": null,
+        "bg_color": null,
+        "area_color": null,
+        "single_color": false,
+        "show_prices": false,
+        "show_times": false
+      }
+    },
+    {
+      "name": "candle_daily_arrays",
+      "dataset": "daily",
+      "source": "arrays",
+      "chart": "candle",
+      "width": 60,
+      "height": 8,
+      "settings": {
+        "rise_color": null,
+        "fall_color": null,
+        "bg_color": null,
+        "area_color": null,
+        "single_color": false,
+        "show_prices": false,
+        "show_times": false
+      }
+    },
+    {
+      "name": "candle_daily_json",
+      "dataset": "daily",
+      "source": "json",
+      "chart": "candle",
+      "width": 60,
+      "height": 8,
+      "settings": {
+        "rise_color": null,
+        "fall_color": null,
+        "bg_color": null,
+        "area_color": null,
+        "single_color": false,
+        "show_prices": false,
+        "show_times": false
+      }
+    },
+    {
+      "name": "line_daily_labels",
+      "dataset": "daily",
+      "source": "arrays",
+      "chart": "line",
+      "width": 60,
+      "height": 8,
+      "settings": {
+        "rise_color": null,
+        "fall_color": null,
+        "bg_color": null,
+        "area_color": null,
+        "single_color": false,
+        "show_prices": true,
+        "show_times": true
+      }
+    },
+    {
+      "name": "candle_daily_labels",
+      "dataset": "daily",
+      "source": "arrays",
+      "chart": "candle",
+      "width": 60,
+      "height": 8,
+      "settings": {
+        "rise_color": null,
+        "fall_color": null,
+        "bg_color": "bright_black",
+        "area_color": null,
+        "single_color": false,
+        "show_prices": true,
+        "show_times": true
+      }
+    },
+    {
+      "name": "line_daily_area",
+      "dataset": "daily",
+      "source": "arrays",
+      "chart": "line",
+      "width": 60,
+      "height": 8,
+      "settings": {
+        "rise_color": "blue",
+        "fall_color": "red",
+        "bg_color": null,
+        "area_color": "bright_black",
+        "single_color": false,
+        "show_prices": false,
+        "show_times": false
+      }
+    },
+    {
+      "name": "line_daily_single",
+      "dataset": "daily",
+      "source": "arrays",
+      "chart": "line",
+      "width": 60,
+      "height": 8,
+      "settings": {
+        "rise_color": "blue",
+        "fall_color": "red",
+        "bg_color": null,
+        "area_color": null,
+        "single_color": true,
+        "show_prices": false,
+        "show_times": false
+      }
+    },
+    {
+      "name": "candle_daily_wide",
+      "dataset": "daily",
+      "source": "arrays",
+      "chart": "candle",
+      "width": 80,
+      "height": 10,
+      "settings": {
+        "rise_color": null,
+        "fall_color": null,
+        "bg_color": null,
+        "area_color": null,
+        "single_color": false,
+        "show_prices": false,
+        "show_times": false
+      }
+    },
+    {
+      "name": "line_hourly_narrow",
+      "dataset": "hourly",
+      "source": "arrays",
+      "chart": "line",
+      "width": 7,
+      "height": 4,
+      "settings": {
+        "rise_color": null,
+        "fall_color": null,
+        "bg_color": null,
+        "area_color": null,
+        "single_color": false,
+        "show_prices": true,
+        "show_times": true
+      }
+    },
+    {
+      "name": "candle_hourly_narrow",
+      "dataset": "hourly",
+      "source": "arrays",
+      "chart": "candle",
+      "width": 7,
+      "height": 4,
+      "settings": {
+        "rise_color": null,
+        "fall_color": null,
+        "bg_color": null,
+        "area_color": null,
+        "single_color": false,
+        "show_prices": true,
+        "show_times": true
+      }
+    },
+    {
+      "name": "line_hourly_labels",
+      "dataset": "hourly",
+      "source": "json",
+      "chart": "line",
+      "width": 50,
+      "height": 6,
+      "settings": {
+        "rise_color": null,
+        "fall_color": null,
+        "bg_color": null,
+        "area_color": null,
+        "single_color": false,
+        "show_prices": false,
+        "show_times": true
+      }
+    },
+    {
+      "name": "candle_hourly_labels",
+      "dataset": "hourly",
+      "source": "arrays",
+      "chart": "candle",
+      "width": 50,
+      "height": 6,
+      "settings": {
+        "rise_color": null,
+        "fall_color": null,
+        "bg_color": null,
+        "area_color": null,
+        "single_color": false,
+        "show_prices": true,
+        "show_times": true
+      }
+    },
+    {
+      "name": "line_single",
+      "dataset": "single",
+      "source": "arrays",
+      "chart": "line",
+      "width": 10,
+      "height": 3,
+      "settings": {
+        "rise_color": null,
+        "fall_color": null,
+        "bg_color": null,
+        "area_color": null,
+        "single_color": false,
+        "show_prices": true,
+        "show_times": false
+      }
+    },
+    {
+      "name": "candle_single",
+      "dataset": "single",
+      "source": "arrays",
+      "chart": "candle",
+      "width": 10,
+      "height": 3,
+      "settings": {
+        "rise_color": null,
+        "fall_color": null,
+        "bg_color": null,
+        "area_color": null,
+        "single_color": false,
+        "show_prices": true,
+        "show_times": false
+      }
+    },
+    {
+      "name": "line_height1",
+      "dataset": "daily",
+      "source": "arrays",
+      "chart": "line",
+      "width": 12,
+      "height": 1,
+      "settings": {
+        "rise_color": null,
+        "fall_color": null,
+        "bg_color": null,
+        "area_color": null,
+        "single_color": false,
+        "show_prices": false,
+        "show_times": false
+      }
+    },
+    {
+      "name": "candle_height1",
+      "dataset": "daily",
+      "source": "arrays",
+      "chart": "candle",
+      "width": 12,
+      "height": 1,
+      "settings": {
+        "rise_color": null,
+        "fall_color": null,
+        "bg_color": null,
+        "area_color": null,
+        "single_color": false,
+        "show_prices": false,
+        "show_times": false
+      }
+    },
+    {
+      "name": "line_notime",
+      "dataset": "notime",
+      "source": "arrays",
+      "chart": "line",
+      "width": 40,
+      "height": 5,
+      "settings": {
+        "rise_color": null,
+        "fall_color": null,
+        "bg_color": null,
+        "area_color": null,
+        "single_color": false,
+        "show_prices": true,
+        "show_times": true
+      }
+    },
+    {
+      "name": "line_flat",
+      "dataset": "flat",
+      "source": "arrays",
+      "chart": "line",
+      "width": 30,
+      "height": 4,
+      "settings": {
+        "rise_color": null,
+        "fall_color": null,
+        "bg_color": null,
+        "area_color": null,
+        "single_color": false,
+        "show_prices": true,
+        "show_times": true
+      }
+    },
+    {
+      "name": "candle_flat",
+      "dataset": "flat",
+      "source": "arrays",
+      "chart": "candle",
+      "width": 30,
+      "height": 4,
+      "settings": {
+        "rise_color": null,
+        "fall_color": null,
+        "bg_color": null,
+        "area_color": null,
+        "single_color": false,
+        "show_prices": true,
+        "show_times": false
+      }
+    }
+  ]
+}

@@ -707,6 +707,10 @@ CC_INLINE double find_max(double arr[], int n) {
 /* Maps a value in [min, max] to a pixel row in [0, pixel_height-1].
  * `range` is max - min; a flat range is centered to avoid divide-by-zero. */
 CC_INLINE int cc_pixel(double val, double min, double max, double range, int pixel_height) {
+    /* `max` is kept for call-site symmetry (every caller has min/max/range at
+     * hand); the mapping only needs min and range. Silences -Wextra for the
+     * bindings, which compile this header with their own flags. */
+    (void)max;
     double t = (range == 0.0) ? 0.5 : (val - min) / range;
     int p = (int)lround(t * (pixel_height - 1));
     if (p < 0) p = 0;

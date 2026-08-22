@@ -133,6 +133,52 @@ Building a wheel by hand also works and is a good local smoke test:
 python3 -m pip wheel . --no-deps -w /tmp/ccharts_wheel
 ```
 
+## C ABI and other languages
+
+`ccharts.h` exports nothing — `CC_INLINE` makes every function `static inline`,
+and `struct cc_ohlc` is private to the implementation block — so there is
+nothing for a foreign function interface to bind to. `abi/ccharts_abi.h`
+provides that layer: a flat, `extern "C"`, opaque-handle API with explicit
+status codes, built as a shared or static library.
+
+```sh
+cmake -S . -B build && cmake --build build
+ctest --test-dir build --output-on-failure
+```
+
+```c
+#include "ccharts_abi.h"
+
+ccharts_data* data = NULL;
+ccharts_from_arrays(open, high, low, close, ts, n, &data);
+
+ccharts_settings s = {0};
+s.rise_color = ccharts_color(CCHARTS_COLOR_BLUE);
+s.show_prices = 1;
+
+char* chart = NULL;
+size_t len = 0;
+if (ccharts_line(data, 60, 8, &s, &chart, &len) == CCHARTS_OK) {
+    printf("%s", chart);
+    ccharts_string_free(chart);
+}
+ccharts_data_free(data);
+```
+
+Differences from the raw header, all in the direction of being bindable:
+invalid dimensions return `CCHARTS_ERR_DIMENSIONS` instead of an empty string,
+NaN and inf are rejected up front, and `ccharts_parse_csv` counts the rows it
+can parse so a dataset never carries trailing zero-filled candles.
+
+`conformance/cases.json` plus `conformance/golden/*.txt` are the cross-language
+contract: 20 cases covering both chart types, downsampling, labels, timezones,
+flat ranges and single-candle input. The goldens are generated from the ABI
+(`scripts/gen_golden.py`) and every binding — the Python one included, see
+`tests/test_conformance.py` — must reproduce them byte for byte.
+
+Language bindings (Go, Rust, C#, Java, JavaScript/WASM) build on this ABI and
+are not published yet.
+
 ## Settings
 
 | Field         | Meaning                                                    | Default         |
@@ -193,6 +239,9 @@ then delete the `password` input from the publish step in the workflow.
 - `ccharts.h` — the whole C library (single header, heavily documented).
 - `main.c` — C demo using `prices.txt`.
 - `prices.txt` — sample JSON OHLC data (THYAO).
+- `abi/` — flat C ABI (`ccharts_abi.h`/`.c`) for non-Python bindings.
+- `conformance/` — cross-language case list, goldens and a C smoke test.
+- `scripts/` — golden generation, vendored-source sync, version consistency.
 - `ccharts/` — Python package: `__init__.py` (high-level `Chart`),
   `wrapper.c` (CPython extension `ccharts._core`) and `_pandas.py` (optional
   DataFrame conversion, imported lazily).

@@ -34,6 +34,18 @@ that way:
 ```sh
 gcc -Wall -c ccharts/wrapper.c $(python3-config --includes) -o /tmp/wrapper.o
 gcc -Wall main.c -lm -o /tmp/ccharts_demo
+gcc -Wall -Wextra -Werror -std=c99 -pedantic -I. -Iabi -c abi/ccharts_abi.c -o /tmp/abi.o
+```
+
+The C ABI and the cross-language conformance suite:
+
+```sh
+cmake -S . -B build && cmake --build build   # shared + static + smoke test
+ctest --test-dir build --output-on-failure
+python3 scripts/gen_golden.py                # regenerate conformance/golden/
+python3 scripts/gen_golden.py --check        # CI: fail on any render drift
+python3 scripts/sync_sources.py --check      # CI: vendored copies in sync
+python3 scripts/check_versions.py            # CI: one version everywhere
 ```
 
 ## Architecture
@@ -60,6 +72,40 @@ path should live in `tests/test_python_api.py` (no pandas needed) rather than
 `wrapper.c` rejects them (`ValueError`); `_pandas.py` drops those rows before
 that (`dropna=True`, the default). The check lives in `wrapper.c`, not
 `ccharts.h`, so the header keeps its C89-compatible surface.
+
+**The C ABI layer (`abi/`).** `ccharts.h` exports no symbols (`CC_INLINE` is
+`static inline`) and `struct cc_ohlc` is private to the implementation block,
+so nothing in it is reachable by an FFI. `abi/ccharts_abi.c` is the one
+translation unit that instantiates the header and re-exports a flat
+`extern "C"` API (opaque `ccharts_data*`, `ccharts_status` return codes,
+caller-frees strings). Go/Rust/C#/Java/WASM bindings all target this, never
+the header directly. Three deliberate divergences from the raw header, each
+because the raw behavior does not survive an FFI boundary: invalid dimensions
+are `CCHARTS_ERR_DIMENSIONS` rather than an empty string, non-finite prices are
+rejected, and `ccharts_parse_csv` pre-counts rows because `cc_str_to_ohlc`
+never reports how many it actually parsed. Build with CMake; only the 13
+`ccharts_*` symbols are exported (visibility is hidden by default and CI
+asserts the count).
+
+**`_POSIX_C_SOURCE` is set in `abi/ccharts_abi.c` on purpose.** `ccharts.h`
+calls `gmtime_r`, which is POSIX rather than ISO C, so glibc hides it under
+`-std=c99 -pedantic` — the dialect Rust's `cc` crate and several package builds
+default to. Defining the feature macro in the ABI keeps that flag out of every
+downstream build.
+
+**Conformance is what keeps the bindings honest.** `conformance/cases.json`
+declares 20 cases (both charts × downsampling × labels × timezones × flat range
+× single candle × JSON and array entry points);
+`conformance/golden/<case>.txt` holds the expected raw bytes, generated from
+the ABI by `scripts/gen_golden.py` (ctypes against the built shared library, so
+it also tests the export surface). Every binding must reproduce them byte for
+byte — the Python one does in `tests/test_conformance.py`. Two CI guards keep
+this from rotting: `gen_golden.py --check` fails on any unintended render
+change, and `sync_sources.py --check` fails when a binding's vendored copy of
+`ccharts.h`/the ABI drifts from the original (Go needs cgo sources inside the
+package directory, and `cargo package` only ships crate-local files, so the
+copies are unavoidable). `scripts/check_versions.py` does the same for the
+version string across manifests.
 
 **Single-header discipline.** `CCHARTS_IMPLEMENTATION` must be defined in exactly
 one translation unit — currently `main.c` and `wrapper.c`, which are separate

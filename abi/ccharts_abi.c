@@ -1,0 +1,239 @@
+/*
+ * ccharts_abi.c — the one translation unit that instantiates ccharts.h.
+ *
+ * Everything here is marshalling and validation; no chart logic lives in this
+ * file. The internals reused from the header (cc_dim_ok, cc_trim_whitespace,
+ * cc_parse_ts, ...) are visible because CCHARTS_IMPLEMENTATION is defined
+ * below, which is precisely why this layer has to exist at all.
+ */
+
+/* ccharts.h calls gmtime_r, which is POSIX rather than ISO C: under a strict
+ * dialect (-std=c99 -pedantic, which is what Rust's cc crate and several
+ * package builds default to) glibc would hide the declaration. Requesting the
+ * POSIX feature set here keeps every consumer's flags free of it. MSVC uses
+ * gmtime_s and needs nothing. */
+#if !defined(_WIN32) && !defined(_POSIX_C_SOURCE)
+#define _POSIX_C_SOURCE 200809L
+#endif
+
+#define CCHARTS_IMPLEMENTATION
+#include "ccharts.h"
+
+#include <math.h>
+#include <limits.h>
+
+#include "ccharts_abi.h"
+
+struct ccharts_data {
+    cc_ohlc_t* rows;
+    int32_t n;
+};
+
+/* Largest candle count the C library can carry (it uses int for the size). */
+#define CCHARTS_MAX_ROWS ((int32_t)(INT_MAX / (int)sizeof(cc_ohlc_t)))
+
+/* ---------------------------- Building data ---------------------------- */
+
+/* Wraps an already-parsed cc_ohlc_t array, taking ownership of it. */
+static ccharts_status wrap_rows(cc_ohlc_t* rows, int32_t n, ccharts_data** out) {
+    ccharts_data* data = (ccharts_data*)malloc(sizeof(ccharts_data));
+    if (data == NULL) {
+        free(rows);
+        return CCHARTS_ERR_NOMEM;
+    }
+    data->rows = rows;
+    data->n = n;
+    *out = data;
+    return CCHARTS_OK;
+}
+
+ccharts_status ccharts_from_arrays(const double* open, const double* high,
+                                   const double* low, const double* close,
+                                   const int64_t* ts, int32_t n,
+                                   ccharts_data** out) {
+    cc_ohlc_t* rows;
+    int32_t i;
+
+    if (out == NULL) return CCHARTS_ERR_INVALID_ARG;
+    *out = NULL;
+    if (open == NULL || high == NULL || low == NULL || close == NULL) {
+        return CCHARTS_ERR_INVALID_ARG;
+    }
+    if (n <= 0 || n > CCHARTS_MAX_ROWS) return CCHARTS_ERR_INVALID_ARG;
+
+    for (i = 0; i < n; i++) {
+        if (!isfinite(open[i]) || !isfinite(high[i]) ||
+            !isfinite(low[i]) || !isfinite(close[i])) {
+            return CCHARTS_ERR_NON_FINITE;
+        }
+    }
+
+    rows = (cc_ohlc_t*)calloc((size_t)n, sizeof(cc_ohlc_t));
+    if (rows == NULL) return CCHARTS_ERR_NOMEM;
+
+    for (i = 0; i < n; i++) {
+        rows[i].open = open[i];
+        rows[i].high = high[i];
+        rows[i].low = low[i];
+        rows[i].close = close[i];
+        rows[i].timestamp = (ts != NULL) ? (long long)ts[i] : 0;
+    }
+    return wrap_rows(rows, n, out);
+}
+
+ccharts_status ccharts_parse_json(const char* json, ccharts_data** out) {
+    cc_ohlc_t* rows = NULL;
+    int n = 0;
+
+    if (out == NULL) return CCHARTS_ERR_INVALID_ARG;
+    *out = NULL;
+    if (json == NULL) return CCHARTS_ERR_INVALID_ARG;
+
+    if (cc_json_to_ohlc(json, &rows, &n) != 0 || n <= 0) {
+        free(rows);
+        return CCHARTS_ERR_PARSE;
+    }
+    return wrap_rows(rows, (int32_t)n, out);
+}
+
+/* Counts the lines cc_str_to_ohlc would actually store: a line contributes a
+ * candle when it holds at least one non-whitespace character (it trims with
+ * cc_trim_whitespace and skips what is left empty). */
+static int32_t count_csv_rows(const char* csv, char line_separator) {
+    int32_t rows = 0;
+    int has_content = 0;
+    const char* p;
+
+    for (p = csv; ; p++) {
+        if (*p == '\0' || *p == line_separator) {
+            if (has_content) {
+                if (rows == CCHARTS_MAX_ROWS) return rows;
+                rows++;
+            }
+            has_content = 0;
+            if (*p == '\0') break;
+        } else if (*p != ' ' && *p != '\t' && *p != '\n' && *p != '\r') {
+            has_content = 1;
+        }
+    }
+    return rows;
+}
+
+ccharts_status ccharts_parse_csv(const char* csv, char value_separator,
+                                 char line_separator, ccharts_data** out) {
+    cc_ohlc_t* rows = NULL;
+    int32_t n;
+
+    if (out == NULL) return CCHARTS_ERR_INVALID_ARG;
+    *out = NULL;
+    if (csv == NULL || value_separator == '\0' || line_separator == '\0') {
+        return CCHARTS_ERR_INVALID_ARG;
+    }
+
+    n = count_csv_rows(csv, line_separator);
+    if (n <= 0) return CCHARTS_ERR_PARSE;
+
+    if (cc_str_to_ohlc(csv, (int)n, &rows, value_separator, line_separator) != 0) {
+        free(rows);
+        return CCHARTS_ERR_NOMEM;
+    }
+    return wrap_rows(rows, n, out);
+}
+
+int32_t ccharts_data_len(const ccharts_data* data) {
+    return (data != NULL) ? data->n : 0;
+}
+
+void ccharts_data_free(ccharts_data* data) {
+    if (data != NULL) {
+        free(data->rows);
+        free(data);
+    }
+}
+
+/* ------------------------------ Rendering ------------------------------ */
+
+typedef char* (*cc_renderer)(const cc_ohlc_t*, int, int, int, const cc_settings_t*);
+
+static ccharts_status render(cc_renderer draw, const ccharts_data* data,
+                             int32_t width, int32_t height,
+                             const ccharts_settings* settings,
+                             char** out, size_t* out_len) {
+    cc_settings_t resolved = {0};
+    char* chart;
+
+    if (out == NULL) return CCHARTS_ERR_INVALID_ARG;
+    *out = NULL;
+    if (out_len != NULL) *out_len = 0;
+    if (data == NULL || data->rows == NULL || data->n <= 0) {
+        return CCHARTS_ERR_INVALID_ARG;
+    }
+    /* ccharts.h answers invalid dimensions with an empty string; the ABI
+     * reports them instead, using the library's own bounds check. */
+    if (!cc_dim_ok((int)width, (int)height)) return CCHARTS_ERR_DIMENSIONS;
+
+    if (settings != NULL) {
+        resolved.rise_color = settings->rise_color;
+        resolved.fall_color = settings->fall_color;
+        resolved.bg_color = settings->bg_color;
+        resolved.area_color = settings->area_color;
+        resolved.single_color = (int)settings->single_color;
+        resolved.show_prices = (int)settings->show_prices;
+        resolved.show_times = (int)settings->show_times;
+    }
+
+    chart = draw(data->rows, (int)data->n, (int)width, (int)height, &resolved);
+    if (chart == NULL) return CCHARTS_ERR_NOMEM;
+
+    *out = chart;
+    if (out_len != NULL) *out_len = strlen(chart);
+    return CCHARTS_OK;
+}
+
+ccharts_status ccharts_line(const ccharts_data* data, int32_t width,
+                            int32_t height, const ccharts_settings* settings,
+                            char** out, size_t* out_len) {
+    return render(cc_line_create, data, width, height, settings, out, out_len);
+}
+
+ccharts_status ccharts_candle(const ccharts_data* data, int32_t width,
+                              int32_t height, const ccharts_settings* settings,
+                              char** out, size_t* out_len) {
+    return render(cc_candle_create, data, width, height, settings, out, out_len);
+}
+
+void ccharts_string_free(char* s) {
+    free(s);
+}
+
+/* ---------------------------- Introspection ---------------------------- */
+
+const char* ccharts_color(int32_t index) {
+    static const char* const table[CCHARTS_COLOR_COUNT] = {
+        CC_COLOR_BLACK, CC_COLOR_RED, CC_COLOR_GREEN, CC_COLOR_YELLOW,
+        CC_COLOR_BLUE, CC_COLOR_MAGENTA, CC_COLOR_CYAN, CC_COLOR_WHITE,
+        CC_COLOR_BRIGHT_BLACK, CC_COLOR_BRIGHT_RED, CC_COLOR_BRIGHT_GREEN,
+        CC_COLOR_BRIGHT_YELLOW, CC_COLOR_BRIGHT_BLUE, CC_COLOR_BRIGHT_MAGENTA,
+        CC_COLOR_BRIGHT_CYAN, CC_COLOR_BRIGHT_WHITE, CC_COLOR_RESET
+    };
+    if (index < 0 || index >= CCHARTS_COLOR_COUNT) return NULL;
+    return table[index];
+}
+
+const char* ccharts_error_message(int32_t status) {
+    switch (status) {
+        case CCHARTS_OK:              return "ok";
+        case CCHARTS_ERR_INVALID_ARG: return "invalid argument";
+        case CCHARTS_ERR_PARSE:       return "could not parse the input data";
+        case CCHARTS_ERR_NOMEM:       return "out of memory";
+        case CCHARTS_ERR_NON_FINITE:  return "OHLC values must be finite (no NaN or inf)";
+        case CCHARTS_ERR_DIMENSIONS:  return "width and height must be positive and within the limits";
+        default:                      return "unknown error";
+    }
+}
+
+const char* ccharts_version(void) { return CCHARTS_VERSION; }
+
+int32_t ccharts_max_dim(void) { return (int32_t)CC_MAX_DIM; }
+
+int32_t ccharts_max_cells(void) { return (int32_t)CC_MAX_CELLS; }
