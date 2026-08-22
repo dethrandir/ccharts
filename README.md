@@ -183,7 +183,8 @@ flat ranges and single-candle input. The goldens are generated from the ABI
 | Python   | `ccharts/` | published on PyPI |
 | Rust     | `bindings/rust/` | builds and passes conformance; not published yet |
 | Go       | `bindings/go/` | builds and passes conformance; not published yet |
-| JavaScript (WASM), C#, Java | — | planned |
+| JavaScript (WASM) | `bindings/js/` | builds and passes conformance; not published yet |
+| C#, Java | — | planned |
 
 Rust and Go compile the vendored C sources with their own toolchains (the `cc`
 crate and cgo), so neither needs a prebuilt library:
@@ -197,6 +198,17 @@ println!("{}", chart.line(60, 8, &Settings::new().rise(Color::Blue))?);
 chart, _ := ccharts.FromArrays(open, high, low, close, ts)
 defer chart.Close()
 out, _ := chart.Candle(60, 8, &ccharts.Options{ShowPrices: true})
+```
+
+The JavaScript package is the library compiled to WebAssembly, with the module
+embedded in the JavaScript — one dependency-free package for Node, Deno, Bun
+and browsers alike, no prebuilt binaries and no bundler configuration:
+
+```js
+import { Chart, Color } from "ccharts";
+const chart = Chart.fromArrays(open, high, low, close, ts);
+console.log(chart.candle({ width: 60, height: 8, showPrices: true }));
+chart.free();
 ```
 
 Each binding vendors its own copy of `ccharts.h` and the ABI — Go needs cgo
@@ -265,7 +277,7 @@ then delete the `password` input from the publish step in the workflow.
 - `main.c` — C demo using `prices.txt`.
 - `prices.txt` — sample JSON OHLC data (THYAO).
 - `abi/` — flat C ABI (`ccharts_abi.h`/`.c`) for non-Python bindings.
-- `bindings/` — language bindings built on that ABI (`rust/`, `go/`).
+- `bindings/` — language bindings built on that ABI (`rust/`, `go/`, `js/`).
 - `conformance/` — cross-language case list, goldens and a C smoke test.
 - `scripts/` — golden generation, vendored-source sync, version consistency.
 - `ccharts/` — Python package: `__init__.py` (high-level `Chart`),

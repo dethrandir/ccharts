@@ -21,8 +21,8 @@ MANIFESTS = {
     "bindings/rust/Cargo.toml": r'^version\s*=\s*"([^"]+)"',
     # Go modules carry no version field — they are versioned by git tag
     # (bindings/go/vX.Y.Z), so there is nothing to check here.
-    # Still to come: bindings/js/package.json, bindings/dotnet/Ccharts.csproj,
-    # bindings/java/pom.xml
+    "bindings/js/package.json": r'^"version"\s*:\s*"([^"]+)"',
+    # Still to come: bindings/dotnet/Ccharts.csproj, bindings/java/pom.xml
 }
 
 REFERENCE = "pyproject.toml"

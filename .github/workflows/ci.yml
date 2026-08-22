@@ -137,6 +137,27 @@ jobs:
       - run: go vet ./...
       - run: go test ./...
 
+  # JavaScript binding: the WebAssembly module is checked in, so this needs
+  # nothing but Node. If the C sources change without src/wasm-binary.js being
+  # rebuilt, the conformance test fails against the regenerated goldens —
+  # which is the drift guard for the committed .wasm.
+  js:
+    name: JavaScript binding (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["18", "20", "22"]
+    defaults:
+      run:
+        working-directory: bindings/js
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: node --test
+
   # The extension must compile and pass under every supported CPython.
   test-matrix:
     name: Python ${{ matrix.python }}

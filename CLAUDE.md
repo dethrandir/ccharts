@@ -56,6 +56,8 @@ cd bindings/rust && cargo test          # 13 API tests + the golden suite
 cd bindings/rust && cargo clippy --all-targets -- -D warnings
 cd bindings/go && go test ./...         # API tests + the golden suite
 cd bindings/go && go test -run TestConformance -v ./...   # one golden case each
+cd bindings/js && node --test            # API tests + the golden suite
+cd bindings/js && EMCC=/path/to/emcc npm run build   # rebuild the .wasm
 ```
 
 ## Architecture
@@ -128,6 +130,21 @@ worth knowing before editing them: the Go module lives in a subdirectory, so
 its tags must be `bindings/go/vX.Y.Z`; and `cargo package` only ships
 crate-local files, which is why `bindings/rust/tests/conformance.rs` is
 excluded from the published crate while `tests/api.rs` is included.
+
+**The JavaScript binding is WebAssembly (`bindings/js`).** `scripts/build.sh`
+compiles the vendored ABI with emscripten (`-sSTANDALONE_WASM`) and embeds the
+result in `src/wasm-binary.js` as base64, so the npm package is dependency-free
+and identical on every platform — no prebuilt binaries, no fetch, no bundler
+config. Three things to know before touching it: the module imports five
+`wasi_snapshot_preview1` stdio functions plus `env.emscripten_notify_memory_growth`
+(pulled in by `snprintf`/`fprintf`, never called in practice) and `src/index.js`
+stubs them; exports carry no leading underscore in standalone mode
+(`exports.malloc`, not `exports._malloc`) and `_initialize()` must run once
+before the heap is touched; and memory growth detaches views, so every helper
+re-reads `exports.memory.buffer` instead of caching a view. `src/wasm-binary.js`
+is checked in — CI needs only Node — and the conformance test is what catches a
+stale one: change the C and regenerate the goldens, and the JS suite fails until
+`npm run build` (which needs emscripten) is re-run.
 
 **Single-header discipline.** `CCHARTS_IMPLEMENTATION` must be defined in exactly
 one translation unit — currently `main.c` and `wrapper.c`, which are separate
