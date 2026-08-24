@@ -316,6 +316,11 @@ libraries are required beyond the standard ones.
 
 ## Releases
 
+> Maintainers and their agents: the [RELEASING.md](RELEASING.md) playbook is
+> authoritative for bumping, secret management and publishing — it records the
+> empirically-earned details and every failure survivor of the multi-registry
+> release. Read it before bumping the version.
+
 One tag releases everything. Pushing `v<version>` (e.g. `v0.2.0`) runs
 `.github/workflows/publish.yml`, which first refuses the build unless the tag
 and **every** manifest agree on the version (`scripts/check_versions.py`), then

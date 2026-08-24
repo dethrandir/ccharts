@@ -238,6 +238,14 @@ instant. Malformed input parses to `0`, which suppresses the footer.
 `scripts/check_versions.py` is what makes the single-tag release safe: the
 workflow refuses to build if any of them disagree, so run it after any bump.
 
+> **Publishing ccharts is fastidious and history punishes guessworkers.**
+> `RELEASING.md` in the repo root is the authoritative, empirically-earned
+> playbook: which exact files to bump (including the vendored C copies and
+> Cargo.lock, which `check_versions.py` does NOT check), the secrets table,
+> NuGet trusted publishing, Maven Central (namespace + GPG + the plugin
+> version pitfall), the Go subdirectory-tag trap, and every observed failure
+> with its fix. Read it before attempting any release.
+
 `.github/workflows/publish.yml` then publishes PyPI, crates.io, npm, NuGet and
 Maven Central, and pushes the `bindings/go/v<version>` tag Go requires for a
 subdirectory module. `workflow_dispatch` runs every build without uploading.
