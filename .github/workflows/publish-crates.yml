@@ -1,0 +1,34 @@
+name: Publish crates.io only
+
+# Publish just the Rust crate, independently of the full tag-based release
+# (which opens every registry at once). Useful while the other manifests'
+# publish steps are still being stood up, and as a smoke test.
+#
+# Run it from the Actions tab (Run workflow) or:
+#   gh workflow run publish-crates.yml
+#
+# Requires the CARGO_REGISTRY_TOKEN repository secret.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish-crates:
+    name: Publish the Rust crate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        working-directory: bindings/rust
+      # Compiles the crate exactly as it will be consumed, from the packaged
+      # files only — which is what catches a missing vendored C source.
+      - name: Dry-run package
+        working-directory: bindings/rust
+        run: cargo publish --dry-run
+      - name: Publish
+        working-directory: bindings/rust
+        run: cargo publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
