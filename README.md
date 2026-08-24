@@ -30,7 +30,9 @@ Licensed under the [MIT License](LICENSE).
 
 [![PyPI version](https://img.shields.io/pypi/v/ccharts.svg)](https://pypi.org/project/ccharts)
 [![License](https://img.shields.io/pypi/l/ccharts.svg)](https://pypi.org/project/ccharts)
-*Badges become live once the first release is published.*
+[![crates.io](https://img.shields.io/crates/v/ccharts.svg)](https://crates.io/crates/ccharts)
+[![npm](https://img.shields.io/npm/v/@dethrandir/ccharts.svg)](https://www.npmjs.com/package/@dethrandir/ccharts)
+[![NuGet](https://img.shields.io/nuget/v/Ccharts.svg)](https://www.nuget.org/packages/Ccharts)
 
 ## Installation
 
@@ -206,14 +208,14 @@ flat ranges and single-candle input. The goldens are generated from the ABI
 
 ### Language bindings
 
-| Language | Location | Status |
-| -------- | -------- | ------ |
-| Python   | `ccharts/` | published on PyPI |
-| Rust     | `bindings/rust/` | builds and passes conformance; not published yet |
-| Go       | `bindings/go/` | builds and passes conformance; not published yet |
-| JavaScript (WASM) | `bindings/js/` | builds and passes conformance; not published yet |
-| C# (.NET 8) | `bindings/dotnet/` | builds and passes conformance; not published yet |
-| Java (JDK 22+) | `bindings/java/` | builds and passes conformance; not published yet |
+| Language | Location | Published as |
+| -------- | -------- | ------------ |
+| Python   | `ccharts/` | `ccharts` on PyPI |
+| Rust     | `bindings/rust/` | `ccharts` on crates.io |
+| Go       | `bindings/go/` | served from the repository (no registry) |
+| JavaScript (WASM) | `bindings/js/` | `@dethrandir/ccharts` on npm |
+| C# (.NET 8) | `bindings/dotnet/` | `Ccharts` on NuGet |
+| Java (JDK 22+) | `bindings/java/` | `io.github.dethrandir:ccharts` on Maven Central |
 
 Rust and Go compile the vendored C sources with their own toolchains (the `cc`
 crate and cgo), so neither needs a prebuilt library:
