@@ -1,0 +1,80 @@
+name: Publish NuGet only
+
+# Publish just the C# package to NuGet, independently of the full tag-based
+# release (which opens every registry at once). Useful while the other
+# manifests' publish steps are still being stood up, and as a smoke test.
+#
+# Builds the native libraries via natives.yml (reused), packs the C# project
+# with those natives on board, verifies every runtime is present, then pushes
+# with NuGet trusted publishing (short-lived OIDC key) — no NUGET_API_KEY.
+#
+# Run it from the Actions tab (Run workflow) or:
+#   gh workflow run publish-nuget.yml
+#
+# Requires, on nuget.org -> Trusted Publishing, a policy for OWNER=dethrandir,
+# REPO=ccharts, WORKFLOW FILE=publish-nuget.yml (the file doing the push), and
+# the NUGET_USER repository secret holding the nuget.org username (profile
+# name, not the email address).
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # Reuse the existing per-platform native build; it uploads one native-<rid>
+  # artifact per target, which the publish job below downloads and arranges.
+  natives:
+    uses: ./.github/workflows/natives.yml
+
+  publish-nuget:
+    name: Publish the NuGet package
+    needs: natives
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # OIDC for NuGet trusted publishing
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "8.0.x"
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: native-*
+          path: natives
+
+      - name: Arrange the native libraries
+        run: |
+          python3 scripts/pack_natives.py --artifacts natives
+          python3 scripts/pack_natives.py --artifacts natives --check
+
+      - name: Pack
+        run: dotnet pack bindings/dotnet/src/Ccharts/Ccharts.csproj -c Release -o nupkg
+
+      # A package that silently lost its natives would still install and then
+      # fail at the first call, so check before it leaves the runner.
+      - name: The package carries every runtime
+        run: |
+          set -euo pipefail
+          contents="$(unzip -l nupkg/*.nupkg)"
+          for rid in linux-x64 osx-x64 osx-arm64 win-x64; do
+            echo "${contents}" | grep -q "runtimes/${rid}/native/" || {
+              echo "::error::nupkg is missing runtimes/${rid}/native/"
+              exit 1
+            }
+          done
+
+      - name: NuGet login (OIDC -> short-lived API key)
+        uses: NuGet/login@v1
+        id: login
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
+      - name: Push
+        run: |
+          dotnet nuget push nupkg/*.nupkg \
+            --api-key "${{ steps.login.outputs.NUGET_API_KEY }}" \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
