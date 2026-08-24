@@ -21,7 +21,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
-        working-directory: bindings/rust
       # Compiles the crate exactly as it will be consumed, from the packaged
       # files only — which is what catches a missing vendored C source.
       - name: Dry-run package
