@@ -1,0 +1,39 @@
+name: Publish npm only
+
+# Publish just the JavaScript/WebAssembly package to npm, independently of the
+# full tag-based release (which opens every registry at once). Useful while the
+# other manifests' publish steps are still being stood up, and as a smoke test.
+#
+# Run it from the Actions tab (Run workflow) or:
+#   gh workflow run publish-npm.yml
+#
+# Requires the NPM_TOKEN repository secret, and an npm account that owns the
+# `ccharts` name (id-token:write enables npm provenance).
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish-npm:
+    name: Publish the npm package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # npm provenance
+    defaults:
+      run:
+        working-directory: bindings/js
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+          registry-url: https://registry.npmjs.org
+      # The WebAssembly module is committed, so this needs no emscripten; the
+      # test suite is what proves the committed .wasm is not stale.
+      - run: node --test
+      - run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
