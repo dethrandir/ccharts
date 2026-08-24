@@ -57,6 +57,22 @@ static int check_dimensions(int width, int height) {
            (long long)width * (long long)height <= CC_MAX_CELLS;
 }
 
+/* Same finite guard as check_finite, but over JSON-parsed cc_ohlc_t rows:
+ * the JSON scanner accepts "1e999"-style overflows (atof gives inf), which
+ * must never reach the renderers' lround(). */
+static int check_ohlc_finite(const cc_ohlc_t* data, int n) {
+    int i;
+    for (i = 0; i < n; i++) {
+        if (!isfinite(data[i].open) || !isfinite(data[i].high) ||
+            !isfinite(data[i].low) || !isfinite(data[i].close)) {
+            PyErr_SetString(PyExc_ValueError,
+                            "OHLC values must be finite (no NaN or inf)");
+            return -1;
+        }
+    }
+    return 0;
+}
+
 /* Parses a JSON string and returns a PyCapsule holding the cc_ohlc_t array. */
 static PyObject* py_parse_json(PyObject* self, PyObject* args) {
     const char* json;
@@ -69,6 +85,11 @@ static PyObject* py_parse_json(PyObject* self, PyObject* args) {
         return NULL;
     }
 
+    if (check_ohlc_finite(ohlc, size) != 0) {
+        free(ohlc);
+        return NULL;
+    }
+
     py_ohlc_data* od = (py_ohlc_data*)malloc(sizeof(py_ohlc_data));
     if (od == NULL) {
         free(ohlc);
@@ -78,7 +99,16 @@ static PyObject* py_parse_json(PyObject* self, PyObject* args) {
     od->data = ohlc;
     od->size = size;
 
-    return PyCapsule_New(od, "ccharts.ohlc", &dealloc_ohlc);
+    PyObject* capsule = PyCapsule_New(od, "ccharts.ohlc", &dealloc_ohlc);
+    if (capsule == NULL) {
+        /* The capsule was never created, so its destructor never runs:
+         * release the OHLC array and the handle the way dealloc_ohlc would. */
+        free(od->data);
+        free(od);
+        PyErr_NoMemory();
+        return NULL;
+    }
+    return capsule;
 }
 
 /* ========================== Array input path ==========================

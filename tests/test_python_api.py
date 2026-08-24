@@ -6,6 +6,7 @@ Run from the repo root (or via `make test-py`):
 """
 
 import array
+import gc
 import json
 import unittest
 from datetime import datetime
@@ -115,6 +116,14 @@ class TestCCharts(unittest.TestCase):
         with self.assertRaises(ValueError):
             Chart("this is not json")
 
+    def test_json_chart_can_be_destroyed(self):
+        # Constructing from JSON owns a C cc_ohlc_t array behind a PyCapsule;
+        # dropping the last reference must run its destructor without error.
+        c = Chart(SAMPLE_JSON)
+        self.assertGreater(len(c.line(width=20, height=3)), 0)
+        del c
+        gc.collect()
+
     def test_different_dimensions(self):
         out = self.chart.line(width=20, height=3)
         lines = out.strip("\n").split("\n")
@@ -208,6 +217,18 @@ class TestInputValidation(unittest.TestCase):
         out = c.line(show_times=True)
         self.assertGreater(len(out), 0)
         self.assertNotIn("1970", out)  # bogus ts must not parse to epoch 0
+
+    def test_json_overflow_to_infinity_raises(self):
+        # "1e999" overflows atof to +inf on the JSON path; inf must be
+        # rejected before it can reach the renderer's lround().
+        bad = SAMPLE_JSON.replace("301.0", "1e999")
+        with self.assertRaises(ValueError):
+            Chart(bad)
+
+    def test_arrays_overflow_to_infinity_raises(self):
+        # 1e999 is +inf in Python too; the array path must already reject it.
+        with self.assertRaises(ValueError):
+            Chart.from_arrays([1.0], [2.0], [0.5], [1e999])
 
 
 class TestTimezones(unittest.TestCase):
