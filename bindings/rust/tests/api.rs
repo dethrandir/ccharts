@@ -1,7 +1,7 @@
 //! Behavioral tests for the safe wrapper. The rendering itself is checked
 //! against the shared goldens in conformance.rs.
 
-use ccharts::{Chart, Color, Error, Settings};
+use ccharts::{Chart, Color, Error, PieOptions, PieSlice, Settings};
 
 fn sample() -> Chart {
     Chart::from_arrays(
@@ -152,7 +152,30 @@ fn charts_are_shareable_across_threads() {
 
 #[test]
 fn exposes_library_metadata() {
-    assert_eq!(ccharts::version(), "0.2.0");
+    assert_eq!(ccharts::version(), "0.2.1");
     assert_eq!(ccharts::max_dim(), 100_000);
     assert_eq!(ccharts::max_cells(), 1_000_000);
+}
+
+#[test]
+fn pie_renders_disk_and_donut_and_rejects_bad_input() {
+    let slices = [PieSlice { label: Some("A"), value: 40.0 },
+                  PieSlice { label: Some("B"), value: 30.0 },
+                  PieSlice { label: Some("C"), value: 30.0 }];
+
+    let disk = Chart::pie(&slices, 24, 10, &PieOptions::new()).unwrap();
+    assert!(disk.contains('█'));
+
+    let donut = Chart::pie(&slices, 24, 10, &PieOptions::new().donut(true)).unwrap();
+    assert_ne!(disk, donut);
+
+    // All-zero slices render the empty string, not an error.
+    let empty = Chart::pie(&[PieSlice { label: Some("Zero"), value: 0.0 }],
+                           24, 10, &PieOptions::new()).unwrap();
+    assert!(empty.is_empty());
+
+    // NaN and inf are rejected with Error::NonFinite.
+    let bad = Chart::pie(&[PieSlice { label: None, value: f64::NAN }],
+                         24, 10, &PieOptions::new());
+    assert_eq!(bad.unwrap_err(), ccharts::Error::NonFinite);
 }

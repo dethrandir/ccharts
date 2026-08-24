@@ -77,6 +77,17 @@ class TestConformance(unittest.TestCase):
 
     def _render(self, case):
         cfg = case["settings"]
+        if case["chart"] == "pie":
+            return Chart.pie(
+                [s["label"] for s in case["slices"]],
+                [s["value"] for s in case["slices"]],
+                width=case["width"], height=case["height"],
+                donut=cfg.get("donut", False),
+                colors=[COLORS[c] for c in cfg["colors"]]
+                if cfg.get("colors") else None,
+                show_legend=cfg.get("show_legend", True),
+                show_pct=cfg.get("show_pct", False),
+            )
         draw = getattr(self._chart(case), case["chart"])
         return draw(
             width=case["width"], height=case["height"],

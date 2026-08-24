@@ -5,6 +5,7 @@ import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.lang.ref.Cleaner;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 
 /**
  * A parsed OHLC dataset that can be rendered as a line or candlestick chart.
@@ -180,6 +181,76 @@ public final class Chart implements AutoCloseable {
      */
     public static Chart fromCsv(String csv) {
         return fromCsv(csv, ',', '\n');
+    }
+
+    /**
+     * Renders a pie/donut chart from the given slices. A pie has no OHLC
+     * dataset, so this is a static method taking the slices directly.
+     *
+     * @param slices the slices, in the order they are drawn
+     * @param options pie options
+     * @return the chart as a printable string
+     * @throws CchartsException if the slices are empty, hold NaN/infinity, or
+     *     the dimensions are out of range
+     */
+    public static String pie(List<PieSlice> slices, PieOptions options) {
+        if (slices == null || slices.isEmpty()) {
+            throw new CchartsException(CchartsException.Status.INVALID_ARGUMENT,
+                    "need at least one slice");
+        }
+
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment slicesSeg = arena.allocate(Native.PIE_SLICE, slices.size());
+            for (int i = 0; i < slices.size(); i++) {
+                PieSlice slice = slices.get(i);
+                slicesSeg.set(ValueLayout.ADDRESS, i * Native.PIE_SLICE.byteSize(),
+                        text(arena, slice.label()));
+                slicesSeg.set(ValueLayout.JAVA_DOUBLE, i * Native.PIE_SLICE.byteSize() + 8,
+                        slice.value());
+            }
+
+            MemorySegment colorsSeg = MemorySegment.NULL;
+            int colorCount = 0;
+            if (options.colors() != null && options.colors().length > 0) {
+                String[] colors = options.colors();
+                colorsSeg = arena.allocate(ValueLayout.ADDRESS, colors.length);
+                for (int i = 0; i < colors.length; i++) {
+                    colorsSeg.set(ValueLayout.ADDRESS, i * ValueLayout.ADDRESS.byteSize(),
+                            text(arena, colors[i]));
+                }
+                colorCount = colors.length;
+            }
+
+            MemorySegment out = arena.allocate(ValueLayout.ADDRESS);
+            MemorySegment lengthOut = arena.allocate(ValueLayout.JAVA_LONG);
+            int status = (int) Native.PIE_FROM_SLICES.invokeExact(
+                    slicesSeg, slices.size(), options.width(), options.height(),
+                    options.donut() ? 1 : 0, colorsSeg, colorCount,
+                    options.showLegend() ? 1 : 0, options.showPct() ? 1 : 0,
+                    out, lengthOut);
+            CchartsException.throwIfError(status);
+
+            MemorySegment chart = out.get(ValueLayout.ADDRESS, 0);
+            long size = lengthOut.get(ValueLayout.JAVA_LONG, 0);
+            try {
+                byte[] bytes = chart.reinterpret(size).toArray(ValueLayout.JAVA_BYTE);
+                return new String(bytes, StandardCharsets.UTF_8);
+            } finally {
+                Native.STRING_FREE.invokeExact(chart);
+            }
+        } catch (Throwable t) {
+            throw Native.wrap(t);
+        }
+    }
+
+    /**
+     * Renders a pie/donut chart with the default options.
+     *
+     * @param slices the slices, in the order they are drawn
+     * @return the chart as a printable string
+     */
+    public static String pie(List<PieSlice> slices) {
+        return pie(slices, PieOptions.DEFAULTS);
     }
 
     /**

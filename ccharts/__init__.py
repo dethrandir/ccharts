@@ -36,7 +36,8 @@ width/height at 100000 cells per side and 1000000 total cells
 (``CC_MAX_DIM`` / ``CC_MAX_CELLS`` in ccharts.h).
 """
 
-from ._core import parse_json, parse_arrays, create_line, create_candle
+from ._core import (parse_json, parse_arrays, create_line, create_candle,
+                    create_pie)
 
 
 def _check_dimensions(width, height):
@@ -160,4 +161,39 @@ class Chart:
             self._capsule, width, height,
             rise_color, fall_color, bg_color, area_color,
             int(single_color), int(show_prices), int(show_times)
+        )
+
+    @staticmethod
+    def pie(labels, values, donut=False, colors=None, bg_color=None,
+            show_legend=True, show_pct=False, width=24, height=10):
+        """Draw a pie/donut chart and return it as a string.
+
+        A pie is not OHLC data, so this is a static method: it takes the
+        slices directly instead of reading ``self``.
+
+        Args:
+            labels: one label per slice (``str`` or ``None``), drawn in the
+                legend when ``show_legend`` is set.
+            values: one positive *amount* per slice; the pie computes the
+                percentages. Any value ``<= 0`` (zero, negative, NaN) makes
+                the whole render return the empty string.
+            donut: True leaves the center hollow (a donut); False is a filled
+                disk.
+            colors: per-slice ANSI escape strings, or ``None`` for the fixed
+                deterministic default palette.
+            bg_color: background color of the cells outside the disk.
+            show_legend: print one ``label  value (pct%)`` line per slice
+                below the disk.
+            show_pct: append ``(NN%)`` to each legend entry.
+            width, height: chart size in cells (positive integers).
+
+        Raises ``ValueError`` for non-finite values (NaN/inf — these would
+        corrupt the angle math), mismatched label/value lengths, and invalid
+        dimensions.
+        """
+        _check_dimensions(width, height)
+        return create_pie(
+            labels, values, width, height,
+            int(donut), colors, bg_color,
+            int(show_legend), int(show_pct)
         )

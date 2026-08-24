@@ -111,7 +111,26 @@ test("many charts do not exhaust wasm memory", () => {
 });
 
 test("exposes library metadata", () => {
-  assert.equal(version, "0.2.0");
+  assert.equal(version, "0.2.1");
   assert.equal(maxDim, 100000);
   assert.equal(maxCells, 1000000);
+});
+
+test("pie renders a disk, a donut, and the empty string for zero values", () => {
+  const slices = [
+    { label: "Alpha", value: 40 },
+    { label: "Beta", value: 30 },
+    { label: "Gamma", value: 30 },
+  ];
+  const disk = Chart.pie(slices, { width: 24, height: 10, showLegend: true, showPct: true });
+  assert.ok(disk.includes("Alpha  40 (40%)"));
+  const donut = Chart.pie(slices, { width: 24, height: 10, donut: true, showLegend: true });
+  assert.notEqual(disk, donut);
+
+  assert.equal(Chart.pie([{ label: "Zero", value: 0 }], {}), "");
+
+  assert.throws(() => Chart.pie([{ label: "Bad", value: NaN }], {}),
+    (err) => err instanceof CchartsError && err.code === 4);
+  assert.throws(() => Chart.pie([], {}),
+    (err) => err instanceof CchartsError && err.code === 1);
 });

@@ -133,6 +133,33 @@ type Options struct {
 	Plain bool
 }
 
+// Slice is one slice of a pie chart: a label (may be empty) and a positive
+// amount. The pie computes the percentage from the sum of the values.
+type Slice struct {
+	// Label is drawn in the legend when ShowLegend is set.
+	Label string
+	// Value is a positive amount; a value <= 0 makes the whole render return
+	// the empty string rather than an error.
+	Value float64
+}
+
+// PieOptions controls how a pie chart is drawn. A nil *PieOptions behaves
+// like &PieOptions{ShowLegend: true}: a filled disk, no override colors, a
+// legend without percentages.
+type PieOptions struct {
+	// Donut hollows out the center (a donut) instead of a filled disk.
+	Donut bool
+	// Colors overrides the per-slice palette, one ANSI escape per slice
+	// (slice i uses Colors[i%len(Colors)]); nil selects the fixed default
+	// palette.
+	Colors []Color
+	// ShowLegend prints one "label  value (pct%)" line per slice below the
+	// disk.
+	ShowLegend bool
+	// ShowPct appends the "(NN%)" to each legend entry.
+	ShowPct bool
+}
+
 // Chart is a parsed OHLC dataset that can be rendered repeatedly.
 //
 // Close releases the underlying C memory. A finalizer does the same if Close
@@ -263,6 +290,74 @@ func (c *Chart) render(line bool, width, height int, opts *Options) (string, err
 		status = C.ccharts_candle(c.handle, C.int32_t(width), C.int32_t(height),
 			&settings, &out, &length)
 	}
+	if err := statusError(status); err != nil {
+		return "", err
+	}
+	defer C.ccharts_string_free(out)
+	return C.GoStringN(out, C.int(length)), nil
+}
+
+// Pie renders a pie/donut chart from the given slices. A pie has no OHLC
+// dataset, so this is a package function rather than a Chart method.
+//
+// opts may be nil. All-zero or non-positive slice values produce the empty
+// string (not an error); NaN and inf are rejected with ErrNonFinite.
+func Pie(slices []Slice, width, height int, opts *PieOptions) (string, error) {
+	if len(slices) == 0 {
+		return "", ErrInvalidArgument
+	}
+	if width <= 0 || height <= 0 || width > int(C.ccharts_max_dim()) ||
+		height > int(C.ccharts_max_dim()) {
+		return "", ErrDimensions
+	}
+
+	n := len(slices)
+	cSlices := make([]C.ccharts_pie_slice, n)
+	labels := make([]*C.char, n)
+	for i, s := range slices {
+		labels[i] = C.CString(s.Label)
+		cSlices[i].label = labels[i]
+		cSlices[i].value = C.double(s.Value)
+	}
+	defer func() {
+		for _, cs := range labels {
+			C.free(unsafe.Pointer(cs))
+		}
+	}()
+
+	var colors **C.char
+	var colorCount C.int32_t
+	var ownedColors []*C.char
+	if opts != nil && len(opts.Colors) > 0 {
+		ownedColors = make([]*C.char, len(opts.Colors))
+		ptrs := make([]*C.char, len(opts.Colors))
+		for i, c := range opts.Colors {
+			ownedColors[i] = C.CString(string(c))
+			ptrs[i] = ownedColors[i]
+		}
+		colors = &ptrs[0]
+		colorCount = C.int32_t(len(ptrs))
+		defer func() {
+			for _, cs := range ownedColors {
+				C.free(unsafe.Pointer(cs))
+			}
+		}()
+	}
+
+	var donut C.int32_t
+	var showLegend C.int32_t
+	var showPct C.int32_t
+	if opts != nil {
+		donut = boolToC(opts.Donut)
+		showLegend = boolToC(opts.ShowLegend)
+		showPct = boolToC(opts.ShowPct)
+	}
+
+	var out *C.char
+	var length C.size_t
+	status := C.ccharts_pie_from_slices(
+		&cSlices[0], C.int32_t(n), C.int32_t(width), C.int32_t(height),
+		donut, colors, colorCount, showLegend, showPct, &out, &length)
 	if err := statusError(status); err != nil {
 		return "", err
 	}

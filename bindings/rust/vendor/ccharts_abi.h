@@ -153,8 +153,43 @@ CCHARTS_API int32_t ccharts_candle(const ccharts_data* data,
                                           const ccharts_settings* settings,
                                           char** out, size_t* out_len);
 
-/* Releases a string returned by ccharts_line / ccharts_candle. */
+/* Releases a string returned by ccharts_line / ccharts_candle /
+ * ccharts_pie_from_slices. */
 CCHARTS_API void ccharts_string_free(char* s);
+
+/* -------------------------------- Pie -------------------------------- */
+
+/* One pie slice: a label (may be NULL or empty) and a positive amount. The
+ * renderer turns the values into percentages, so they are amounts, not
+ * fractions. Mirrors cc_pie_slice_t in ccharts.h (the two structs stay
+ * separate: the header channels are internally linked, this one is the FFI
+ * surface, and layout is documented here rather than shared). */
+typedef struct ccharts_pie_slice {
+    const char* label;
+    double value;
+} ccharts_pie_slice;
+
+/* Renders a pie/donut chart of `count` slices and returns it in *out (a
+ * NUL-terminated UTF-8 string the caller releases with ccharts_string_free;
+ * *out_len, when not NULL, receives its length in bytes). `donut` hollows
+ * the center; `colors` is an array of `color_count` ANSI escape strings used
+ * per slice (index mod color_count), or NULL for the fixed default palette;
+ * `show_legend` appends one "label  value (pct%)" line per slice below the
+ * disk when `show_pct` is set, otherwise without the percentage.
+ *
+ * Same contract as ccharts_line: CCHARTS_OK with *out set to a string on
+ * success (including the empty string the header returns when every slice
+ * value is <= 0), CCHARTS_ERR_INVALID_ARG for NULL slices / count <= 0,
+ * CCHARTS_ERR_NON_FINITE for NaN/inf values, CCHARTS_ERR_DIMENSIONS for
+ * width/height outside cc_dim_ok, CCHARTS_ERR_NOMEM on allocation failure.
+ * On error *out is set to NULL. */
+CCHARTS_API int32_t ccharts_pie_from_slices(
+    const ccharts_pie_slice* slices, int32_t count,
+    int32_t width, int32_t height,
+    int32_t donut,
+    const char* const* colors, int32_t color_count,
+    int32_t show_legend, int32_t show_pct,
+    char** out, size_t* out_len);
 
 /* ---------------------------- Introspection ---------------------------- */
 

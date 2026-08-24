@@ -206,6 +206,82 @@ void ccharts_string_free(char* s) {
     free(s);
 }
 
+/* -------------------------------- Pie -------------------------------- */
+
+/* Copies the caller's per-slice palette into a NULL-terminated array, which
+ * is what cc_pie_settings_t expects; returns CCHARTS_OK and leaves *out
+ * pointing at the copy (free with free()) or NULL for the default palette. */
+static ccharts_status resolve_pie_colors(const char* const* colors,
+                                         int32_t color_count,
+                                         const char*** out) {
+    const char** copy;
+    int32_t i;
+
+    *out = NULL;
+    if (colors == NULL || color_count <= 0) return CCHARTS_OK;
+
+    copy = (const char**)calloc((size_t)color_count + 1, sizeof(const char*));
+    if (copy == NULL) return CCHARTS_ERR_NOMEM;
+    for (i = 0; i < color_count; i++) copy[i] = colors[i];
+    *out = copy;
+    return CCHARTS_OK;
+}
+
+int32_t ccharts_pie_from_slices(const ccharts_pie_slice* slices, int32_t count,
+                                int32_t width, int32_t height,
+                                int32_t donut,
+                                const char* const* colors, int32_t color_count,
+                                int32_t show_legend, int32_t show_pct,
+                                char** out, size_t* out_len) {
+    cc_pie_settings_t ps;
+    cc_pie_slice_t* slice_rows = NULL;
+    const char** resolved_colors = NULL;
+    ccharts_status status;
+    char* chart;
+    int32_t i;
+
+    if (out == NULL) return CCHARTS_ERR_INVALID_ARG;
+    *out = NULL;
+    if (out_len != NULL) *out_len = 0;
+    if (slices == NULL || count <= 0) return CCHARTS_ERR_INVALID_ARG;
+    if (!cc_dim_ok((int)width, (int)height)) return CCHARTS_ERR_DIMENSIONS;
+
+    /* NaN/inf must not reach the renderer: cc_pie_create guards values with a
+     * positive-range check, but +inf would slip through (inf > 0 is true) and
+     * corrupt the angle math. Mirror the ABI's finite guard for prices. */
+    for (i = 0; i < count; i++) {
+        if (!isfinite(slices[i].value)) return CCHARTS_ERR_NON_FINITE;
+    }
+
+    status = resolve_pie_colors(colors, color_count, &resolved_colors);
+    if (status != CCHARTS_OK) return status;
+
+    slice_rows = (cc_pie_slice_t*)calloc((size_t)count, sizeof(cc_pie_slice_t));
+    if (slice_rows == NULL) {
+        free(resolved_colors);
+        return CCHARTS_ERR_NOMEM;
+    }
+    for (i = 0; i < count; i++) {
+        slice_rows[i].label = slices[i].label;
+        slice_rows[i].value = slices[i].value;
+    }
+
+    memset(&ps, 0, sizeof(ps));
+    ps.colors = resolved_colors;
+    ps.donut = (int)donut;
+    ps.show_legend = (int)show_legend;
+    ps.show_pct = (int)show_pct;
+
+    chart = cc_pie_create(slice_rows, (int)count, (int)width, (int)height, &ps);
+    free(slice_rows);
+    free(resolved_colors);
+    if (chart == NULL) return CCHARTS_ERR_NOMEM;
+
+    *out = chart;
+    if (out_len != NULL) *out_len = strlen(chart);
+    return CCHARTS_OK;
+}
+
 /* ---------------------------- Introspection ---------------------------- */
 
 const char* ccharts_color(int32_t index) {

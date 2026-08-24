@@ -27,12 +27,44 @@ export interface ChartOptions {
   showPrices?: boolean;
   /** Print the first and last timestamp under the chart. Default false. */
   showTimes?: boolean;
-  /**
-   * Render with no ANSI escapes at all, overriding every color. Use it when
-   * the chart is going somewhere that does not interpret escapes — a log
-   * file, an HTML block, a commit message. Default false.
-   */
+/**
+ * Render with no ANSI escapes at all, overriding every color. Use it when
+ * the chart is going somewhere that does not interpret escapes — a log
+ * file, an HTML block, a commit message. Default false.
+ */
   plain?: boolean;
+}
+
+/** One slice of a pie chart. */
+export interface PieSlice {
+  /** Legend label; null/undefined omits it. */
+  label?: string | null;
+  /**
+   * A positive amount; the pie computes the percentage from the sum. A value
+   * `<= 0` (zero, negative, NaN, inf) makes the whole render return the empty
+   * string rather than an error.
+   */
+  value: number;
+}
+
+/** Options accepted by {@link Chart.pie}. */
+export interface PieOptions {
+  /** Chart width in cells. Default 24. */
+  width?: number;
+  /** Chart height in cells. Default 10. */
+  height?: number;
+  /** Hollow out the center (a donut) instead of a filled disk. Default false. */
+  donut?: boolean;
+  /**
+   * Per-slice ANSI escapes; slice `i` uses `colors[i % colors.length]`.
+   * null/undefined entries mean the default palette color for that index.
+   * Default: the fixed default palette.
+   */
+  colors?: Array<string | null>;
+  /** Print one `label  value (pct%)` line per slice below the disk. Default true. */
+  showLegend?: boolean;
+  /** Append `(NN%)` to each legend entry. Default false. */
+  showPct?: boolean;
 }
 
 /** An error reported by the chart library. */
@@ -94,6 +126,13 @@ export class Chart {
 
   /** Renders a candlestick chart. */
   candle(options?: ChartOptions): string;
+
+  /**
+   * Renders a pie/donut chart from the given slices. A pie has no OHLC
+   * dataset, so this is a static method taking the slices directly.
+   * @throws {CchartsError} on empty input, non-finite values or bad dimensions.
+   */
+  static pie(slices: PieSlice[], options?: PieOptions): string;
 
   /** Releases the dataset. Safe to call more than once. */
   free(): void;

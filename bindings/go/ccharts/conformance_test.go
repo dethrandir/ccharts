@@ -23,21 +23,29 @@ type suite struct {
 		JSON  string    `json:"json"`
 	} `json:"datasets"`
 	Cases []struct {
-		Name     string `json:"name"`
-		Dataset  string `json:"dataset"`
-		Source   string `json:"source"`
-		Chart    string `json:"chart"`
-		Width    int    `json:"width"`
-		Height   int    `json:"height"`
+		Name    string `json:"name"`
+		Dataset string `json:"dataset"`
+		Source  string `json:"source"`
+		Chart   string `json:"chart"`
+		Width   int    `json:"width"`
+		Height  int    `json:"height"`
+		Slices  []struct {
+			Label string  `json:"label"`
+			Value float64 `json:"value"`
+		} `json:"slices"`
 		Settings struct {
-			RiseColor   *string `json:"rise_color"`
-			FallColor   *string `json:"fall_color"`
-			BgColor     *string `json:"bg_color"`
-			AreaColor   *string `json:"area_color"`
-			SingleColor bool    `json:"single_color"`
-			ShowPrices  bool    `json:"show_prices"`
-			ShowTimes   bool    `json:"show_times"`
-			Plain       bool    `json:"plain"`
+			RiseColor   *string  `json:"rise_color"`
+			FallColor   *string  `json:"fall_color"`
+			BgColor     *string  `json:"bg_color"`
+			AreaColor   *string  `json:"area_color"`
+			SingleColor bool     `json:"single_color"`
+			ShowPrices  bool     `json:"show_prices"`
+			ShowTimes   bool     `json:"show_times"`
+			Plain       bool     `json:"plain"`
+			Donut       bool     `json:"donut"`
+			Colors      []string `json:"colors"`
+			ShowLegend  bool     `json:"show_legend"`
+			ShowPct     bool     `json:"show_pct"`
 		} `json:"settings"`
 	} `json:"cases"`
 }
@@ -83,40 +91,63 @@ func TestConformance(t *testing.T) {
 
 	for _, tc := range s.Cases {
 		t.Run(tc.Name, func(t *testing.T) {
-			data, ok := s.Datasets[tc.Dataset]
-			if !ok {
-				t.Fatalf("unknown dataset %q", tc.Dataset)
-			}
-
-			var chart *ccharts.Chart
-			var err error
-			if tc.Source == "json" {
-				chart, err = ccharts.FromJSON(data.JSON)
-			} else {
-				chart, err = ccharts.FromArrays(data.Open, data.High, data.Low,
-					data.Close, data.TS)
-			}
-			if err != nil {
-				t.Fatalf("building the dataset: %v", err)
-			}
-			defer chart.Close()
-
-			opts := &ccharts.Options{
-				RiseColor:       color(t, tc.Settings.RiseColor),
-				FallColor:       color(t, tc.Settings.FallColor),
-				BackgroundColor: color(t, tc.Settings.BgColor),
-				AreaColor:       color(t, tc.Settings.AreaColor),
-				SingleColor:     tc.Settings.SingleColor,
-				ShowPrices:      tc.Settings.ShowPrices,
-				ShowTimes:       tc.Settings.ShowTimes,
-				Plain:           tc.Settings.Plain,
-			}
-
 			var got string
-			if tc.Chart == "line" {
-				got, err = chart.Line(tc.Width, tc.Height, opts)
+			var err error
+
+			if tc.Chart == "pie" {
+				slices := make([]ccharts.Slice, len(tc.Slices))
+				for i, slice := range tc.Slices {
+					slices[i] = ccharts.Slice{Label: slice.Label, Value: slice.Value}
+				}
+				colors := make([]ccharts.Color, len(tc.Settings.Colors))
+				for i, name := range tc.Settings.Colors {
+					c, ok := namedColors[name]
+					if !ok {
+						t.Fatalf("unknown color in cases.json: %q", name)
+					}
+					colors[i] = c
+				}
+				got, err = ccharts.Pie(slices, tc.Width, tc.Height,
+					&ccharts.PieOptions{
+						Donut:      tc.Settings.Donut,
+						Colors:     colors,
+						ShowLegend: tc.Settings.ShowLegend,
+						ShowPct:    tc.Settings.ShowPct,
+					})
 			} else {
-				got, err = chart.Candle(tc.Width, tc.Height, opts)
+				data, ok := s.Datasets[tc.Dataset]
+				if !ok {
+					t.Fatalf("unknown dataset %q", tc.Dataset)
+				}
+
+				var chart *ccharts.Chart
+				if tc.Source == "json" {
+					chart, err = ccharts.FromJSON(data.JSON)
+				} else {
+					chart, err = ccharts.FromArrays(data.Open, data.High, data.Low,
+						data.Close, data.TS)
+				}
+				if err != nil {
+					t.Fatalf("building the dataset: %v", err)
+				}
+				defer chart.Close()
+
+				opts := &ccharts.Options{
+					RiseColor:       color(t, tc.Settings.RiseColor),
+					FallColor:       color(t, tc.Settings.FallColor),
+					BackgroundColor: color(t, tc.Settings.BgColor),
+					AreaColor:       color(t, tc.Settings.AreaColor),
+					SingleColor:     tc.Settings.SingleColor,
+					ShowPrices:      tc.Settings.ShowPrices,
+					ShowTimes:       tc.Settings.ShowTimes,
+					Plain:           tc.Settings.Plain,
+				}
+
+				if tc.Chart == "line" {
+					got, err = chart.Line(tc.Width, tc.Height, opts)
+				} else {
+					got, err = chart.Candle(tc.Width, tc.Height, opts)
+				}
 			}
 			if err != nil {
 				t.Fatalf("rendering: %v", err)

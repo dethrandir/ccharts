@@ -15,6 +15,14 @@ internal struct NativeSettings
     public int ShowTimes;
 }
 
+/// <summary>Layout of ccharts_pie_slice from abi/ccharts_abi.h.</summary>
+[StructLayout(LayoutKind.Sequential)]
+internal struct NativePieSlice
+{
+    public IntPtr Label;
+    public double Value;
+}
+
 /// <summary>
 /// P/Invoke declarations for the ccharts C ABI. Strings are handled as raw
 /// pointers on both directions: the library owns what it returns, and
@@ -53,6 +61,12 @@ internal static partial class NativeMethods
 
     [LibraryImport(Library, EntryPoint = "ccharts_string_free")]
     internal static partial void StringFree(IntPtr chart);
+
+    [LibraryImport(Library, EntryPoint = "ccharts_pie_from_slices")]
+    internal static partial int PieFromSlices(
+        [In] NativePieSlice[] slices, int count, int width, int height, int donut,
+        [In] IntPtr[]? colors, int colorCount, int showLegend, int showPct,
+        out IntPtr chart, out nuint length);
 
     [LibraryImport(Library, EntryPoint = "ccharts_color")]
     internal static partial IntPtr ColorAt(int index);

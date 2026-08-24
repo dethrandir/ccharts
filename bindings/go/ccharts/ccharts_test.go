@@ -207,10 +207,48 @@ func TestConcurrentRendering(t *testing.T) {
 }
 
 func TestMetadata(t *testing.T) {
-	if ccharts.Version() != "0.2.0" {
+	if ccharts.Version() != "0.2.1" {
 		t.Errorf("Version() = %q", ccharts.Version())
 	}
 	if ccharts.MaxDim() != 100000 || ccharts.MaxCells() != 1000000 {
 		t.Errorf("limits = %d, %d", ccharts.MaxDim(), ccharts.MaxCells())
+	}
+}
+
+func TestPie(t *testing.T) {
+	slices := []ccharts.Slice{
+		{Label: "Alpha", Value: 40},
+		{Label: "Beta", Value: 30},
+		{Label: "Gamma", Value: 30},
+	}
+
+	disk, err := ccharts.Pie(slices, 24, 10,
+		&ccharts.PieOptions{ShowLegend: true, ShowPct: true})
+	if err != nil {
+		t.Fatalf("Pie(disk): %v", err)
+	}
+	donut, err := ccharts.Pie(slices, 24, 10,
+		&ccharts.PieOptions{Donut: true, ShowLegend: true})
+	if err != nil {
+		t.Fatalf("Pie(donut): %v", err)
+	}
+	if disk == donut {
+		t.Error("disk and donut renders are identical")
+	}
+	if !strings.Contains(disk, "Alpha  40 (40%)") {
+		t.Errorf("legend missing percentage: %q", disk)
+	}
+
+	empty, err := ccharts.Pie([]ccharts.Slice{{Label: "Zero", Value: 0}}, 24, 10,
+		&ccharts.PieOptions{ShowLegend: true})
+	if err != nil {
+		t.Fatalf("Pie(all-zero): %v", err)
+	}
+	if empty != "" {
+		t.Errorf("all-zero pie = %q, want empty", empty)
+	}
+
+	if _, err = ccharts.Pie([]ccharts.Slice{{Value: math.NaN()}}, 24, 10, nil); err == nil {
+		t.Error("NaN slice accepted")
 	}
 }

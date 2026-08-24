@@ -371,5 +371,85 @@ class TestFromArrays(unittest.TestCase):
             Chart.from_arrays(["a"], ["b"], ["c"], ["d"])
 
 
+class TestPie(unittest.TestCase):
+    """Pie/donut rendering (Chart.pie) — a static method, no OHLC data."""
+
+    LABELS = ["Alpha", "Beta", "Gamma"]
+    VALUES = [40, 30, 30]
+
+    def test_pie_returns_string(self):
+        out = Chart.pie(self.LABELS, self.VALUES)
+        self.assertIsInstance(out, str)
+        self.assertGreater(len(out), 0)
+
+    def test_pie_uses_block_characters(self):
+        out = Chart.pie(self.LABELS, self.VALUES, show_legend=False)
+        self.assertIn("\u2588", out)
+        self.assertNotIn("Alpha", out)  # legend disabled
+
+    def test_pie_has_legend(self):
+        out = Chart.pie(self.LABELS, self.VALUES)
+        self.assertIn("Alpha", out)
+        self.assertIn("Beta", out)
+        self.assertIn("Gamma", out)
+
+    def test_pie_show_pct(self):
+        out = Chart.pie(self.LABELS, self.VALUES, show_pct=True)
+        self.assertIn("(40%)", out)
+        self.assertIn("(30%)", out)
+
+    def test_pie_donut_differs_from_disk(self):
+        disk = Chart.pie(self.LABELS, self.VALUES)
+        donut = Chart.pie(self.LABELS, self.VALUES, donut=True)
+        self.assertNotEqual(disk, donut)
+        self.assertGreater(len(disk), len(donut))
+
+    def test_pie_all_zero_returns_empty(self):
+        self.assertEqual(Chart.pie(["A"], [0]), "")
+        self.assertEqual(Chart.pie(["A", "B"], [-1, 2]), "")
+        self.assertEqual(Chart.pie(["A"], [-5]), "")
+
+    def test_pie_single_slice(self):
+        out = Chart.pie(["Only"], [7], width=12, height=6, show_pct=True)
+        self.assertIn("Only  7 (100%)", out)
+
+    def test_pie_custom_colors(self):
+        out = Chart.pie(["X", "Y"], [50, 50], width=16, height=6,
+                        colors=["\x1b[35m", "\x1b[36m"], show_legend=False)
+        self.assertIn("\x1b[35m", out)
+        self.assertIn("\x1b[36m", out)
+
+    def test_pie_non_finite_raises(self):
+        for bad in (float("nan"), float("inf"), float("-inf")):
+            with self.assertRaises(ValueError):
+                Chart.pie(["A"], [bad])
+
+    def test_pie_length_mismatch_raises(self):
+        with self.assertRaises(ValueError):
+            Chart.pie(["A", "B"], [1, 2, 3])
+
+    def test_pie_empty_raises(self):
+        with self.assertRaises(ValueError):
+            Chart.pie([], [])
+
+    def test_pie_non_string_label_raises(self):
+        with self.assertRaises(TypeError):
+            Chart.pie([1], [1.0])
+
+    def test_pie_non_numeric_value_raises(self):
+        with self.assertRaises(TypeError):
+            Chart.pie(["A"], ["high"])
+
+    def test_pie_dimension_validation(self):
+        with self.assertRaises(ValueError):
+            Chart.pie(self.LABELS, self.VALUES, width=0)
+        with self.assertRaises(ValueError):
+            Chart.pie(self.LABELS, self.VALUES, height=-1)
+        with self.assertRaises(TypeError):
+            Chart.pie(self.LABELS, self.VALUES, width=2.5)
+        with self.assertRaises(ValueError):
+            Chart.pie(self.LABELS, self.VALUES, width=1000, height=2000)
+
+
 if __name__ == "__main__":
     unittest.main()

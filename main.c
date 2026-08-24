@@ -32,6 +32,9 @@ static char* read_file(const char* path) {
     return buf;
 }
 
+/* Forward declaration — render_pies is defined after main(). */
+static void render_pies(void);
+
 int main() {
     char* json = read_file("prices.txt");
     if (json == NULL) {
@@ -84,6 +87,54 @@ int main() {
         free(candles_lbl);
     }
 
+    printf("\n");
+    render_pies();
+
     free(ohlc);
     return 0;
+}
+
+/* Samples some pie/donut charts to eyeball the pie renderer. */
+static void render_pies(void) {
+    cc_pie_slice_t budget[] = {
+        { .label = "Kira",   .value = 40.0 },
+        { .label = "Gida",   .value = 25.0 },
+        { .label = "Ulasim", .value = 15.0 },
+        { .label = "Eglence", .value = 12.0 },
+        { .label = "Diger",  .value = 8.0 },
+    };
+
+    cc_pie_settings_t disk = {
+        .show_legend = 1,
+        .show_pct    = 1,
+    };
+    char* d = cc_pie_create(budget, 5, 20, 8, &disk);
+    if (d != NULL) {
+        printf("PIE (disk, legend+pct)\n%s\n", d);
+        free(d);
+    }
+
+    cc_pie_settings_t donut = {
+        .donut       = 1,
+        .show_legend = 1,
+        .show_pct    = 1,
+    };
+    char* dn = cc_pie_create(budget, 5, 20, 12, &donut);
+    if (dn != NULL) {
+        printf("PIE (donut, legend+pct)\n%s\n", dn);
+        free(dn);
+    }
+
+    cc_pie_settings_t override = {
+        .donut       = 1,
+        .colors      = (const char* const[]){ CC_COLOR_RED, CC_COLOR_BLUE,
+                                              CC_COLOR_GREEN, CC_COLOR_YELLOW, NULL },
+        .show_legend = 1,
+        .show_pct    = 1,
+    };
+    char* ov = cc_pie_create(budget, 5, 24, 10, &override);
+    if (ov != NULL) {
+        printf("PIE (donut, colors override)\n%s\n", ov);
+        free(ov);
+    }
 }

@@ -68,11 +68,12 @@ cd bindings/java && CCHARTS_NATIVE_DIR=$PWD/../../build mvn test
 
 ## Architecture
 
-**Layering.** `ccharts.h` → `ccharts/wrapper.c` (module `ccharts._core`, four
-functions: `parse_json`, `parse_arrays`, `create_line`, `create_candle`) →
-`ccharts/__init__.py` (class `Chart` with `.line()` / `.candle()`). Behavior
-changes belong in the header; the other two layers should stay mechanical.
-`main.c` is a C demo that exercises the same path against `prices.txt`.
+**Layering.** `ccharts.h` → `ccharts/wrapper.c` (module `ccharts._core`: the
+OHLC `parse_json`/`parse_arrays`/`create_line`/`create_candle` plus the
+capsule-free `create_pie`) → `ccharts/__init__.py` (class `Chart` with
+`.line()` / `.candle()` and the static `.pie()`). Behavior changes belong in
+the header; the other two layers should stay mechanical. `main.c` is a C demo
+that exercises the same path against `prices.txt`.
 
 **Two input paths, one capsule.** `parse_json` (a JSON document) and
 `parse_arrays` (four float64 columns + optional int64 epoch seconds) both
@@ -101,7 +102,7 @@ the header directly. Three deliberate divergences from the raw header, each
 because the raw behavior does not survive an FFI boundary: invalid dimensions
 are `CCHARTS_ERR_DIMENSIONS` rather than an empty string, non-finite prices are
 rejected, and `ccharts_parse_csv` pre-counts rows because `cc_str_to_ohlc`
-never reports how many it actually parsed. Build with CMake; only the 13
+never reports how many it actually parsed. Build with CMake; only the 14
 `ccharts_*` symbols are exported (visibility is hidden by default and CI
 asserts the count).
 
@@ -112,8 +113,9 @@ default to. Defining the feature macro in the ABI keeps that flag out of every
 downstream build.
 
 **Conformance is what keeps the bindings honest.** `conformance/cases.json`
-declares 20 cases (both charts × downsampling × labels × timezones × flat range
-× single candle × JSON and array entry points);
+declares 25 cases (both charts × downsampling × labels × timezones × flat range
+× single candle × JSON and array entry points, plus the pie cases: disk,
+donut, custom palette, all-zero, single slice);
 `conformance/golden/<case>.txt` holds the expected raw bytes, generated from
 the ABI by `scripts/gen_golden.py` (ctypes against the built shared library, so
 it also tests the export surface). Every binding must reproduce them byte for
@@ -194,6 +196,19 @@ macros and `CC_MAX_DIM`/`CC_MAX_CELLS` sit above it so clients can use them.
 5. `cc_assemble_chart` joins rows top-to-bottom, optionally prepending an 8-column
    price margin (max on top row, min on bottom) and appending a timestamp footer
    whose `strftime` format `cc_time_format` picks from the average candle interval.
+
+**Pie is a third renderer, not a third column chart.** A pie has no OHLC data:
+`cc_pie_create` takes `cc_pie_slice_t` (label + positive value) rows, normalizes
+the values to angles from 12 o'clock going counter-clockwise, and samples each
+grid cell once at its center in 8-sub-pixel space (like the line chart) inside
+an outer radius; a donut additionally blanks the cells inside the inner radius.
+It reuses the 32-byte cell slots and `cc_assemble_chart`'s allocation math via
+its own `cc_pie_assemble`, which appends the legend ("label  value (pct%)") below
+the disk. Colors come from a fixed deterministic palette (never random — that
+would break the byte-for-byte goldens) or a NULL-terminated per-slice override.
+The header guards values with a plain positive-range check (`!(v > 0)` catches
+NaN and non-positives and yields the empty string); NaN/inf is rejected with the
+finite guard in `wrapper.c`/`abi/ccharts_abi.c`, keeping the header C89-clean.
 
 **Settings.** `cc_settings_t` is meant to be brace-initialized partially;
 `cc_settings_resolve` fills unset fields (green rise / red fall, no bg, no area

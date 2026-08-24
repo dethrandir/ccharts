@@ -10,7 +10,9 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
@@ -99,35 +101,73 @@ class ConformanceTest {
 
         for (JsonNode testCase : cases) {
             String name = testCase.get("name").asText();
-            JsonNode dataset = datasets.get(testCase.get("dataset").asText());
+            JsonNode settings = testCase.get("settings");
 
-            Chart chart = testCase.get("source").asText().equals("json")
-                    ? Chart.fromJson(dataset.get("json").asText())
-                    : Chart.fromArrays(column(dataset, "open"), column(dataset, "high"),
-                            column(dataset, "low"), column(dataset, "close"),
-                            timestamps(dataset));
-            try (chart) {
-                JsonNode settings = testCase.get("settings");
-                ChartOptions options = ChartOptions.builder()
+            String rendered;
+            if (testCase.get("chart").asText().equals("pie")) {
+                List<PieSlice> slices = new ArrayList<>();
+                for (JsonNode node : testCase.get("slices")) {
+                    JsonNode label = node.get("label");
+                    slices.add(new PieSlice(
+                            label == null || label.isNull() ? null : label.asText(),
+                            node.get("value").asDouble()));
+                }
+
+                JsonNode colorsNode = settings.get("colors");
+                String[] colors = null;
+                if (colorsNode != null && colorsNode.isArray()) {
+                    colors = new String[colorsNode.size()];
+                    for (int i = 0; i < colors.length; i++) {
+                        JsonNode c = colorsNode.get(i);
+                        if (c == null || c.isNull()) {
+                            colors[i] = null;
+                        } else {
+                            Color color = NAMED_COLORS.get(c.asText());
+                            assertNotNull(color, "unknown color in cases.json: " + c.asText());
+                            colors[i] = color.escape();
+                        }
+                    }
+                }
+
+                PieOptions options = PieOptions.builder()
                         .size(testCase.get("width").asInt(), testCase.get("height").asInt())
-                        .rise(color(settings, "rise_color"))
-                        .fall(color(settings, "fall_color"))
-                        .background(color(settings, "bg_color"))
-                        .area(color(settings, "area_color"))
-                        .singleColor(settings.get("single_color").asBoolean())
-                        .showPrices(settings.get("show_prices").asBoolean())
-                        .showTimes(settings.get("show_times").asBoolean())
-                        .plain(settings.path("plain").asBoolean(false))
+                        .donut(settings.path("donut").asBoolean(false))
+                        .colorsAnsi(colors)
+                        .showLegend(settings.path("show_legend").asBoolean(true))
+                        .showPct(settings.path("show_pct").asBoolean(false))
                         .build();
+                rendered = Chart.pie(slices, options);
+            } else {
+                JsonNode dataset = datasets.get(testCase.get("dataset").asText());
 
-                String rendered = testCase.get("chart").asText().equals("line")
-                        ? chart.line(options)
-                        : chart.candle(options);
-                String expected = new String(
-                        Files.readAllBytes(suite.resolve("golden").resolve(name + ".txt")),
-                        StandardCharsets.UTF_8);
-                assertEquals(expected, rendered, name + " differs from its golden file");
+                Chart chart = testCase.get("source").asText().equals("json")
+                        ? Chart.fromJson(dataset.get("json").asText())
+                        : Chart.fromArrays(column(dataset, "open"), column(dataset, "high"),
+                                column(dataset, "low"), column(dataset, "close"),
+                                timestamps(dataset));
+                try (chart) {
+                    ChartOptions options = ChartOptions.builder()
+                            .size(testCase.get("width").asInt(), testCase.get("height").asInt())
+                            .rise(color(settings, "rise_color"))
+                            .fall(color(settings, "fall_color"))
+                            .background(color(settings, "bg_color"))
+                            .area(color(settings, "area_color"))
+                            .singleColor(settings.get("single_color").asBoolean())
+                            .showPrices(settings.get("show_prices").asBoolean())
+                            .showTimes(settings.get("show_times").asBoolean())
+                            .plain(settings.path("plain").asBoolean(false))
+                            .build();
+
+                    rendered = testCase.get("chart").asText().equals("line")
+                            ? chart.line(options)
+                            : chart.candle(options);
+                }
             }
+
+            String expected = new String(
+                    Files.readAllBytes(suite.resolve("golden").resolve(name + ".txt")),
+                    StandardCharsets.UTF_8);
+            assertEquals(expected, rendered, name + " differs from its golden file");
         }
     }
 }

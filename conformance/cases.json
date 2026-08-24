@@ -694,6 +694,88 @@
         "show_times": true,
         "plain": true
       }
+    },
+    {
+      "name": "pie_disk",
+      "chart": "pie",
+      "width": 24,
+      "height": 10,
+      "slices": [
+        { "label": "Alpha", "value": 40 },
+        { "label": "Beta", "value": 30 },
+        { "label": "Gamma", "value": 30 }
+      ],
+      "settings": {
+        "donut": false,
+        "colors": null,
+        "show_legend": true,
+        "show_pct": true
+      }
+    },
+    {
+      "name": "pie_donut",
+      "chart": "pie",
+      "width": 24,
+      "height": 10,
+      "slices": [
+        { "label": "Alpha", "value": 40 },
+        { "label": "Beta", "value": 30 },
+        { "label": "Gamma", "value": 30 }
+      ],
+      "settings": {
+        "donut": true,
+        "colors": null,
+        "show_legend": true,
+        "show_pct": false
+      }
+    },
+    {
+      "name": "pie_colors",
+      "chart": "pie",
+      "width": 20,
+      "height": 8,
+      "slices": [
+        { "label": "R", "value": 25 },
+        { "label": "G", "value": 25 },
+        { "label": "B", "value": 25 },
+        { "label": "W", "value": 25 }
+      ],
+      "settings": {
+        "donut": false,
+        "colors": ["red", "green"],
+        "show_legend": false,
+        "show_pct": false
+      }
+    },
+    {
+      "name": "pie_all_zero",
+      "chart": "pie",
+      "width": 24,
+      "height": 10,
+      "slices": [
+        { "label": "Zero", "value": 0 }
+      ],
+      "settings": {
+        "donut": false,
+        "colors": null,
+        "show_legend": true,
+        "show_pct": true
+      }
+    },
+    {
+      "name": "pie_single",
+      "chart": "pie",
+      "width": 12,
+      "height": 6,
+      "slices": [
+        { "label": "Only", "value": 7 }
+      ],
+      "settings": {
+        "donut": false,
+        "colors": null,
+        "show_legend": true,
+        "show_pct": true
+      }
     }
   ]
 }

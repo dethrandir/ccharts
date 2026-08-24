@@ -2,9 +2,11 @@ package io.github.dethrandir.ccharts;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.DisplayName;
@@ -170,8 +172,38 @@ class ChartTest {
     @Test
     @DisplayName("exposes library metadata")
     void exposesLibraryMetadata() {
-        assertEquals("0.2.0", Chart.version());
+        assertEquals("0.2.1", Chart.version());
         assertEquals(100000, Chart.maxDim());
         assertEquals(1000000, Chart.maxCells());
+    }
+
+    @Test
+    @DisplayName("pie renders a disk, a donut and the empty string for zero values")
+    void pieRendersDiskDonutAndEmptyForZeroValues() {
+        List<PieSlice> slices = List.of(
+                new PieSlice("Alpha", 40),
+                new PieSlice("Beta", 30),
+                new PieSlice("Gamma", 30));
+
+        String disk = Chart.pie(slices, PieOptions.builder()
+                .showLegend(true)
+                .showPct(true)
+                .build());
+        assertTrue(disk.contains("Alpha  40 (40%)"));
+
+        String donut = Chart.pie(slices, PieOptions.builder()
+                .donut(true)
+                .showLegend(true)
+                .build());
+        assertNotEquals(disk, donut);
+
+        assertEquals("", Chart.pie(List.of(new PieSlice("Zero", 0)),
+                PieOptions.builder().showLegend(true).build()));
+
+        CchartsException error = assertThrows(CchartsException.class,
+                () -> Chart.pie(List.of(new PieSlice("Bad", Double.NaN))));
+        assertEquals(CchartsException.Status.NON_FINITE, error.status());
+
+        assertThrows(CchartsException.class, () -> Chart.pie(List.of()));
     }
 }

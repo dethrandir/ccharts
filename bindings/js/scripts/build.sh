@@ -22,7 +22,7 @@ EXPORTS='["_ccharts_from_arrays","_ccharts_parse_json","_ccharts_parse_csv",'
 EXPORTS+='"_ccharts_data_len","_ccharts_data_free","_ccharts_line",'
 EXPORTS+='"_ccharts_candle","_ccharts_string_free","_ccharts_color",'
 EXPORTS+='"_ccharts_error_message","_ccharts_version","_ccharts_max_dim",'
-EXPORTS+='"_ccharts_max_cells","_malloc","_free"]'
+EXPORTS+='"_ccharts_max_cells","_ccharts_pie_from_slices","_malloc","_free"]'
 
 mkdir -p build
 "${EMCC}" vendor/ccharts_abi.c -Ivendor \

@@ -132,6 +132,96 @@ public sealed class Chart : IDisposable
     /// <summary>Number of candles in the dataset.</summary>
     public int Length => _length;
 
+    /// <summary>
+    /// Renders a pie/donut chart from the given slices. A pie has no OHLC
+    /// dataset, so this is a static method taking the slices directly.
+    /// </summary>
+    /// <param name="slices">The slices, in the order they are drawn.</param>
+    /// <param name="options">Pie options, or <c>null</c> for the defaults.</param>
+    /// <returns>The chart as a printable string.</returns>
+    /// <exception cref="CchartsException">
+    /// The slices were empty, held NaN/infinity, or the dimensions were out of
+    /// range.
+    /// </exception>
+    public static string Pie(IReadOnlyList<PieSlice> slices, PieOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(slices);
+        NativeLibraryResolver.EnsureInstalled();
+
+        options ??= new PieOptions();
+        if (slices.Count == 0)
+        {
+            throw new CchartsException(CchartsStatus.InvalidArgument,
+                "need at least one slice");
+        }
+
+        var native = new NativePieSlice[slices.Count];
+        var labels = new IntPtr[slices.Count];
+        try
+        {
+            for (var i = 0; i < slices.Count; i++)
+            {
+                labels[i] = slices[i].Label is null ? IntPtr.Zero
+                    : Marshal.StringToCoTaskMemUTF8(slices[i].Label);
+                native[i] = new NativePieSlice { Label = labels[i], Value = slices[i].Value };
+            }
+
+            IntPtr[]? colors = null;
+            if (options.Colors is { Count: > 0 })
+            {
+                colors = new IntPtr[options.Colors.Count];
+                for (var i = 0; i < options.Colors.Count; i++)
+                {
+                    var color = options.Colors[i];
+                    colors[i] = string.IsNullOrEmpty(color) ? IntPtr.Zero
+                        : Marshal.StringToCoTaskMemUTF8(color);
+                }
+            }
+
+            try
+            {
+                var status = NativeMethods.PieFromSlices(
+                    native, slices.Count, options.Width, options.Height,
+                    options.Donut ? 1 : 0, colors, colors?.Length ?? 0,
+                    options.ShowLegend ? 1 : 0, options.ShowPct ? 1 : 0,
+                    out var chart, out var length);
+                CchartsException.ThrowIfError(status);
+
+                try
+                {
+                    return Marshal.PtrToStringUTF8(chart, checked((int)length)) ?? string.Empty;
+                }
+                finally
+                {
+                    NativeMethods.StringFree(chart);
+                }
+            }
+            finally
+            {
+                if (colors is not null)
+                {
+                    foreach (var color in colors)
+                    {
+                        if (color != IntPtr.Zero)
+                        {
+                            Marshal.FreeCoTaskMem(color);
+                        }
+                    }
+                }
+            }
+        }
+        finally
+        {
+            foreach (var label in labels)
+            {
+                if (label != IntPtr.Zero)
+                {
+                    Marshal.FreeCoTaskMem(label);
+                }
+            }
+        }
+    }
+
     /// <summary>Version of the underlying C library.</summary>
     public static string Version
     {

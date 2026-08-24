@@ -124,6 +124,19 @@ print(chart.line(width=60, height=8, show_prices=True, show_times=True))
 print(chart.candle(width=60, height=8))
 ```
 
+Pie and donut charts take slices (label + positive amount) directly — no OHLC
+data needed:
+
+```python
+print(Chart.pie(["Alpha", "Beta", "Gamma"], [40, 30, 30], show_pct=True))
+print(Chart.pie(["Alpha", "Beta", "Gamma"], [40, 30, 30], donut=True))
+```
+
+`Chart.pie` is a static method; `donut=True` hollows the center, `colors` can
+override the fixed deterministic palette with per-slice ANSI escapes, and any
+slice value `<= 0` (including NaN) makes the whole render return the empty
+string. Non-finite values raise `ValueError`.
+
 ### DataFrames and raw columns
 
 A DataFrame does not have to be serialized to JSON first — the price columns
@@ -195,16 +208,31 @@ if (ccharts_line(data, 60, 8, &s, &chart, &len) == CCHARTS_OK) {
 ccharts_data_free(data);
 ```
 
+Pies need no dataset — slices go straight to the renderer:
+
+```c
+ccharts_pie_slice slices[] = {{"Alpha", 40}, {"Beta", 30}, {"Gamma", 30}};
+char* pie = NULL;
+size_t pie_len = 0;
+if (ccharts_pie_from_slices(slices, 3, 24, 10, 0 /*donut*/, NULL, 0,
+                            1 /*legend*/, 1 /*pct*/, &pie, &pie_len)
+    == CCHARTS_OK) {
+    printf("%s", pie);
+    ccharts_string_free(pie);
+}
+```
+
 Differences from the raw header, all in the direction of being bindable:
 invalid dimensions return `CCHARTS_ERR_DIMENSIONS` instead of an empty string,
 NaN and inf are rejected up front, and `ccharts_parse_csv` counts the rows it
 can parse so a dataset never carries trailing zero-filled candles.
 
 `conformance/cases.json` plus `conformance/golden/*.txt` are the cross-language
-contract: 20 cases covering both chart types, downsampling, labels, timezones,
-flat ranges and single-candle input. The goldens are generated from the ABI
-(`scripts/gen_golden.py`) and every binding — the Python one included, see
-`tests/test_conformance.py` — must reproduce them byte for byte.
+contract: 25 cases covering both OHLC chart types, downsampling, labels,
+timezones, flat ranges and single-candle input, plus the pie cases (disk,
+donut, custom palette, all-zero, single slice). The goldens are generated from
+the ABI (`scripts/gen_golden.py`) and every binding — the Python one included,
+see `tests/test_conformance.py` — must reproduce them byte for byte.
 
 ### Language bindings
 

@@ -177,6 +177,8 @@ const registry = new FinalizationRegistry((handle) => {
 });
 
 const SETTINGS_BYTES = 4 * 4 + 3 * 4; // four 32-bit pointers + three int32
+const PIE_SLICE_BYTES = 16; // 32-bit label pointer, 4 bytes padding, double value
+const PTR_BYTES = 4;
 
 /** A parsed OHLC dataset that can be rendered repeatedly. */
 export class Chart {
@@ -288,6 +290,83 @@ export class Chart {
     } finally {
       if (textPtr) exports.free(textPtr);
       if (handleOut) exports.free(handleOut);
+    }
+  }
+
+  /**
+   * Renders a pie or donut chart from the given slices. A pie has no OHLC
+   * dataset, so this is a static method taking the slices directly.
+   *
+   * @param {Array<{label?: string|null, value: number}>} slices
+   * @param {PieOptions} [options]
+   * @returns {string}
+   */
+  static pie(slices, options = {}) {
+    const {
+      width = 24, height = 10,
+      donut = false, colors, showLegend = true, showPct = false,
+    } = options;
+
+    if (!Array.isArray(slices) || slices.length === 0) {
+      throw new CchartsError(STATUS.INVALID_ARGUMENT, "need at least one slice");
+    }
+    if (!Number.isInteger(width) || !Number.isInteger(height)) {
+      throw new CchartsError(STATUS.DIMENSIONS, "width and height must be integers");
+    }
+
+    const owned = [];
+    let slicesPtr = 0;
+    let colorsPtr = 0;
+    let outPtr = 0;
+    let lenPtr = 0;
+    try {
+      slicesPtr = malloc(slices.length * PIE_SLICE_BYTES);
+      owned.push(slicesPtr);
+      const dv = view();
+      for (let i = 0; i < slices.length; i++) {
+        const slice = slices[i];
+        const label = slice.label === undefined || slice.label === null || slice.label === ""
+          ? 0 : writeCString(String(slice.label));
+        if (label) owned.push(label);
+        dv.setUint32(slicesPtr + i * PIE_SLICE_BYTES, label, true);
+        dv.setFloat64(slicesPtr + i * PIE_SLICE_BYTES + 8, slice.value, true);
+      }
+
+      let colorCount = 0;
+      if (colors && colors.length > 0) {
+        colorsPtr = malloc(colors.length * PTR_BYTES);
+        owned.push(colorsPtr);
+        for (let i = 0; i < colors.length; i++) {
+          const color = colors[i];
+          const ptr = color === undefined || color === null || color === ""
+            ? 0 : writeCString(String(color));
+          if (ptr) owned.push(ptr);
+          dv.setUint32(colorsPtr + i * PTR_BYTES, ptr, true);
+        }
+        colorCount = colors.length;
+      }
+
+      outPtr = malloc(4);
+      lenPtr = malloc(4);
+      const status = exports.ccharts_pie_from_slices(
+        slicesPtr, slices.length, width, height,
+        donut ? 1 : 0, colorsPtr, colorCount,
+        showLegend ? 1 : 0, showPct ? 1 : 0,
+        outPtr, lenPtr);
+      if (status !== STATUS.OK) throw fail(status);
+
+      const dv2 = view();
+      const chartPtr = dv2.getUint32(outPtr, true);
+      const length = dv2.getUint32(lenPtr, true);
+      try {
+        return decoder.decode(u8().subarray(chartPtr, chartPtr + length));
+      } finally {
+        exports.ccharts_string_free(chartPtr);
+      }
+    } finally {
+      for (const ptr of owned) exports.free(ptr);
+      if (outPtr) exports.free(outPtr);
+      if (lenPtr) exports.free(lenPtr);
     }
   }
 

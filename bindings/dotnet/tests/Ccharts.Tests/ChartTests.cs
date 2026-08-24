@@ -156,8 +156,34 @@ public class ChartTests
     [Fact]
     public void ExposesLibraryMetadata()
     {
-        Assert.Equal("0.2.0", Chart.Version);
+        Assert.Equal("0.2.1", Chart.Version);
         Assert.Equal(100000, Chart.MaxDim);
         Assert.Equal(1000000, Chart.MaxCells);
+    }
+
+    [Fact]
+    public void PieRendersDiskDonutAndEmptyForZeroValues()
+    {
+        PieSlice[] slices =
+        [
+            new("Alpha", 40),
+            new("Beta", 30),
+            new("Gamma", 30),
+        ];
+
+        var disk = Chart.Pie(slices, new PieOptions { ShowLegend = true, ShowPct = true });
+        Assert.Contains("Alpha  40 (40%)", disk);
+
+        var donut = Chart.Pie(slices, new PieOptions { Donut = true, ShowLegend = true });
+        Assert.NotEqual(disk, donut);
+
+        Assert.Equal(string.Empty, Chart.Pie([new PieSlice("Zero", 0)],
+            new PieOptions { ShowLegend = true }));
+
+        var error = Assert.Throws<CchartsException>(
+            () => Chart.Pie([new PieSlice("Bad", double.NaN)]));
+        Assert.Equal(CchartsStatus.NonFinite, error.Status);
+
+        Assert.Throws<CchartsException>(() => Chart.Pie([]));
     }
 }

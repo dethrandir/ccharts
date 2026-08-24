@@ -24,6 +24,13 @@
  *       Raises ValueError for non-positive or over-limit dimensions
  *       (CC_MAX_DIM / CC_MAX_CELLS from ccharts.h) and for invalid capsules.
  *
+ *   create_pie(labels, values, width, height, donut, colors, bg, legend, pct) -> str
+ *       Renders a pie/donut from parallel label/value slices (no capsule
+ *       needed — a pie is not OHLC data). Raises ValueError for non-finite
+ *       values (NaN/inf), invalid dimensions, mismatched lengths, and
+ *       non-str/non-number items; slice values <= 0 make the renderer return
+ *       the empty string, exactly like cc_pie_create.
+ *
  * Build: `make test-py` (see setup.py).
  */
 
@@ -425,12 +432,206 @@ static PyObject* py_create_candle(PyObject* self, PyObject* args) {
     return result;
 }
 
+/* ================================ Pie ================================
+ * A pie is a set of (label, value) slices, not OHLC columns, so this path
+ * does not touch the capsule. Labels and values are read from parallel
+ * sequences (str-or-None and number respectively), NaN/inf is rejected with
+ * the same finite guard as the OHLC paths, and the rows are handed to
+ * cc_pie_create, which owns every piece of the render.
+ * ===================================================================== */
+
+/* Fills `slices` (caller-freed) from parallel label/value sequences. The
+ * label pointers are borrowed from the Python str objects and only need to
+ * live for the synchronous cc_pie_create call. Returns NULL with an
+ * exception set on any mismatch, non-numeric value, or non-finite value. */
+static cc_pie_slice_t* build_pie_slices(PyObject* o_labels, PyObject* o_values,
+                                        Py_ssize_t* out_count) {
+    PyObject* fast_labels;
+    PyObject* fast_values;
+    Py_ssize_t n, i;
+    cc_pie_slice_t* slices;
+
+    fast_labels = PySequence_Fast(o_labels, "labels must be a sequence");
+    if (fast_labels == NULL) return NULL;
+    fast_values = PySequence_Fast(o_values, "values must be a sequence");
+    if (fast_values == NULL) {
+        Py_DECREF(fast_labels);
+        return NULL;
+    }
+    n = PySequence_Fast_GET_SIZE(fast_labels);
+    if (PySequence_Fast_GET_SIZE(fast_values) != n) {
+        Py_DECREF(fast_labels);
+        Py_DECREF(fast_values);
+        PyErr_SetString(PyExc_ValueError,
+                        "labels and values must have the same length");
+        return NULL;
+    }
+    if (n <= 0) {
+        Py_DECREF(fast_labels);
+        Py_DECREF(fast_values);
+        PyErr_SetString(PyExc_ValueError, "need at least one slice");
+        return NULL;
+    }
+
+    slices = (cc_pie_slice_t*)calloc((size_t)n, sizeof(cc_pie_slice_t));
+    if (slices == NULL) {
+        Py_DECREF(fast_labels);
+        Py_DECREF(fast_values);
+        PyErr_NoMemory();
+        return NULL;
+    }
+
+    for (i = 0; i < n; i++) {
+        PyObject* label = PySequence_Fast_GET_ITEM(fast_labels, i);
+        PyObject* value = PySequence_Fast_GET_ITEM(fast_values, i);
+        double v;
+
+        if (label == Py_None) {
+            slices[i].label = NULL;
+        } else if (PyUnicode_Check(label)) {
+            slices[i].label = PyUnicode_AsUTF8(label);
+            if (slices[i].label == NULL) {
+                free(slices);
+                Py_DECREF(fast_labels);
+                Py_DECREF(fast_values);
+                return NULL;
+            }
+        } else {
+            free(slices);
+            Py_DECREF(fast_labels);
+            Py_DECREF(fast_values);
+            PyErr_SetString(PyExc_TypeError, "labels must be strings or None");
+            return NULL;
+        }
+
+        v = PyFloat_AsDouble(value);
+        if (v == -1.0 && PyErr_Occurred()) {
+            free(slices);
+            Py_DECREF(fast_labels);
+            Py_DECREF(fast_values);
+            return NULL;
+        }
+        if (!isfinite(v)) {
+            free(slices);
+            Py_DECREF(fast_labels);
+            Py_DECREF(fast_values);
+            PyErr_SetString(PyExc_ValueError,
+                            "slice values must be finite (no NaN or inf)");
+            return NULL;
+        }
+        slices[i].value = v;
+    }
+
+    Py_DECREF(fast_labels);
+    Py_DECREF(fast_values);
+    *out_count = n;
+    return slices;
+}
+
+/* Builds a NULL-terminated array of ANSI escape strings (what
+ * cc_pie_settings_t expects) from a sequence of str, or leaves *out NULL for
+ * the default palette when o_colors is None. Returns 0 or -1 with an
+ * exception set. */
+static int build_pie_colors(PyObject* o_colors, const char*** out) {
+    PyObject* fast;
+    Py_ssize_t n, i;
+    const char** arr;
+
+    *out = NULL;
+    if (o_colors == Py_None) return 0;
+
+    fast = PySequence_Fast(o_colors,
+                           "colors must be a sequence of ANSI escape strings");
+    if (fast == NULL) return -1;
+    n = PySequence_Fast_GET_SIZE(fast);
+    arr = (const char**)calloc((size_t)n + 1, sizeof(const char*));
+    if (arr == NULL) {
+        Py_DECREF(fast);
+        PyErr_NoMemory();
+        return -1;
+    }
+    for (i = 0; i < n; i++) {
+        PyObject* item = PySequence_Fast_GET_ITEM(fast, i);
+        if (!PyUnicode_Check(item)) {
+            free(arr);
+            Py_DECREF(fast);
+            PyErr_SetString(PyExc_TypeError,
+                            "colors must be strings or None");
+            return -1;
+        }
+        arr[i] = PyUnicode_AsUTF8(item);
+        if (arr[i] == NULL) {
+            free(arr);
+            Py_DECREF(fast);
+            return -1;
+        }
+    }
+    Py_DECREF(fast);
+    *out = arr;
+    return 0;
+}
+
+/* Renders a pie/donut from parallel label/value sequences. */
+static PyObject* py_create_pie(PyObject* self, PyObject* args) {
+    PyObject* o_labels;
+    PyObject* o_values;
+    PyObject* o_colors = Py_None;
+    const char* bg_color = NULL;
+    int width, height;
+    int donut = 0, show_legend = 1, show_pct = 0;
+    cc_pie_slice_t* slices;
+    const char** colors;
+    cc_pie_settings_t settings;
+    Py_ssize_t count;
+    char* chart;
+    PyObject* result;
+
+    if (!PyArg_ParseTuple(args, "OOii|iOzii", &o_labels, &o_values,
+                          &width, &height, &donut, &o_colors, &bg_color,
+                          &show_legend, &show_pct)) {
+        return NULL;
+    }
+    if (!check_dimensions(width, height)) {
+        PyErr_SetString(PyExc_ValueError,
+                        "width and height must be positive integers within "
+                        "CC_MAX_DIM and CC_MAX_CELLS limits");
+        return NULL;
+    }
+
+    slices = build_pie_slices(o_labels, o_values, &count);
+    if (slices == NULL) return NULL;
+    if (build_pie_colors(o_colors, &colors) != 0) {
+        free(slices);
+        return NULL;
+    }
+
+    memset(&settings, 0, sizeof(settings));
+    settings.bg_color = bg_color;
+    settings.colors = colors;
+    settings.donut = donut;
+    settings.show_legend = show_legend;
+    settings.show_pct = show_pct;
+
+    chart = cc_pie_create(slices, (int)count, width, height, &settings);
+    free(slices);
+    free(colors);
+    if (chart == NULL) {
+        PyErr_SetString(PyExc_RuntimeError, "failed to create chart");
+        return NULL;
+    }
+
+    result = PyUnicode_FromString(chart);
+    free(chart);
+    return result;
+}
+
 /* Module method table + module definition. */
 static PyMethodDef CChartsMethods[] = {
     {"parse_json", py_parse_json, METH_VARARGS, "convert JSON data into OHLC format"},
     {"parse_arrays", py_parse_arrays, METH_VARARGS, "convert OHLC columns into OHLC format"},
     {"create_line", py_create_line, METH_VARARGS, "create a line chart"},
     {"create_candle", py_create_candle, METH_VARARGS, "create a candle chart"},
+    {"create_pie", py_create_pie, METH_VARARGS, "create a pie or donut chart"},
     {NULL, NULL, 0, NULL}
 };
 

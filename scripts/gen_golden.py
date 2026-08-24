@@ -45,6 +45,14 @@ class Settings(ctypes.Structure):
     ]
 
 
+# Mirrors ccharts_pie_slice in abi/ccharts_abi.h.
+class PieSlice(ctypes.Structure):
+    _fields_ = [
+        ("label", ctypes.c_char_p),
+        ("value", ctypes.c_double),
+    ]
+
+
 def find_library(explicit=None):
     if explicit:
         return explicit
@@ -93,6 +101,13 @@ def load(path):
     lib.ccharts_error_message.restype = ctypes.c_char_p
     lib.ccharts_error_message.argtypes = [ctypes.c_int32]
     lib.ccharts_version.restype = ctypes.c_char_p
+    lib.ccharts_pie_from_slices.restype = ctypes.c_int32
+    lib.ccharts_pie_from_slices.argtypes = [
+        ctypes.POINTER(PieSlice), ctypes.c_int32,
+        ctypes.c_int32, ctypes.c_int32, ctypes.c_int32,
+        ctypes.POINTER(ctypes.c_char_p), ctypes.c_int32,
+        ctypes.c_int32, ctypes.c_int32,
+        ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_size_t)]
     return lib
 
 
@@ -123,7 +138,41 @@ def color(lib, name):
     return lib.ccharts_color(COLOR_NAMES.index(name))
 
 
+def render_pie(lib, case):
+    """Renders a pie/donut case through ccharts_pie_from_slices."""
+    cfg = case["settings"]
+    slices = (PieSlice * len(case["slices"]))()
+    for i, s in enumerate(case["slices"]):
+        slices[i].label = s["label"].encode("utf-8") if s.get("label") else None
+        slices[i].value = s["value"]
+
+    color_names = cfg.get("colors")
+    colors = None
+    color_count = 0
+    if color_names:
+        colors = (ctypes.c_char_p * len(color_names))(
+            *[color(lib, name) for name in color_names])
+        color_count = len(color_names)
+
+    out = ctypes.c_void_p()
+    length = ctypes.c_size_t()
+    status = lib.ccharts_pie_from_slices(
+        slices, len(case["slices"]), case["width"], case["height"],
+        int(cfg.get("donut", False)), colors, color_count,
+        int(cfg.get("show_legend", True)), int(cfg.get("show_pct", False)),
+        ctypes.byref(out), ctypes.byref(length))
+    if status != CCHARTS_OK:
+        raise SystemExit("%s: %s" % (case["name"],
+                                     lib.ccharts_error_message(status).decode()))
+    try:
+        return ctypes.string_at(out, length.value)
+    finally:
+        lib.ccharts_string_free(out)
+
+
 def render(lib, case, datasets):
+    if case["chart"] == "pie":
+        return render_pie(lib, case)
     handle = build_data(lib, datasets[case["dataset"]], case["source"])
     try:
         cfg = case["settings"]

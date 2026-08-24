@@ -94,3 +94,45 @@ public sealed record ChartOptions
     /// </summary>
     public bool Plain { get; init; }
 }
+
+/// <summary>One slice of a pie chart: a legend label and a positive amount.</summary>
+/// <param name="Label">
+/// Drawn in the legend when <see cref="PieOptions.ShowLegend"/> is set; may be
+/// <c>null</c> to omit it.
+/// </param>
+/// <param name="Value">
+/// A positive amount; the pie computes the percentage from the sum. A value
+/// <c>&lt;= 0</c> (zero, negative, NaN, inf) makes the whole render return the
+/// empty string rather than an error.
+/// </param>
+public sealed record PieSlice(string? Label, double Value);
+
+/// <summary>
+/// How a pie chart is drawn. The default instance gives a filled disk, no
+/// override colors, a legend without percentages.
+/// </summary>
+public sealed record PieOptions
+{
+    /// <summary>Chart width in cells. Default 24.</summary>
+    public int Width { get; init; } = 24;
+
+    /// <summary>Chart height in cells. Default 10.</summary>
+    public int Height { get; init; } = 10;
+
+    /// <summary>Hollow out the center (a donut) instead of a filled disk.</summary>
+    public bool Donut { get; init; }
+
+    /// <summary>
+    /// Per-slice ANSI escapes; slice <c>i</c> uses
+    /// <c>Colors[i % Colors.Count]</c>. A <c>null</c> entry means the default
+    /// palette color for that index; <c>null</c> for the whole list selects
+    /// the fixed default palette.
+    /// </summary>
+    public IReadOnlyList<string?>? Colors { get; init; }
+
+    /// <summary>Print one <c>label  value (pct%)</c> line per slice below the disk.</summary>
+    public bool ShowLegend { get; init; } = true;
+
+    /// <summary>Append <c>(NN%)</c> to each legend entry.</summary>
+    public bool ShowPct { get; init; }
+}

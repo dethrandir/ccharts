@@ -238,6 +238,51 @@ CC_INLINE char* cc_line_create(const cc_ohlc_t* data, int size, int width, int h
 CC_INLINE char* cc_candle_create(const cc_ohlc_t* data, int size, int width, int height,
                                  const cc_settings_t* settings);
 
+/* ============================ Pie charts ============================
+ * A pie / donut chart turns (label, value) slices into a disk drawn with
+ * block characters. Unlike line/candle there is no OHLC data: each slice is
+ * an amount, the pie computes the percentages, and slices are drawn from
+ * 12 o'clock going counter-clockwise. Colors come from a fixed deterministic
+ * palette (never random, so every render is byte-identical — which is what
+ * keeps the conformance goldens stable) unless the settings override it. */
+
+/* One pie slice: a label (may be NULL or empty) and a positive value. A slice
+ * whose value is not > 0 (zero, negative, or NaN) makes the whole render fail
+ * cleanly with an empty string; +inf is rejected upstream (the wrapper and
+ * ABI), which keeps this header free of C99-only `isfinite`. */
+typedef struct cc_pie_slice {
+    const char* label;
+    double       value;
+} cc_pie_slice_t;
+
+/* Pie/donut rendering options. Unspecified fields fall back to defaults:
+ *   - bg_color   : background of cells outside the disk (default: none)
+ *   - colors     : per-slice palette override — a NULL-terminated array of
+ *                  ANSI color strings — or NULL for the fixed default palette
+ *   - donut      : 1 = hollow center (donut), 0 = filled disk (default)
+ *   - show_legend: 1 = print one "label  value (pct%)" line per slice below
+ *                  the disk
+ *   - show_pct   : 1 = append "(NN%)" to each legend entry
+ * Build with a designated initializer and pass NULL for full defaults. */
+typedef struct cc_pie_settings {
+    const char* bg_color;
+    const char* const* colors;
+    int donut;
+    int show_legend;
+    int show_pct;
+} cc_pie_settings_t;
+
+/* Renders a pie/donut chart of `count` slices into a `width` x `height` grid
+ * (cells) and returns a malloc'd string (caller frees). Slices are normalized
+ * to angles; each grid cell is colored by the slice whose angular range
+ * contains the cell's center, inside an outer radius (a donut leaves the
+ * cells inside the inner radius blank). A legend is appended below the disk
+ * when settings->show_legend is set. Returns an empty string for NULL slices,
+ * count <= 0, invalid dimensions, or any non-positive/NaN slice value. */
+CC_INLINE char* cc_pie_create(const cc_pie_slice_t* slices, int count,
+                              int width, int height,
+                              const cc_pie_settings_t* settings);
+
 #ifdef __cplusplus
 }
 #endif
@@ -1114,6 +1159,188 @@ CC_INLINE char* cc_candle_create(const cc_ohlc_t* data, int size, int width, int
     char* chart = cc_assemble_chart(width, height, columns, &s,
                                     ts_first, ts_last, size, max, min);
     free(body_mask); free(wick_mask); free(col_color); free(columns);
+    return chart;
+}
+
+/* ------------------------------- Pie renderer ------------------------------
+ * A pie normalizes slice values to angles (value/total * 2*pi) and samples
+ * each grid cell once at its center in sub-pixel space (8 sub-pixels per
+ * cell, like the line chart, so the disk is round in pixel space). A cell is
+ * colored by the slice whose angular range holds its center, inside an outer
+ * radius; a donut additionally blanks the cells inside the inner radius.
+ * Colors come from a fixed deterministic palette or a NULL-terminated
+ * per-slice override. The legend, when requested, is appended below the disk,
+ * one "label  value (pct%)" line per slice. All scratch buffers are
+ * heap-allocated (no VLAs) and freed on every path.
+ * -------------------------------------------------------------------------- */
+
+#define CC_PI 3.14159265358979323846    /* M_PI is not portable C89/C99 */
+#define CC_PIE_DONUT_RADIUS_RATIO 0.5   /* inner radius = this * outer radius */
+
+/* Deterministic fixed palette. Never random — a random palette would break
+ * the byte-for-byte conformance goldens. Indexed per slice (mod length). */
+static const char* const CC_PIE_DEFAULT_PALETTE[] = {
+    CC_COLOR_BLUE, CC_COLOR_GREEN, CC_COLOR_YELLOW, CC_COLOR_RED,
+    CC_COLOR_MAGENTA, CC_COLOR_CYAN, CC_COLOR_BRIGHT_BLUE,
+    CC_COLOR_BRIGHT_GREEN, CC_COLOR_BRIGHT_YELLOW, CC_COLOR_BRIGHT_RED,
+    CC_COLOR_BRIGHT_MAGENTA, CC_COLOR_BRIGHT_CYAN, CC_COLOR_WHITE,
+    CC_COLOR_BRIGHT_WHITE, CC_COLOR_BLACK, CC_COLOR_BRIGHT_BLACK,
+};
+#define CC_PIE_DEFAULT_PALETTE_COUNT \
+    ((int)(sizeof(CC_PIE_DEFAULT_PALETTE) / sizeof(CC_PIE_DEFAULT_PALETTE[0])))
+
+/* Resolves the color for `slice`: the per-slice override palette when set
+ * (a NULL-terminated array), otherwise the fixed default palette. */
+CC_INLINE const char* cc_pie_palette_color(const cc_pie_settings_t* s, int slice) {
+    if (s->colors != NULL) {
+        int n = 0;
+        while (s->colors[n] != NULL) n++;
+        if (n > 0) return s->colors[slice % n];
+    }
+    return CC_PIE_DEFAULT_PALETTE[slice % CC_PIE_DEFAULT_PALETTE_COUNT];
+}
+
+/* Returns the slice index whose angular range contains `angle`, given the
+ * slices' start angles. The angle is normalized into the first slice's
+ * revolution so the last slice can wrap past +2*pi and back to the first. */
+CC_INLINE int cc_pie_find_slice(const double* starts, int count, double angle) {
+    double base = starts[0];
+    double two_pi = 2.0 * CC_PI;
+    while (angle < base) angle += two_pi;
+    while (angle >= base + two_pi) angle -= two_pi;
+    for (int i = 1; i < count; i++) {
+        if (angle < starts[i]) return i - 1;
+    }
+    return count - 1;
+}
+
+/* Joins the per-cell strings (columns[(x*height + y)*32 .. +32), y counted
+ * from the bottom) into the final pie string, printing rows top-to-bottom
+ * and appending the legend below when requested. Allocates with a pointer
+ * cursor (no strcat re-scans); the caller frees the result. */
+CC_INLINE char* cc_pie_assemble(int width, int height, char* columns,
+                                const cc_pie_slice_t* slices, int count,
+                                double total, const cc_pie_settings_t* s) {
+    int legend = s->show_legend ? count : 0;
+    /* Bounded by CC_MAX_CELLS for the cells (width*height <= 1e6, each cell
+     * at most 32 bytes); each legend row is capped at 512 bytes by the
+     * snprintf below, so this allocation is always large enough. */
+    size_t total_size = (size_t)width * (size_t)height * 32 + (size_t)height + 1
+                        + (size_t)legend * 512;
+    char* chart = (char*)calloc(total_size, 1);
+    if (chart == NULL) return NULL;
+
+    char* w = chart;
+    for (int y = height - 1; y >= 0; y--) {
+        for (int x = 0; x < width; x++) {
+            const char* cell = columns + ((size_t)x * height + (size_t)y) * 32;
+            size_t cl = strlen(cell);
+            memcpy(w, cell, cl);
+            w += cl;
+        }
+        *w++ = '\n';
+    }
+
+    if (legend > 0) {
+        char line[512];
+        for (int i = 0; i < count; i++) {
+            const char* label = CC_S(slices[i].label);
+            if (s->show_pct) {
+                snprintf(line, sizeof(line), "%s  %g (%.0f%%)", label,
+                         slices[i].value, slices[i].value / total * 100.0);
+            } else {
+                snprintf(line, sizeof(line), "%s  %g", label, slices[i].value);
+            }
+            size_t ll = strlen(line);
+            memcpy(w, line, ll);
+            w += ll;
+            *w++ = '\n';
+        }
+    }
+    *w = '\0';
+    return chart;
+}
+
+CC_INLINE char* cc_pie_create(const cc_pie_slice_t* slices, int count,
+                              int width, int height,
+                              const cc_pie_settings_t* settings) {
+    if (slices == NULL || count <= 0 || !cc_dim_ok(width, height)) {
+        return (char*)calloc(1, sizeof(char));
+    }
+    int i;
+    double total = 0.0;
+    for (i = 0; i < count; i++) {
+        /* A plain positive-range check: NaN fails `> 0.0`, as do zero and
+         * negative amounts. +inf is rejected upstream (wrapper/ABI), which
+         * keeps this header free of C99-only `isfinite`. */
+        if (!(slices[i].value > 0.0)) {
+            return (char*)calloc(1, sizeof(char));
+        }
+        total += slices[i].value;
+    }
+
+    cc_pie_settings_t s = {0};
+    if (settings != NULL) {
+        s.bg_color = settings->bg_color;
+        s.colors = settings->colors;
+        s.donut = settings->donut;
+        s.show_legend = settings->show_legend;
+        s.show_pct = settings->show_pct;
+    }
+
+    double* starts = (double*)malloc((size_t)count * sizeof(double));
+    char* columns = (char*)malloc((size_t)width * (size_t)height * 32);
+    if (starts == NULL || columns == NULL) {
+        free(starts);
+        free(columns);
+        return NULL;
+    }
+
+    /* Sub-pixel space: 8 units per cell. The disk is a perfect circle in this
+     * space, centered in the grid, with the radius taken from the smaller
+     * dimension so it always fits. */
+    double cx = (double)width * 4.0;
+    double cy = (double)height * 4.0;
+    double min_dim = (width < height) ? (double)width : (double)height;
+    double outer_r = min_dim * 4.0;
+    double inner_r = s.donut ? outer_r * CC_PIE_DONUT_RADIUS_RATIO : 0.0;
+
+    double angle = CC_PI / 2.0;   /* slice 0 starts at 12 o'clock */
+    for (i = 0; i < count; i++) {
+        starts[i] = angle;
+        angle += (slices[i].value / total) * 2.0 * CC_PI;
+    }
+
+    for (int x = 0; x < width; x++) {
+        double sx = (double)x * 8.0 + 4.0;
+        for (int y = 0; y < height; y++) {
+            double sy = (double)y * 8.0 + 4.0;
+            double dx = sx - cx;
+            double dy = sy - cy;
+            double dist = sqrt(dx * dx + dy * dy);
+            char* cell = columns + ((size_t)x * height + (size_t)y) * 32;
+
+            if (dist > outer_r || (s.donut && dist < inner_r)) {
+                if (s.bg_color != NULL) {
+                    snprintf(cell, 32, "%s %s", s.bg_color,
+                             cc_reset_for(s.bg_color, NULL));
+                } else {
+                    snprintf(cell, 32, " ");
+                }
+                continue;
+            }
+
+            int slice = cc_pie_find_slice(starts, count, atan2(dy, dx));
+            const char* color = cc_pie_palette_color(&s, slice);
+            snprintf(cell, 32, "%s%s%s", CC_S(color), CC_BLOCK_FULL,
+                     cc_reset_for(color, NULL));
+        }
+    }
+
+    char* chart = cc_pie_assemble(width, height, columns, slices, count,
+                                  total, &s);
+    free(starts);
+    free(columns);
     return chart;
 }
 

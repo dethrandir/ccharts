@@ -1,8 +1,8 @@
 //! Financial OHLC data as a string — line and candlestick charts drawn with
-//! Unicode block characters, with ANSI color optional.
+//! Unicode block characters, with ANSI color optional, plus pie/donut charts.
 //!
-//! Nothing is printed for you: [`Chart::line`] and [`Chart::candle`] return a
-//! [`String`], so the chart goes wherever text goes.
+//! Nothing is printed for you: [`Chart::line`], [`Chart::candle`] and
+//! [`Chart::pie`] return a [`String`], so the chart goes wherever text goes.
 //!
 //! This crate wraps the C library [`ccharts`](https://github.com/dethrandir/ccharts)
 //! through its flat ABI. The C sources are vendored and compiled by
@@ -262,6 +262,85 @@ impl Settings {
     }
 }
 
+/// One slice of a pie chart: an optional legend label and a positive amount.
+///
+/// The value is an *amount* — the pie computes the percentage from the sum.
+/// A value `<= 0` (zero, negative, NaN, inf) makes the whole render return
+/// the empty string rather than an error.
+#[derive(Debug, Clone, Copy)]
+pub struct PieSlice<'a> {
+    /// Legend label; `None` omits it.
+    pub label: Option<&'a str>,
+    /// A positive amount; the pie computes the percentage.
+    pub value: f64,
+}
+
+/// Options for [`Chart::pie`]. Every field is optional; unset ones take the
+/// library defaults (a filled disk, no override colors, a legend without
+/// percentages).
+#[derive(Debug, Clone)]
+pub struct PieOptions {
+    donut: bool,
+    colors: Option<Vec<ColorSpec>>,
+    show_legend: bool,
+    show_pct: bool,
+}
+
+impl PieOptions {
+    /// Options with every field at its default.
+    pub fn new() -> Self {
+        Self {
+            donut: false,
+            colors: None,
+            show_legend: true,
+            show_pct: false,
+        }
+    }
+
+    /// Hollow out the center (a donut) instead of a filled disk.
+    pub fn donut(mut self, yes: bool) -> Self {
+        self.donut = yes;
+        self
+    }
+
+    /// Per-slice override colors from the named palette. Slice `i` uses
+    /// `colors[i % colors.len()]`; `None` selects the fixed default palette.
+    pub fn colors(mut self, colors: &[Color]) -> Self {
+        self.colors = Some(colors.iter().map(|c| ColorSpec::Named(*c)).collect());
+        self
+    }
+
+    /// Like [`PieOptions::colors`], but with raw ANSI escape sequences
+    /// (256-color, truecolor, ...). An interior NUL makes the escape ignored.
+    pub fn colors_ansi(mut self, escapes: &[&str]) -> Self {
+        self.colors = Some(
+            escapes
+                .iter()
+                .filter_map(|s| CString::new(*s).ok().map(ColorSpec::Custom))
+                .collect(),
+        );
+        self
+    }
+
+    /// Print one `label  value (pct%)` line per slice below the disk.
+    pub fn show_legend(mut self, yes: bool) -> Self {
+        self.show_legend = yes;
+        self
+    }
+
+    /// Append `(NN%)` to each legend entry.
+    pub fn show_pct(mut self, yes: bool) -> Self {
+        self.show_pct = yes;
+        self
+    }
+}
+
+impl Default for PieOptions {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// A parsed OHLC dataset that can be rendered as a line or candle chart.
 pub struct Chart {
     handle: NonNull<ffi::ccharts_data>,
@@ -346,6 +425,78 @@ impl Chart {
         Self::wrap(status, out)
     }
 
+    /// Renders a pie or donut chart from the given slices.
+    ///
+    /// A pie has no OHLC data, so this is an associated function rather than a
+    /// method: it takes the slices directly. `options.colors` override the
+    /// per-slice palette when set; all-zero or non-positive slice values
+    /// produce the empty string, while NaN/inf are rejected with
+    /// [`Error::NonFinite`].
+    pub fn pie(slices: &[PieSlice<'_>], width: u32, height: u32, options: &PieOptions) -> Result<String> {
+        if slices.is_empty() {
+            return Err(Error::InvalidArgument("need at least one slice"));
+        }
+        let count = i32::try_from(slices.len())
+            .map_err(|_| Error::InvalidArgument("too many slices"))?;
+        let (width, height) = match (i32::try_from(width), i32::try_from(height)) {
+            (Ok(w), Ok(h)) => (w, h),
+            _ => return Err(Error::Dimensions),
+        };
+
+        // The labels must outlive the call, so the CStrings are kept in a
+        // parallel vector alongside the raw slice array.
+        let mut labels: Vec<Option<CString>> = Vec::with_capacity(slices.len());
+        let mut raw: Vec<ffi::ccharts_pie_slice> = Vec::with_capacity(slices.len());
+        for slice in slices {
+            let label = match slice.label {
+                Some(text) => Some(CString::new(text).map_err(|_| Error::InteriorNul)?),
+                None => None,
+            };
+            raw.push(ffi::ccharts_pie_slice {
+                label: label.as_ref().map_or(std::ptr::null(), |c| c.as_ptr()),
+                value: slice.value,
+            });
+            labels.push(label);
+        }
+
+        let colors: Vec<*const c_char> = options
+            .colors
+            .as_ref()
+            .map(|cs| cs.iter().map(ColorSpec::as_ptr).collect())
+            .unwrap_or_default();
+        let colors_ptr = if colors.is_empty() {
+            std::ptr::null()
+        } else {
+            colors.as_ptr()
+        };
+
+        let mut out: *mut c_char = std::ptr::null_mut();
+        let mut len: usize = 0;
+        // Safety: every pointer in `raw`/`colors` lives across the call, the C
+        // layer copies the slices immediately, and `out` receives an owned
+        // string we release below.
+        let status = unsafe {
+            ffi::ccharts_pie_from_slices(
+                raw.as_ptr(),
+                count,
+                width,
+                height,
+                options.donut as i32,
+                colors_ptr,
+                colors.len() as i32,
+                options.show_legend as i32,
+                options.show_pct as i32,
+                &mut out,
+                &mut len,
+            )
+        };
+        if status != 0 {
+            return Err(Error::from_status(status));
+        }
+        // Safety: `out` is a library-owned buffer released by take_string.
+        unsafe { Self::take_string(out, len) }
+    }
+
     fn wrap(status: i32, out: *mut ffi::ccharts_data) -> Result<Self> {
         match NonNull::new(out) {
             Some(handle) if status == 0 => Ok(Chart { handle }),
@@ -411,6 +562,17 @@ impl Chart {
         if status != 0 {
             return Err(Error::from_status(status));
         }
+
+        // Safety: `out` receives a library-owned buffer released here.
+        unsafe { Self::take_string(out, len) }
+    }
+
+    /// Copies a library-returned string out of C memory and releases it.
+    ///
+    /// # Safety
+    /// `out` must point at a NUL-terminated buffer of at least `len` bytes
+    /// owned by the C layer (released with `ccharts_string_free`).
+    unsafe fn take_string(out: *mut c_char, len: usize) -> Result<String> {
         if out.is_null() {
             return Err(Error::OutOfMemory);
         }

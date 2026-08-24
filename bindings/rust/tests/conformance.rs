@@ -6,7 +6,7 @@
 
 use std::path::{Path, PathBuf};
 
-use ccharts::{Chart, Color, Settings};
+use ccharts::{Chart, Color, PieOptions, PieSlice, Settings};
 use serde_json::Value;
 
 fn suite_dir() -> Option<PathBuf> {
@@ -69,51 +69,75 @@ fn matches_the_shared_goldens() {
     let mut failures = Vec::new();
     for case in cases {
         let name = case["name"].as_str().unwrap();
-        let dataset = &doc["datasets"][case["dataset"].as_str().unwrap()];
-
-        let chart = if case["source"] == "json" {
-            Chart::from_json(dataset["json"].as_str().unwrap()).unwrap()
-        } else {
-            let ts: Option<Vec<i64>> = dataset
-                .get("ts")
-                .and_then(|t| t.as_array())
-                .map(|a| a.iter().map(|v| v.as_i64().expect("epoch")).collect());
-            Chart::from_arrays(
-                &floats(dataset, "open"),
-                &floats(dataset, "high"),
-                &floats(dataset, "low"),
-                &floats(dataset, "close"),
-                ts.as_deref(),
-            )
-            .unwrap()
-        };
-
-        let cfg = &case["settings"];
-        let mut settings = Settings::new()
-            .single_color(cfg["single_color"].as_bool().unwrap())
-            .show_prices(cfg["show_prices"].as_bool().unwrap())
-            .show_times(cfg["show_times"].as_bool().unwrap())
-            .plain(cfg["plain"].as_bool().unwrap_or(false));
-        if let Some(c) = color(&cfg["rise_color"]) {
-            settings = settings.rise(c);
-        }
-        if let Some(c) = color(&cfg["fall_color"]) {
-            settings = settings.fall(c);
-        }
-        if let Some(c) = color(&cfg["bg_color"]) {
-            settings = settings.background(c);
-        }
-        if let Some(c) = color(&cfg["area_color"]) {
-            settings = settings.area(c);
-        }
-
         let width = case["width"].as_u64().unwrap() as u32;
         let height = case["height"].as_u64().unwrap() as u32;
-        let rendered = match case["chart"].as_str().unwrap() {
-            "line" => chart.line(width, height, &settings),
-            other => {
-                assert_eq!(other, "candle");
-                chart.candle(width, height, &settings)
+        let cfg = &case["settings"];
+
+        let rendered = if case["chart"].as_str().unwrap() == "pie" {
+            let slices: Vec<PieSlice> = case["slices"]
+                .as_array()
+                .expect("pie slices")
+                .iter()
+                .map(|s| PieSlice {
+                    label: s["label"].as_str(),
+                    value: s["value"].as_f64().expect("slice value"),
+                })
+                .collect();
+            let mut options = PieOptions::new()
+                .donut(cfg["donut"].as_bool().unwrap_or(false))
+                .show_legend(cfg["show_legend"].as_bool().unwrap_or(true))
+                .show_pct(cfg["show_pct"].as_bool().unwrap_or(false));
+            if let Some(colors) = cfg["colors"].as_array() {
+                let named: Vec<Color> = colors
+                    .iter()
+                    .map(|c| color(c).expect("named pie color"))
+                    .collect();
+                options = options.colors(&named);
+            }
+            Chart::pie(&slices, width, height, &options)
+        } else {
+            let dataset = &doc["datasets"][case["dataset"].as_str().unwrap()];
+            let chart = if case["source"] == "json" {
+                Chart::from_json(dataset["json"].as_str().unwrap()).unwrap()
+            } else {
+                let ts: Option<Vec<i64>> = dataset
+                    .get("ts")
+                    .and_then(|t| t.as_array())
+                    .map(|a| a.iter().map(|v| v.as_i64().expect("epoch")).collect());
+                Chart::from_arrays(
+                    &floats(dataset, "open"),
+                    &floats(dataset, "high"),
+                    &floats(dataset, "low"),
+                    &floats(dataset, "close"),
+                    ts.as_deref(),
+                )
+                .unwrap()
+            };
+
+            let mut settings = Settings::new()
+                .single_color(cfg["single_color"].as_bool().unwrap())
+                .show_prices(cfg["show_prices"].as_bool().unwrap())
+                .show_times(cfg["show_times"].as_bool().unwrap())
+                .plain(cfg["plain"].as_bool().unwrap_or(false));
+            if let Some(c) = color(&cfg["rise_color"]) {
+                settings = settings.rise(c);
+            }
+            if let Some(c) = color(&cfg["fall_color"]) {
+                settings = settings.fall(c);
+            }
+            if let Some(c) = color(&cfg["bg_color"]) {
+                settings = settings.background(c);
+            }
+            if let Some(c) = color(&cfg["area_color"]) {
+                settings = settings.area(c);
+            }
+
+            match case["chart"].as_str().unwrap() {
+                "line" => chart.line(width, height, &settings),
+                other => {
+                    assert_eq!(other, "candle");
+                    chart.candle(width, height, &settings)
+                }
             }
         }
         .unwrap();

@@ -41,6 +41,11 @@ final class Native {
             ValueLayout.JAVA_INT.withName("show_times"),
             MemoryLayout.paddingLayout(4));
 
+    /** Layout of {@code ccharts_pie_slice}: a label pointer then a double. */
+    static final StructLayout PIE_SLICE = MemoryLayout.structLayout(
+            ValueLayout.ADDRESS.withName("label"),
+            ValueLayout.JAVA_DOUBLE.withName("value"));
+
     private static final Linker LINKER = Linker.nativeLinker();
 
     /** Lives as long as the process: the library must not be unloaded. */
@@ -71,6 +76,9 @@ final class Native {
                     PTR, PTR));
     static final MethodHandle STRING_FREE = downcall("ccharts_string_free",
             FunctionDescriptor.ofVoid(PTR));
+    static final MethodHandle PIE_FROM_SLICES = downcall("ccharts_pie_from_slices",
+            FunctionDescriptor.of(INT, PTR, INT, INT, INT, INT,
+                    PTR, INT, INT, INT, PTR, PTR));
     static final MethodHandle COLOR = downcall("ccharts_color",
             FunctionDescriptor.of(PTR, INT));
     static final MethodHandle ERROR_MESSAGE = downcall("ccharts_error_message",

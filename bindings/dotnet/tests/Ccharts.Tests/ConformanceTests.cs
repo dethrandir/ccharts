@@ -70,36 +70,69 @@ public class ConformanceTests
         foreach (var testCase in cases)
         {
             var name = testCase.GetProperty("name").GetString()!;
-            var dataset = datasets.GetProperty(testCase.GetProperty("dataset").GetString()!);
-
-            using var chart = testCase.GetProperty("source").GetString() == "json"
-                ? Chart.FromJson(dataset.GetProperty("json").GetString()!)
-                : Chart.FromArrays(
-                    Column(dataset, "open"), Column(dataset, "high"),
-                    Column(dataset, "low"), Column(dataset, "close"),
-                    dataset.TryGetProperty("ts", out var ts)
-                        ? ts.EnumerateArray().Select(v => v.GetInt64()).ToArray()
-                        : default);
-
             var settings = testCase.GetProperty("settings");
-            var options = new ChartOptions
-            {
-                Width = testCase.GetProperty("width").GetInt32(),
-                Height = testCase.GetProperty("height").GetInt32(),
-                RiseColor = ColorFor(settings, "rise_color"),
-                FallColor = ColorFor(settings, "fall_color"),
-                BackgroundColor = ColorFor(settings, "bg_color"),
-                AreaColor = ColorFor(settings, "area_color"),
-                SingleColor = settings.GetProperty("single_color").GetBoolean(),
-                ShowPrices = settings.GetProperty("show_prices").GetBoolean(),
-                ShowTimes = settings.GetProperty("show_times").GetBoolean(),
-                Plain = settings.TryGetProperty("plain", out var plain)
-                    && plain.GetBoolean(),
-            };
 
-            var rendered = testCase.GetProperty("chart").GetString() == "line"
-                ? chart.Line(options)
-                : chart.Candle(options);
+            string rendered;
+            if (testCase.GetProperty("chart").GetString() == "pie")
+            {
+                var slices = testCase.GetProperty("slices").EnumerateArray()
+                    .Select(s => new PieSlice(
+                        s.TryGetProperty("label", out var label) ? label.GetString() : null,
+                        s.GetProperty("value").GetDouble()))
+                    .ToList();
+
+                var colors = settings.TryGetProperty("colors", out var colorsElement)
+                    && colorsElement.ValueKind == JsonValueKind.Array
+                        ? colorsElement.EnumerateArray()
+                            .Select(c => c.ValueKind == JsonValueKind.Null
+                                ? null : NamedColors[c.GetString()!])
+                            .ToList()
+                        : null;
+
+                rendered = Chart.Pie(slices, new PieOptions
+                {
+                    Width = testCase.GetProperty("width").GetInt32(),
+                    Height = testCase.GetProperty("height").GetInt32(),
+                    Donut = settings.TryGetProperty("donut", out var donut) && donut.GetBoolean(),
+                    Colors = colors,
+                    ShowLegend = settings.TryGetProperty("show_legend", out var legend)
+                        ? legend.GetBoolean() : true,
+                    ShowPct = settings.TryGetProperty("show_pct", out var pct) && pct.GetBoolean(),
+                });
+            }
+            else
+            {
+                var dataset = datasets.GetProperty(testCase.GetProperty("dataset").GetString()!);
+
+                using var chart = testCase.GetProperty("source").GetString() == "json"
+                    ? Chart.FromJson(dataset.GetProperty("json").GetString()!)
+                    : Chart.FromArrays(
+                        Column(dataset, "open"), Column(dataset, "high"),
+                        Column(dataset, "low"), Column(dataset, "close"),
+                        dataset.TryGetProperty("ts", out var ts)
+                            ? ts.EnumerateArray().Select(v => v.GetInt64()).ToArray()
+                            : default);
+
+                var options = new ChartOptions
+                {
+                    Width = testCase.GetProperty("width").GetInt32(),
+                    Height = testCase.GetProperty("height").GetInt32(),
+                    RiseColor = ColorFor(settings, "rise_color"),
+                    FallColor = ColorFor(settings, "fall_color"),
+                    BackgroundColor = ColorFor(settings, "bg_color"),
+                    AreaColor = ColorFor(settings, "area_color"),
+                    SingleColor = settings.GetProperty("single_color").GetBoolean(),
+                    ShowPrices = settings.GetProperty("show_prices").GetBoolean(),
+                    ShowTimes = settings.GetProperty("show_times").GetBoolean(),
+                    Plain = settings.TryGetProperty("plain", out var plain)
+                        && plain.GetBoolean(),
+                };
+
+                rendered = testCase.GetProperty("chart").GetString() == "line"
+                    ? chart.Line(options)
+                    : chart.Candle(options);
+            }
+
             var expected = File.ReadAllText(Path.Combine(suiteDir!, "golden", name + ".txt"));
 
             Assert.True(rendered == expected, $"{name} differs from its golden file");

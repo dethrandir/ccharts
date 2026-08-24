@@ -21,6 +21,12 @@ pub struct ccharts_settings {
     pub show_times: i32,
 }
 
+#[repr(C)]
+pub struct ccharts_pie_slice {
+    pub label: *const c_char,
+    pub value: f64,
+}
+
 extern "C" {
     pub fn ccharts_from_arrays(
         open: *const f64,
@@ -58,6 +64,20 @@ extern "C" {
         out_len: *mut usize,
     ) -> i32;
     pub fn ccharts_string_free(s: *mut c_char);
+
+    pub fn ccharts_pie_from_slices(
+        slices: *const ccharts_pie_slice,
+        count: i32,
+        width: i32,
+        height: i32,
+        donut: i32,
+        colors: *const *const c_char,
+        color_count: i32,
+        show_legend: i32,
+        show_pct: i32,
+        out: *mut *mut c_char,
+        out_len: *mut usize,
+    ) -> i32;
 
     pub fn ccharts_color(index: c_int) -> *const c_char;
     pub fn ccharts_error_message(status: c_int) -> *const c_char;
