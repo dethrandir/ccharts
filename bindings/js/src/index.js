@@ -7,7 +7,7 @@
  * package runs in Node, Deno, Bun and the browser with no native build step
  * and no platform-specific binaries.
  *
- *     import { Chart, Color } from "ccharts";
+ *     import { Chart, Color } from "@dethrandir/ccharts";
  *
  *     const chart = Chart.fromArrays(open, high, low, close, epochSeconds);
  *     console.log(chart.line({ width: 60, height: 8, showPrices: true }));

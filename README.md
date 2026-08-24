@@ -234,7 +234,7 @@ embedded in the JavaScript — one dependency-free package for Node, Deno, Bun
 and browsers alike, no prebuilt binaries and no bundler configuration:
 
 ```js
-import { Chart, Color } from "ccharts";
+import { Chart, Color } from "@dethrandir/ccharts";
 const chart = Chart.fromArrays(open, high, low, close, ts);
 console.log(chart.candle({ width: 60, height: 8, showPrices: true }));
 chart.free();
@@ -325,7 +325,7 @@ workflow, not here:
 | -------- | ------- |
 | PyPI | `ccharts` (sdist + cibuildwheel wheels) |
 | crates.io | `ccharts` |
-| npm | `ccharts` (published with provenance) |
+| npm | `@dethrandir/ccharts` (published with provenance) |
 | NuGet | `Ccharts` |
 | Maven Central | `io.github.dethrandir:ccharts` |
 
