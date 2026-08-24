@@ -59,7 +59,7 @@ jobs:
         run: |
           set -euo pipefail
           contents="$(unzip -l nupkg/*.nupkg)"
-          for rid in linux-x64 osx-x64 osx-arm64 win-x64; do
+          for rid in linux-x64 osx-arm64 win-x64; do
             echo "${contents}" | grep -q "runtimes/${rid}/native/" || {
               echo "::error::nupkg is missing runtimes/${rid}/native/"
               exit 1

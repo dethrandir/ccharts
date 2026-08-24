@@ -335,7 +335,7 @@ in a subdirectory needs a tag carrying that prefix, so the workflow also pushes
 
 The C# and Java packages are the only ones carrying binaries:
 `.github/workflows/natives.yml` builds the shared library for linux-x64,
-osx-x64, osx-arm64 and win-x64, and `scripts/pack_natives.py` arranges them
+osx-arm64 and win-x64, and `scripts/pack_natives.py` arranges them
 into `runtimes/{rid}/native/` for NuGet and `native/{os}-{arch}/` for the jar.
 Both publish jobs then verify the packed artifact actually contains every
 platform before it leaves the runner — a package that quietly lost its natives

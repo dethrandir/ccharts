@@ -34,7 +34,6 @@ JAVA_NATIVE_ROOT = os.path.join(ROOT, "bindings", "java", "native")
 # builds in the Java binding).
 TARGETS = {
     "linux-x64": ("libccharts_abi.so", "linux-x86_64"),
-    "osx-x64": ("libccharts_abi.dylib", "macos-x86_64"),
     "osx-arm64": ("libccharts_abi.dylib", "macos-aarch64"),
     "win-x64": ("ccharts_abi.dll", "windows-x86_64"),
 }

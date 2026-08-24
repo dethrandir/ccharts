@@ -59,7 +59,7 @@ jobs:
           set -euo pipefail
           mvn -B -DskipTests package
           contents="$(unzip -l target/ccharts-*.jar)"
-          for platform in linux-x86_64 macos-x86_64 macos-aarch64 windows-x86_64; do
+          for platform in linux-x86_64 macos-aarch64 windows-x86_64; do
             echo "${contents}" | grep -q "native/${platform}/" || {
               echo "::error::jar is missing native/${platform}/"
               exit 1
