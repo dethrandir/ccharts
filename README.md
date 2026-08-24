@@ -317,15 +317,17 @@ libraries are required beyond the standard ones.
 One tag releases everything. Pushing `v<version>` (e.g. `v0.2.0`) runs
 `.github/workflows/publish.yml`, which first refuses the build unless the tag
 and **every** manifest agree on the version (`scripts/check_versions.py`), then
-publishes each package:
+publishes each package. Each registry's credential (API token, username, GPG
+key) is expected as a GitHub repository secret and is documented in the
+workflow, not here:
 
-| Registry | Package | Secret |
-| -------- | ------- | ------ |
-| PyPI | `ccharts` (sdist + cibuildwheel wheels) | `PYPI_API_TOKEN` |
-| crates.io | `ccharts` | `CARGO_REGISTRY_TOKEN` |
-| npm | `ccharts` (published with provenance) | `NPM_TOKEN` |
-| NuGet | `Ccharts` | `NUGET_API_KEY` |
-| Maven Central | `io.github.dethrandir:ccharts` | `MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD`, `MAVEN_GPG_PRIVATE_KEY`, `MAVEN_GPG_PASSPHRASE` |
+| Registry | Package |
+| -------- | ------- |
+| PyPI | `ccharts` (sdist + cibuildwheel wheels) |
+| crates.io | `ccharts` |
+| npm | `ccharts` (published with provenance) |
+| NuGet | `Ccharts` |
+| Maven Central | `io.github.dethrandir:ccharts` |
 
 The Go module has no registry — it is served from the repository — but a module
 in a subdirectory needs a tag carrying that prefix, so the workflow also pushes
@@ -345,7 +347,7 @@ available.)
 `workflow_dispatch` runs every build job without uploading anything, so a
 release can be rehearsed in full.
 
-Two notes on credentials: PyPI could drop `PYPI_API_TOKEN` entirely by moving
+Two notes on publishing: PyPI could drop its API token entirely by moving
 to [trusted publishing](https://docs.pypi.org/trusted-publishers/) — link the
 `pypi` GitHub environment and delete the `password` input. Maven Central
 requires a verified `io.github.dethrandir` namespace on the
