@@ -12,3 +12,4 @@ bindings/ruby/ext/ccharts/*.o
 bindings/ruby/lib/*.so
 bindings/ruby/*.gem
 bindings/ruby/tmp/
+.hermes
