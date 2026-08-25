@@ -29,6 +29,9 @@ DESTINATIONS = {
     # cargo packages only what is inside the crate.
     "bindings/rust": "vendor",
     "bindings/js": "vendor",
+    # Ruby compiles the vendored C into a Fiddle-loadable shared object via
+    # mkmf, so it needs its own copy of the sources.
+    "bindings/ruby": "ext/ccharts/vendor",
     # bindings/dotnet and bindings/java are absent on purpose: they link the
     # prebuilt shared library from the CMake build and never compile the C.
 }

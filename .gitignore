@@ -6,3 +6,9 @@ __pycache__/
 
 # compiled demo binary (avoid gcc -o main); anchored so bindings' src/main dirs are not matched
 /main
+# ruby binding build artifacts
+bindings/ruby/ext/ccharts/Makefile
+bindings/ruby/ext/ccharts/*.o
+bindings/ruby/lib/*.so
+bindings/ruby/*.gem
+bindings/ruby/tmp/

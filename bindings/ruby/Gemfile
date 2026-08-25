@@ -1,0 +1,9 @@
+# frozen_string_literal: true
+
+source "https://rubygems.org"
+
+gemspec
+
+# Runtime is dependency-free (Fiddle is stdlib). Only build/test tooling lives
+# here.
+gem "rake", "~> 13.0"
