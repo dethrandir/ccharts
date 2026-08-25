@@ -2,8 +2,8 @@
 //! against the shared goldens in conformance.rs.
 
 use ccharts::{
-    BarOptions, Chart, Color, Error, HeatOptions, HistogramOptions, PieOptions, PieSlice, Settings,
-    SparklineOptions, StackOptions,
+    BarOptions, BoxOptions, Chart, Color, Error, HeatOptions, HistogramOptions, PieOptions, PieSlice,
+    Settings, SparklineOptions, StackOptions,
 };
 
 fn sample() -> Chart {
@@ -463,4 +463,50 @@ fn heatmap_renders_and_wires_options() {
     // Colors flow through.
     let colored = Chart::heatmap(&matrix, 5, 5, &HeatOptions::new().low_color(Color::Blue)).unwrap();
     assert!(colored.contains("\u{1b}[34m"));
+}
+
+#[test]
+fn boxplot_renders_and_wires_options() {
+    let series: &[(&str, &[f64])] = &[
+        ("A", &[1.0, 4.0, 2.0, 5.0, 3.0]),
+        ("B", &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0]),
+    ];
+    let base = Chart::boxplot(series, 10, 8, &BoxOptions::new()).unwrap();
+    assert!(base.contains('█'), "box glyphs present");
+    assert_eq!(base.lines().count(), 8);
+
+    // A value axis (show_prices) changes the render.
+    let priced = Chart::boxplot(series, 10, 8, &BoxOptions::new().show_prices(true)).unwrap();
+    assert_ne!(base, priced, "show_prices must take effect");
+
+    // An explicit box color and whisker color change the render.
+    let colored = Chart::boxplot(
+        series,
+        10,
+        8,
+        &BoxOptions::new().rise(Color::Blue).area(Color::BrightBlack),
+    )
+    .unwrap();
+    assert_ne!(base, colored, "rise/area colors must take effect");
+    assert!(colored.contains("\u{1b}[34m"));
+
+    // Plain output has no escapes.
+    let plain = Chart::boxplot(series, 10, 8, &BoxOptions::new().plain(true)).unwrap();
+    assert!(!plain.contains('\u{1b}'), "plain must override every color");
+
+    // NaN/inf samples are rejected with Error::NonFinite.
+    for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        let bad_series: &[(&str, &[f64])] = &[("A", &[1.0]), ("B", &[bad])];
+        assert_eq!(
+            Chart::boxplot(bad_series, 10, 8, &BoxOptions::new()).unwrap_err(),
+            Error::NonFinite
+        );
+    }
+
+    // An empty category (no samples) is rejected.
+    let empty: &[(&str, &[f64])] = &[("A", &[]), ("B", &[1.0])];
+    assert!(matches!(
+        Chart::boxplot(empty, 10, 8, &BoxOptions::new()).unwrap_err(),
+        Error::InvalidArgument(_)
+    ));
 }

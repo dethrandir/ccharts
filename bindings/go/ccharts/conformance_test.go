@@ -47,6 +47,12 @@ type suite struct {
 		// Values carries the 2-D heatmap matrix: each row is a []float64 of
 		// the same length.
 		Values [][]float64 `json:"values"`
+		// Categories carries the per-category box-plot samples: each entry
+		// has a name and its own (possibly ragged) samples array.
+		Categories []struct {
+			Name    string    `json:"name"`
+			Samples []float64 `json:"samples"`
+		} `json:"categories"`
 		// Samples carries the scalar histogram input (no OHLC dataset).
 		Samples  []float64 `json:"samples"`
 		Settings struct {
@@ -150,7 +156,7 @@ func TestConformance(t *testing.T) {
 	if err := json.Unmarshal(raw, &s); err != nil {
 		t.Fatalf("cases.json: %v", err)
 	}
-	if len(s.Cases) < 64 {
+	if len(s.Cases) < 70 {
 		t.Fatalf("conformance suite looks truncated: %d cases", len(s.Cases))
 	}
 
@@ -253,6 +259,19 @@ func TestConformance(t *testing.T) {
 						RowLabels:       tc.Settings.RowLabels,
 						ColLabels:       tc.Settings.ColLabels,
 						ShowLabels:      tc.Settings.ShowLabels,
+						Plain:           tc.Settings.Plain,
+					})
+			} else if tc.Chart == "box" {
+				cats := make([]ccharts.BoxCategory, len(tc.Categories))
+				for i, c := range tc.Categories {
+					cats[i] = ccharts.BoxCategory{Name: c.Name, Samples: c.Samples}
+				}
+				got, err = ccharts.Boxplot(cats, tc.Width, tc.Height,
+					&ccharts.BoxOptions{
+						RiseColor:       color(t, tc.Settings.RiseColor),
+						AreaColor:       color(t, tc.Settings.AreaColor),
+						BackgroundColor: color(t, tc.Settings.BgColor),
+						ShowPrices:      tc.Settings.ShowPrices,
 						Plain:           tc.Settings.Plain,
 					})
 			} else {

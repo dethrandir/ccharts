@@ -358,3 +358,36 @@ public sealed record HeatmapOptions
     /// </summary>
     public bool Plain { get; init; }
 }
+
+/// <summary>
+/// One category of a box plot: a name and that category's samples. The C core
+/// computes a nearest-rank five-number summary from the samples; the binding
+/// never reimplements quartiles.
+/// </summary>
+public sealed record BoxCategory(string? Name, IReadOnlyList<double> Samples);
+
+/// <summary>
+/// How a box plot is drawn. The default instance uses a green box/median,
+/// whiskers sharing the box color, no background, and no value axis.
+/// </summary>
+public sealed record BoxOptions
+{
+    /// <summary>ANSI escape for the box and median line. Default: green.</summary>
+    public string? RiseColor { get; init; }
+
+    /// <summary>ANSI escape for the whiskers. Default: same as <see cref="RiseColor"/>.</summary>
+    public string? AreaColor { get; init; }
+
+    /// <summary>ANSI escape filling the empty cells above/below a box. Default: the terminal background.</summary>
+    public string? BackgroundColor { get; init; }
+
+    /// <summary>Print the global max/min value labels in a left margin.</summary>
+    public bool ShowPrices { get; init; }
+
+    /// <summary>
+    /// Render with no ANSI escapes at all, overriding every color. Use it when
+    /// the chart is going somewhere that does not interpret escapes — a log
+    /// file, an HTML block, a commit message.
+    /// </summary>
+    public bool Plain { get; init; }
+}

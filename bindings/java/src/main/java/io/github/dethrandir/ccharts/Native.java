@@ -106,6 +106,22 @@ final class Native {
             ValueLayout.JAVA_INT.withName("show_labels"),
             ValueLayout.JAVA_INT.withName("show_prices"));
 
+    /** Layout of {@code ccharts_box_category}: a name pointer, a samples
+     * pointer, then an int. 8+8+4 = 20 bytes, but C aligns the struct to 8
+     * so its size is 24 on x64 — the trailing 4 bytes are padding. */
+    static final StructLayout BOX_CATEGORY = MemoryLayout.structLayout(
+            ValueLayout.ADDRESS.withName("name"),
+            ValueLayout.ADDRESS.withName("samples"),
+            ValueLayout.JAVA_INT.withName("n"),
+            MemoryLayout.paddingLayout(4));
+
+    /** Layout of {@code ccharts_box_settings}: three pointers then one int. */
+    static final StructLayout BOX_SETTINGS = MemoryLayout.structLayout(
+            ValueLayout.ADDRESS.withName("rise_color"),
+            ValueLayout.ADDRESS.withName("area_color"),
+            ValueLayout.ADDRESS.withName("bg_color"),
+            ValueLayout.JAVA_INT.withName("show_prices"));
+
     private static final Linker LINKER = Linker.nativeLinker();
 
     /** Lives as long as the process: the library must not be unloaded. */
@@ -155,6 +171,9 @@ final class Native {
                     PTR, PTR));
     static final MethodHandle HEAT = downcall("ccharts_heat",
             FunctionDescriptor.of(INT, PTR, INT, INT, INT, INT, PTR,
+                    PTR, PTR));
+    static final MethodHandle BOX = downcall("ccharts_box",
+            FunctionDescriptor.of(INT, PTR, INT, INT, INT, PTR,
                     PTR, PTR));
     static final MethodHandle COLOR = downcall("ccharts_color",
             FunctionDescriptor.of(PTR, INT));

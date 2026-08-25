@@ -679,6 +679,100 @@ public final class Chart implements AutoCloseable {
     }
 
     /**
+     * Renders a box plot of the given categories into a {@code width} x
+     * {@code height} grid. Each category carries its own (possibly ragged)
+     * samples array; the C core computes a nearest-rank five-number summary
+     * per category and draws each box and its whiskers over the global
+     * min/max span, so the binding passes raw samples and settings only. A
+     * box plot has no OHLC dataset, so this is a static method taking the
+     * categories directly.
+     *
+     * @param names   the category names, one per category (the core does not
+     *                print them; kept for the binding API)
+     * @param samples a 2-D matrix: one {@code double[]} row per category,
+     *                each with that category's samples (rows may be ragged)
+     * @param width   chart width in cells
+     * @param height  chart height in cells
+     * @param options rendering options
+     * @return the chart as a printable string
+     * @throws CchartsException if the categories are empty or hold no
+     *     samples, a sample is NaN/infinity, or the dimensions are out of
+     *     range
+     */
+    public static String boxplot(String[] names, double[][] samples, int width, int height,
+            BoxplotOptions options) {
+        if (names == null || names.length == 0) {
+            throw new CchartsException(CchartsException.Status.INVALID_ARGUMENT,
+                    "need at least one category");
+        }
+        if (samples == null || samples.length != names.length) {
+            throw new CchartsException(CchartsException.Status.INVALID_ARGUMENT,
+                    "names and samples must have the same length");
+        }
+        for (double[] row : samples) {
+            if (row == null || row.length == 0) {
+                throw new CchartsException(CchartsException.Status.INVALID_ARGUMENT,
+                        "every category must have at least one sample");
+            }
+        }
+
+        try (Arena arena = Arena.ofConfined()) {
+            // Each category is a {name, samples, n} cell: a C-string segment
+            // and a pointer to its double[] samples row.
+            MemorySegment categories = arena.allocate(Native.BOX_CATEGORY, names.length);
+            for (int i = 0; i < names.length; i++) {
+                long offset = i * Native.BOX_CATEGORY.byteSize();
+                categories.set(ValueLayout.ADDRESS, offset, text(arena, names[i]));
+                categories.set(ValueLayout.ADDRESS, offset + 8,
+                        arena.allocateFrom(ValueLayout.JAVA_DOUBLE, samples[i]));
+                categories.set(ValueLayout.JAVA_INT, offset + 16, samples[i].length);
+            }
+
+            MemorySegment settings = arena.allocate(Native.BOX_SETTINGS);
+            // An empty C string means "emit no escape at all", which is
+            // different from a null pointer (use the default color).
+            settings.set(ValueLayout.ADDRESS, 0, text(arena,
+                    options.plain() ? "" : options.riseColor()));
+            settings.set(ValueLayout.ADDRESS, 8, text(arena,
+                    options.plain() ? "" : options.areaColor()));
+            settings.set(ValueLayout.ADDRESS, 16, text(arena,
+                    options.plain() ? "" : options.backgroundColor()));
+            settings.set(ValueLayout.JAVA_INT, 24, options.showPrices() ? 1 : 0);
+
+            MemorySegment out = arena.allocate(ValueLayout.ADDRESS);
+            MemorySegment lengthOut = arena.allocate(ValueLayout.JAVA_LONG);
+            int status = (int) Native.BOX.invokeExact(
+                    categories, names.length, width, height, settings, out, lengthOut);
+            CchartsException.throwIfError(status);
+
+            MemorySegment chart = out.get(ValueLayout.ADDRESS, 0);
+            long size = lengthOut.get(ValueLayout.JAVA_LONG, 0);
+            try {
+                byte[] bytes = chart.reinterpret(size).toArray(ValueLayout.JAVA_BYTE);
+                return new String(bytes, StandardCharsets.UTF_8);
+            } finally {
+                Native.STRING_FREE.invokeExact(chart);
+            }
+        } catch (Throwable t) {
+            throw Native.wrap(t);
+        }
+    }
+
+    /**
+     * Renders a box plot of the given categories with the default options.
+     *
+     * @param names   the category names, one per category
+     * @param samples a 2-D matrix: one {@code double[]} row per category,
+     *                each with that category's samples (rows may be ragged)
+     * @param width   chart width in cells
+     * @param height  chart height in cells
+     * @return the chart as a printable string
+     */
+    public static String boxplot(String[] names, double[][] samples, int width, int height) {
+        return boxplot(names, samples, width, height, BoxplotOptions.DEFAULTS);
+    }
+
+    /**
      * Number of candles in the dataset.
      *
      * @return the candle count

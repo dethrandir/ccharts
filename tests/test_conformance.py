@@ -153,6 +153,16 @@ class TestConformance(unittest.TestCase):
                 show_labels=cfg.get("show_labels", False),
                 plain=cfg.get("plain", False),
             )
+        if case["chart"] == "box":
+            return Chart.boxplot(
+                [(c["name"], c["samples"]) for c in case["categories"]],
+                width=case["width"], height=case["height"],
+                color=COLORS.get(cfg["rise_color"]),
+                area_color=COLORS.get(cfg["area_color"]),
+                bg_color=COLORS.get(cfg["bg_color"]),
+                show_prices=cfg.get("show_prices", False),
+                plain=cfg.get("plain", False),
+            )
         draw = getattr(self._chart(case), case["chart"])
         return draw(
             width=case["width"], height=case["height"],

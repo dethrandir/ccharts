@@ -8,6 +8,7 @@ Run from the repo root (or via `make test-py`):
 import array
 import gc
 import json
+import os
 import re
 import unittest
 from datetime import datetime
@@ -930,6 +931,166 @@ class TestHeatmap(unittest.TestCase):
             Chart.heatmap(self.MATRIX, width=2.5)
         with self.assertRaises(ValueError):
             Chart.heatmap([])
+
+
+class TestBoxplot(unittest.TestCase):
+    """Box plot rendering (Chart.boxplot) — one nearest-rank five-number
+    summary per category (min, Q1, median, Q3, max over sorted samples),
+    drawn as a vertical box with whiskers."""
+
+    SERIES = [("A", [1, 4, 2, 5, 3]), ("B", [1, 2, 3, 4, 5, 6, 7, 8, 9])]
+
+    # Reference reimplementation of the renderer's per-category geometry.
+    # It recomputes the nearest-rank quartiles and the sub-pixel row each
+    # summary value maps to, so the KEY quartile test below can assert the
+    # C output actually places the hand-computed quartiles on the expected
+    # rows rather than hardcoding a magic string.
+    @staticmethod
+    def _summary(cells):
+        s = sorted(cells)
+        n = len(s)
+        idx = n - 1
+        return (s[0], s[idx // 4], s[idx // 2], s[(idx * 3) // 4], s[-1])
+
+    @staticmethod
+    def _rows(lo, q1, md, q3, hi, gmin, gmax, height):
+        ph = height * 8
+
+        def lvl(v):
+            if gmax == gmin:
+                return ph // 2
+            r = (v - gmin) / (gmax - gmin)
+            l = int(r * (ph - 1))
+            return max(0, min(ph - 1, l))
+
+        return tuple(x // 8 for x in
+                     (lvl(lo), lvl(q1), lvl(md), lvl(q3), lvl(hi)))
+
+    def test_box_returns_string(self):
+        out = Chart.boxplot(self.SERIES)
+        self.assertIsInstance(out, str)
+        self.assertGreater(len(out), 0)
+        self.assertIn("\n", out)
+
+    def test_box_uses_full_blocks(self):
+        out = Chart.boxplot(self.SERIES)
+        self.assertIn("█", out, "box body should use full-block cells")
+        self.assertIn("│", out, "whiskers should use vertical line cells")
+
+    def test_box_is_deterministic(self):
+        self.assertEqual(Chart.boxplot(self.SERIES),
+                         Chart.boxplot(self.SERIES))
+
+    def test_box_nearest_rank_quartiles_odd_count(self):
+        # THE correctness test. 9 samples (odd count) drawn width=1 plain:
+        # nearest-rank on the sorted samples 1..9 gives min=1 (idx0),
+        # Q1=3 (idx floor(8/4)=2), median=5 (idx 8/2=4), Q3=7 (idx 8*3/4=6),
+        # max=9 (idx8). The renderer must place these on the exact cell rows
+        # a nearest-rank summary implies, proven byte-for-byte against a
+        # hand-computed reference (gmin=1, gmax=9, height=8, 64 sub-pixels).
+        data = [("Odd", [1, 2, 3, 4, 5, 6, 7, 8, 9])]
+        self.assertEqual(self._summary([1, 2, 3, 4, 5, 6, 7, 8, 9]),
+                         (1, 3, 5, 7, 9))
+        lo, q1, md, q3, hi = self._rows(1, 3, 5, 7, 9, 1, 9, 8)
+        self.assertEqual((lo, q1, md, q3, hi), (0, 1, 3, 5, 7))
+        out = Chart.boxplot(data, width=1, height=8, plain=True)
+        rows = out.strip("\n").split("\n")
+        self.assertEqual(len(rows), 8)
+        # Row index y is counted from the TOP in the printed string but from
+        # the BOTTOM in the renderer, so printed row k = renderer row 7-k.
+        render_row = lambda k: 7 - k
+        for printed_k in range(8):
+            rr = render_row(printed_k)
+            in_box = q1 <= rr <= q3
+            in_whisker = lo <= rr <= hi
+            if in_box:
+                self.assertIn("█", rows[printed_k],
+                              "box body row %d should be a full block" % rr)
+                if rr in (q1, q3):
+                    # box edges may be a partial lower-eighth block, still a
+                    # block character (█..▁), never a bare whisker line.
+                    self.assertNotEqual(rows[printed_k].strip(), "│")
+            elif in_whisker:
+                self.assertEqual(rows[printed_k].strip(), "│")
+            else:
+                self.assertEqual(rows[printed_k].strip(), "")
+        # Byte-for-byte against the committed conformance golden proves the
+        # nearest-rank mapping end-to-end (index quartiles -> cell rows).
+        with open(
+                os.path.join(os.path.dirname(__file__), "..",
+                             "conformance", "golden", "box_odd.txt")) as fh:
+            self.assertEqual(out, fh.read())
+
+    def test_box_accepts_dict_series(self):
+        as_dicts = [{"name": "A", "samples": [1, 2, 3]}]
+        self.assertEqual(Chart.boxplot(as_dicts),
+                         Chart.boxplot([("A", [1, 2, 3])]))
+
+    def test_box_show_prices_adds_margin(self):
+        plain = Chart.boxplot(self.SERIES, plain=True)
+        priced = Chart.boxplot(self.SERIES, plain=True, show_prices=True)
+        self.assertNotEqual(plain, priced)
+        self.assertEqual(len(priced.strip("\n").split("\n")),
+                         len(plain.strip("\n").split("\n")))
+        # Value axis prints the global max (9) and min (1) as 8-char margins.
+        self.assertRegex(priced.strip("\n").split("\n")[0], r"\b9\b")
+        self.assertRegex(priced.strip("\n").split("\n")[-1], r"\b1\b")
+
+    def test_box_wide_more_columns_than_categories(self):
+        out = Chart.boxplot(self.SERIES, width=20, height=3)
+        stripped = re.sub(r"\x1b\[[0-9;]*m", "",
+                          out.strip("\n").split("\n")[0])
+        self.assertEqual(len(stripped), 20)
+
+    def test_box_narrow_fewer_columns_than_categories(self):
+        # width < cat_count folds categories into columns; the first
+        # category of each column's long-arithmetic span is drawn.
+        out = Chart.boxplot(self.SERIES, width=1, height=3)
+        stripped = re.sub(r"\x1b\[[0-9;]*m", "",
+                          out.strip("\n").split("\n")[0])
+        self.assertEqual(len(stripped), 1)
+
+    def test_box_single_category(self):
+        out = Chart.boxplot([("Only", [1, 2, 3, 4, 5, 6, 7, 8, 9])],
+                            width=4, height=8)
+        self.assertGreater(len(out), 0)
+        self.assertIn("█", out)
+
+    def test_box_custom_colors(self):
+        plain = Chart.boxplot(self.SERIES, plain=True)
+        colored = Chart.boxplot(
+            self.SERIES,
+            color="\x1b[31m", area_color="\x1b[34m", bg_color="\x1b[40m")
+        self.assertNotEqual(plain, colored)
+        self.assertIn("\x1b[31m", colored)
+        self.assertIn("\x1b[34m", colored)
+
+    def test_box_non_finite_raises(self):
+        for bad in (float("nan"), float("inf"), float("-inf")):
+            with self.assertRaises(ValueError):
+                Chart.boxplot([("A", [1, bad]), ("B", [2, 3])])
+
+    def test_box_empty_samples_raises(self):
+        with self.assertRaises(ValueError):
+            Chart.boxplot([("A", [])])
+        with self.assertRaises(ValueError):
+            Chart.boxplot([("A", [1, 2]), ("B", [])])
+
+    def test_box_empty_series_raises(self):
+        with self.assertRaises(ValueError):
+            Chart.boxplot([])
+
+    def test_box_dimension_validation(self):
+        with self.assertRaises(ValueError):
+            Chart.boxplot(self.SERIES, width=0)
+        with self.assertRaises(ValueError):
+            Chart.boxplot(self.SERIES, height=-1)
+        with self.assertRaises(TypeError):
+            Chart.boxplot(self.SERIES, width=2.5)
+
+    def test_box_plain_has_no_escapes(self):
+        out = Chart.boxplot(self.SERIES, plain=True)
+        self.assertNotIn("\x1b", out)
 
 
 if __name__ == "__main__":

@@ -134,3 +134,30 @@ test("pie renders a disk, a donut, and the empty string for zero values", () => 
   assert.throws(() => Chart.pie([], {}),
     (err) => err instanceof CchartsError && err.code === 1);
 });
+
+test("boxplot renders boxes and wires options", () => {
+  const series = [
+    { name: "A", samples: [1, 4, 2, 5, 3] },
+    { name: "B", samples: [1, 2, 3, 4, 5, 6, 7, 8, 9] },
+  ];
+  const base = Chart.boxplot(series, { width: 10, height: 8 });
+  assert.ok(base.includes("█"), "box glyphs present");
+  assert.equal(base.trimEnd().split("\n").length, 8);
+
+  const priced = Chart.boxplot(series, { width: 10, height: 8, showPrices: true });
+  assert.notEqual(base, priced, "showPrices must take effect");
+
+  const colored = Chart.boxplot(series, {
+    width: 10, height: 8, riseColor: Color.blue, areaColor: Color.brightBlack,
+  });
+  assert.notEqual(base, colored, "rise/area colors must take effect");
+  assert.ok(colored.includes(Color.blue));
+
+  const plain = Chart.boxplot(series, { width: 10, height: 8, plain: true });
+  assert.ok(!plain.includes("\x1b"), "plain must override every color");
+
+  assert.throws(() => Chart.boxplot([{ name: "A", samples: [1] }, { name: "B", samples: [NaN] }], {}),
+    (err) => err instanceof CchartsError && err.code === 4);
+  assert.throws(() => Chart.boxplot([{ name: "A", samples: [] }], {}),
+    (err) => err instanceof CchartsError && err.code === 1);
+});

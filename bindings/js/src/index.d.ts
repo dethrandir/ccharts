@@ -244,6 +244,34 @@ export interface HeatOptions {
    */
   plain?: boolean;
 }
+
+/** One category of a box plot: a name and that category's samples. */
+export interface BoxCategory {
+  /** Category name (the core does not print it; kept for the binding API). */
+  name?: string | null;
+  /** This category's sample values; every category may have its own length. */
+  samples: ArrayLike<number>;
+}
+
+/** Options accepted by {@link Chart.boxplot}. */
+export interface BoxOptions {
+  /** Chart width in cells. Default 60. */
+  width?: number;
+  /** Chart height in cells. Default 8. */
+  height?: number;
+  /** ANSI escape for the box and median line. Default green. */
+  riseColor?: string;
+  /** ANSI escape for the whiskers. Default: same as {@link riseColor}. */
+  areaColor?: string;
+  /** ANSI escape filling the empty cells above/below a box. Default: the terminal background. */
+  backgroundColor?: string;
+  /** Print the global max/min value labels in a left margin. Default false. */
+  showPrices?: boolean;
+  /**
+   * Render with no ANSI escapes at all, overriding every color. Default false.
+   */
+  plain?: boolean;
+}
 export class CchartsError extends Error {
   /** The ccharts_status code: 1 invalid argument, 2 parse, 3 out of memory, 4 non-finite, 5 dimensions. */
   readonly code: number;

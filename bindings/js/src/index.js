@@ -193,6 +193,10 @@ const STACK_SERIES_BYTES = 8;
 const STACK_SETTINGS_BYTES = 28;
 // ccharts_heat_settings: six 32-bit pointers then one int32. 4*6+4 = 28.
 const HEAT_SETTINGS_BYTES = 28;
+// ccharts_box_category: name pointer, samples pointer, int32 n. 4+4+4 = 12.
+const BOX_CATEGORY_BYTES = 12;
+// ccharts_box_settings: three 32-bit pointers then one int32. 4*3+4 = 16.
+const BOX_SETTINGS_BYTES = 16;
 const PTR_BYTES = 4;
 
 /**
@@ -832,6 +836,90 @@ export class Chart {
       lenPtr = malloc(4);
       const status = exports.ccharts_heat(
         valuesPtr, rows, cols, width, height, settings, outPtr, lenPtr);
+      if (status !== STATUS.OK) throw fail(status);
+
+      const dv2 = view();
+      const chartPtr = dv2.getUint32(outPtr, true);
+      const length = dv2.getUint32(lenPtr, true);
+      try {
+        return decoder.decode(u8().subarray(chartPtr, chartPtr + length));
+      } finally {
+        exports.ccharts_string_free(chartPtr);
+      }
+    } finally {
+      for (const ptr of owned) exports.free(ptr);
+      if (outPtr) exports.free(outPtr);
+      if (lenPtr) exports.free(lenPtr);
+    }
+  }
+
+  /**
+   * Renders a box plot of per-category samples into a width x height grid.
+   * Each category carries its own (possibly ragged) samples array; the C core
+   * computes a nearest-rank five-number summary per category and draws each
+   * box and its whiskers over the global min/max span, so this passes raw
+   * samples and settings only. A box plot has no OHLC dataset, so this is a
+   * static method taking the categories directly.
+   *
+   * @param {Array<{name?: string|null, samples: ArrayLike<number>}>} series
+   * @param {BoxOptions} [options]
+   * @returns {string}
+   */
+  static boxplot(series, options = {}) {
+    const {
+      width = 60, height = 8,
+      riseColor, areaColor, backgroundColor,
+      showPrices = false, plain = false,
+    } = options;
+
+    if (!Array.isArray(series) || series.length === 0) {
+      throw new CchartsError(STATUS.INVALID_ARGUMENT, "need at least one category");
+    }
+    for (const cat of series) {
+      if (!cat.samples || cat.samples.length === 0) {
+        throw new CchartsError(STATUS.INVALID_ARGUMENT,
+          "every category must have at least one sample");
+      }
+    }
+    if (!Number.isInteger(width) || !Number.isInteger(height)) {
+      throw new CchartsError(STATUS.DIMENSIONS, "width and height must be integers");
+    }
+
+    const owned = [];
+    let catsPtr = 0;
+    let settings = 0;
+    let outPtr = 0;
+    let lenPtr = 0;
+    try {
+      catsPtr = malloc(series.length * BOX_CATEGORY_BYTES);
+      owned.push(catsPtr);
+      const dv = view();
+      for (let i = 0; i < series.length; i++) {
+        const empty = series[i].name === undefined || series[i].name === null;
+        const name = empty ? 0 : writeCString(String(series[i].name));
+        if (name) owned.push(name);
+        dv.setUint32(catsPtr + i * BOX_CATEGORY_BYTES, name, true);
+
+        const samples = series[i].samples;
+        const sp = malloc(samples.length * 8);
+        owned.push(sp);
+        new Float64Array(exports.memory.buffer, sp, samples.length).set(
+          samples instanceof Float64Array ? samples : Float64Array.from(samples, Number));
+        dv.setUint32(catsPtr + i * BOX_CATEGORY_BYTES + 4, sp, true);
+        dv.setInt32(catsPtr + i * BOX_CATEGORY_BYTES + 8, samples.length, true);
+      }
+
+      settings = malloc(BOX_SETTINGS_BYTES);
+      owned.push(settings);
+      dv.setUint32(settings, colorPtr(owned, plain, riseColor), true);
+      dv.setUint32(settings + 4, colorPtr(owned, plain, areaColor), true);
+      dv.setUint32(settings + 8, colorPtr(owned, plain, backgroundColor), true);
+      dv.setInt32(settings + 12, showPrices ? 1 : 0, true);
+
+      outPtr = malloc(4);
+      lenPtr = malloc(4);
+      const status = exports.ccharts_box(
+        catsPtr, series.length, width, height, settings, outPtr, lenPtr);
       if (status !== STATUS.OK) throw fail(status);
 
       const dv2 = view();

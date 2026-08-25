@@ -749,6 +749,119 @@ public sealed class Chart : IDisposable
         }
     }
 
+    /// <summary>
+    /// Renders a box plot of the given categories into a <paramref name="width"/>
+    /// x <paramref name="height"/> grid. Each category carries its own (possibly
+    /// ragged) samples array; the C core computes a nearest-rank five-number
+    /// summary per category and draws each box and its whiskers over the global
+    /// min/max span, so the binding passes raw samples and settings only. A box
+    /// plot has no OHLC dataset, so this is a static method taking the
+    /// categories directly.
+    /// </summary>
+    /// <param name="series">The categories: a name and that category's samples.</param>
+    /// <param name="width">Chart width in cells.</param>
+    /// <param name="height">Chart height in cells.</param>
+    /// <param name="options">Box options, or <c>null</c> for the defaults.</param>
+    /// <returns>The chart as a printable string.</returns>
+    /// <exception cref="CchartsException">
+    /// The categories were empty or held no samples, a sample was NaN/infinity,
+    /// or the dimensions were out of range.
+    /// </exception>
+    public static string Boxplot(IReadOnlyList<BoxCategory> series,
+        int width, int height, BoxOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(series);
+        NativeLibraryResolver.EnsureInstalled();
+
+        options ??= new BoxOptions();
+        if (series.Count == 0)
+        {
+            throw new CchartsException(CchartsStatus.InvalidArgument,
+                "need at least one category");
+        }
+        foreach (var cat in series)
+        {
+            if (cat.Samples.Count == 0)
+            {
+                throw new CchartsException(CchartsStatus.InvalidArgument,
+                    "every category must have at least one sample");
+            }
+        }
+
+        var native = new NativeBoxCategory[series.Count];
+        var namePtrs = new IntPtr[series.Count];
+        var samplesHandles = new GCHandle[series.Count];
+        var colorPtrs = new List<IntPtr>();
+        try
+        {
+            for (var i = 0; i < series.Count; i++)
+            {
+                namePtrs[i] = series[i].Name is null
+                    ? IntPtr.Zero
+                    : Marshal.StringToCoTaskMemUTF8(series[i].Name);
+                var samples = series[i].Samples.ToArray();
+                samplesHandles[i] = GCHandle.Alloc(samples, GCHandleType.Pinned);
+                native[i] = new NativeBoxCategory
+                {
+                    Name = namePtrs[i],
+                    Samples = samplesHandles[i].AddrOfPinnedObject(),
+                    N = samples.Length,
+                };
+            }
+
+            // An empty C string means "emit no escape at all", which is
+            // different from a null pointer (use the default color).
+            IntPtr ColorFor(string? color)
+            {
+                var ptr = options.Plain ? Empty() : Utf8(color);
+                if (ptr != IntPtr.Zero) colorPtrs.Add(ptr);
+                return ptr;
+            }
+
+            var settings = new NativeBoxSettings
+            {
+                RiseColor = ColorFor(options.RiseColor),
+                AreaColor = ColorFor(options.AreaColor),
+                BackgroundColor = ColorFor(options.BackgroundColor),
+                ShowPrices = options.ShowPrices ? 1 : 0,
+            };
+
+            var status = NativeMethods.Box(native, series.Count, width, height,
+                in settings, out var chart, out var length);
+            CchartsException.ThrowIfError(status);
+
+            try
+            {
+                return Marshal.PtrToStringUTF8(chart, checked((int)length)) ?? string.Empty;
+            }
+            finally
+            {
+                NativeMethods.StringFree(chart);
+            }
+        }
+        finally
+        {
+            foreach (var handle in samplesHandles)
+            {
+                if (handle.IsAllocated)
+                {
+                    handle.Free();
+                }
+            }
+            foreach (var namePtr in namePtrs)
+            {
+                if (namePtr != IntPtr.Zero)
+                {
+                    Marshal.FreeCoTaskMem(namePtr);
+                }
+            }
+            foreach (var ptr in colorPtrs)
+            {
+                if (ptr != IntPtr.Zero) Marshal.FreeCoTaskMem(ptr);
+            }
+        }
+    }
+
     /// <summary>Version of the underlying C library.</summary>
     public static string Version
     {

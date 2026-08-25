@@ -415,6 +415,52 @@ CCHARTS_API int32_t ccharts_heat(const double* values, int32_t rows,
                                  const ccharts_heat_settings* settings,
                                  char** out, size_t* out_len);
 
+/* ------------------------------- Box plot ------------------------------- */
+
+/* One box-plot category: a name (may be NULL/empty; the core does not print
+ * it — bindings may add their own footer) and its `samples` array of `n`
+ * values. A category with n <= 0 or a NULL samples array is a marshalling
+ * error (the renderer cannot build a five-number summary from no samples).
+ * Mirrors cc_box_category_t in ccharts.h (the two structs stay separate:
+ * the header channels are internally linked, this one is the FFI surface,
+ * and layout is documented here rather than shared). */
+typedef struct ccharts_box_category {
+    const char* name;
+    const double* samples;
+    int32_t n;
+} ccharts_box_category;
+
+/* Box plot rendering options. Mirrors cc_box_settings_t in ccharts.h.
+ * `rise_color` is the ANSI color for the box and median (default green);
+ * `area_color` for the whiskers (NULL/empty = share rise_color); `bg_color`
+ * for the empty cells above/below each box (NULL = none); `show_prices`
+ * prepends an 8-column value axis with the global max on the top row and the
+ * global min on the bottom row. All fields are pointers or plain ints, so a
+ * partial {0} initializer means the same as NULL (no sentinel ambiguity). */
+typedef struct ccharts_box_settings {
+    const char* rise_color;
+    const char* area_color;
+    const char* bg_color;
+    int32_t show_prices;
+} ccharts_box_settings;
+
+/* Renders a box plot of `cat_count` categories into a `width` x `height`
+ * grid. Each category's samples yield a nearest-rank five-number summary
+ * (min, Q1, median, Q3, max); every box, its whiskers and its median are
+ * placed on 8-sub-pixel rows over the global min/max value span (the exact
+ * quartile and glyph conventions are documented in cc_box_create in
+ * ccharts.h). Same contract as ccharts_line: CCHARTS_OK with *out
+ * (NUL-terminated UTF-8, release with ccharts_string_free) on success,
+ * CCHARTS_ERR_INVALID_ARG for NULL cats / cat_count <= 0 / any category with
+ * NULL samples or n <= 0 / NULL out, CCHARTS_ERR_NON_FINITE for NaN/inf
+ * samples, CCHARTS_ERR_DIMENSIONS for width/height outside cc_dim_ok,
+ * CCHARTS_ERR_NOMEM on allocation failure. On error *out is set to NULL. */
+CCHARTS_API int32_t ccharts_box(const ccharts_box_category* cats,
+                                int32_t cat_count,
+                                int32_t width, int32_t height,
+                                const ccharts_box_settings* settings,
+                                char** out, size_t* out_len);
+
 /* ---------------------------- Introspection ---------------------------- */
 
 /* ANSI escape for a ccharts_color_index, or NULL when out of range. */

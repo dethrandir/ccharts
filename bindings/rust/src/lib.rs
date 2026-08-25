@@ -867,6 +867,88 @@ impl Default for HeatOptions {
     }
 }
 
+/// Options for [`Chart::boxplot`]. Every field is optional; unset ones take
+/// the library defaults (green box/median, whiskers sharing the box color, no
+/// background, no value axis). Each category's samples are summarized in the C
+/// core with nearest-rank quartiles — the binding passes raw per-category
+/// samples and settings only.
+#[derive(Debug, Clone)]
+pub struct BoxOptions {
+    rise: Option<ColorSpec>,
+    area: Option<ColorSpec>,
+    background: Option<ColorSpec>,
+    show_prices: bool,
+    plain: bool,
+}
+
+impl BoxOptions {
+    /// Options with every field at its default.
+    pub fn new() -> Self {
+        Self {
+            rise: None,
+            area: None,
+            background: None,
+            show_prices: false,
+            plain: false,
+        }
+    }
+
+    color_setter!(
+        rise,
+        rise_ansi,
+        rise,
+        "Color for the box and median line."
+    );
+    color_setter!(
+        area,
+        area_ansi,
+        area,
+        "Color for the whiskers (defaults to the box color when unset)."
+    );
+    color_setter!(
+        background,
+        background_ansi,
+        background,
+        "Background color of the empty cells above/below a box."
+    );
+
+    /// Print the global max/min value labels in a left margin.
+    pub fn show_prices(mut self, yes: bool) -> Self {
+        self.show_prices = yes;
+        self
+    }
+
+    /// Render with no ANSI escapes at all, overriding every color.
+    pub fn plain(mut self, yes: bool) -> Self {
+        self.plain = yes;
+        self
+    }
+
+    fn to_raw(&self) -> ffi::ccharts_box_settings {
+        const EMPTY: &[u8] = b"\0";
+        let plain = EMPTY.as_ptr() as *const c_char;
+        let ptr = |spec: &Option<ColorSpec>| -> *const c_char {
+            if self.plain {
+                plain
+            } else {
+                spec.as_ref().map_or(std::ptr::null(), ColorSpec::as_ptr)
+            }
+        };
+        ffi::ccharts_box_settings {
+            rise_color: ptr(&self.rise),
+            area_color: ptr(&self.area),
+            bg_color: ptr(&self.background),
+            show_prices: self.show_prices as i32,
+        }
+    }
+}
+
+impl Default for BoxOptions {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// A parsed OHLC dataset that can be rendered as a line or candle chart.
 pub struct Chart {
     handle: NonNull<ffi::ccharts_data>,
@@ -1427,6 +1509,79 @@ impl Chart {
                 flat.as_ptr(),
                 rows,
                 col_count,
+                width,
+                height,
+                &settings,
+                &mut out,
+                &mut len,
+            )
+        };
+        if status != 0 {
+            return Err(Error::from_status(status));
+        }
+        // Safety: `out` is a library-owned buffer released by take_string.
+        unsafe { Self::take_string(out, len) }
+    }
+
+    /// Renders a box plot of `series` per-category samples into a `width` x
+    /// `height` grid. Each entry is a `(name, samples)` pair; every category
+    /// carries its own (possibly ragged) `samples` array. The C core computes
+    /// a nearest-rank five-number summary per category and draws each box and
+    /// its whiskers over the global min/max span, so the binding passes raw
+    /// samples and settings only.
+    ///
+    /// A box plot has no OHLC data, so (like [`Chart::heatmap`]) this is an
+    /// associated function. `options.show_prices` prints the global max/min in
+    /// a left margin, and NaN/inf samples are rejected with
+    /// [`Error::NonFinite`].
+    pub fn boxplot(
+        series: &[(&str, &[f64])],
+        width: u32,
+        height: u32,
+        options: &BoxOptions,
+    ) -> Result<String> {
+        if series.is_empty() {
+            return Err(Error::InvalidArgument("need at least one category"));
+        }
+        if series.iter().any(|(_, samples)| samples.is_empty()) {
+            return Err(Error::InvalidArgument(
+                "every category must have at least one sample",
+            ));
+        }
+        let cat_count = i32::try_from(series.len())
+            .map_err(|_| Error::InvalidArgument("too many categories"))?;
+        let (width, height) = match (i32::try_from(width), i32::try_from(height)) {
+            (Ok(w), Ok(h)) => (w, h),
+            _ => return Err(Error::Dimensions),
+        };
+
+        // The category names (CStrings), the sample slices (through the
+        // pointer in each raw category) and the settings must outlive the
+        // call: the C layer copies the category structs immediately but reads
+        // most of them through the pointers.
+        let mut names: Vec<CString> = Vec::with_capacity(series.len());
+        let mut raw: Vec<ffi::ccharts_box_category> = Vec::with_capacity(series.len());
+        for (name, samples) in series {
+            let cstr = CString::new(*name).map_err(|_| Error::InteriorNul)?;
+            raw.push(ffi::ccharts_box_category {
+                name: cstr.as_ptr(),
+                samples: samples.as_ptr(),
+                n: i32::try_from(samples.len())
+                    .map_err(|_| Error::InvalidArgument("too many samples"))?,
+            });
+            names.push(cstr);
+        }
+
+        let settings = options.to_raw();
+        let mut out: *mut c_char = std::ptr::null_mut();
+        let mut len: usize = 0;
+        // Safety: every pointer in `raw` and the settings live across the
+        // call, the C layer copies the category structs immediately, and `out`
+        // receives an owned string we release below.
+        let status = unsafe {
+            ffi::ccharts_box(
+                raw.as_ptr(),
+                cat_count,
                 width,
                 height,
                 &settings,

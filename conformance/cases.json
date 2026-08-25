@@ -1430,6 +1430,110 @@
         "show_labels": false,
         "plain": false
       }
+    },
+    {
+      "name": "box_default",
+      "chart": "box",
+      "width": 60,
+      "height": 8,
+      "categories": [
+        {"name": "A", "samples": [1, 4, 2, 5, 3]},
+        {"name": "B", "samples": [1, 2, 3, 4, 5, 6, 7, 8, 9]},
+        {"name": "C", "samples": [8, 4, 12]}
+      ],
+      "settings": {
+        "rise_color": null,
+        "area_color": null,
+        "bg_color": null,
+        "show_prices": false,
+        "plain": false
+      }
+    },
+    {
+      "name": "box_prices",
+      "chart": "box",
+      "width": 60,
+      "height": 8,
+      "categories": [
+        {"name": "A", "samples": [1, 4, 2, 5, 3]},
+        {"name": "B", "samples": [1, 2, 3, 4, 5, 6, 7, 8, 9]},
+        {"name": "C", "samples": [8, 4, 12]}
+      ],
+      "settings": {
+        "rise_color": null,
+        "area_color": null,
+        "bg_color": null,
+        "show_prices": true,
+        "plain": false
+      }
+    },
+    {
+      "name": "box_wide",
+      "chart": "box",
+      "width": 30,
+      "height": 8,
+      "categories": [
+        {"name": "A", "samples": [1, 4, 2, 5, 3]},
+        {"name": "B", "samples": [1, 2, 3, 4, 5, 6, 7, 8, 9]},
+        {"name": "C", "samples": [8, 4, 12]}
+      ],
+      "settings": {
+        "rise_color": "blue",
+        "area_color": "bright_black",
+        "bg_color": null,
+        "show_prices": false,
+        "plain": false
+      }
+    },
+    {
+      "name": "box_narrow",
+      "chart": "box",
+      "width": 2,
+      "height": 8,
+      "categories": [
+        {"name": "A", "samples": [1, 4, 2, 5, 3]},
+        {"name": "B", "samples": [1, 2, 3, 4, 5, 6, 7, 8, 9]},
+        {"name": "C", "samples": [8, 4, 12]}
+      ],
+      "settings": {
+        "rise_color": null,
+        "area_color": null,
+        "bg_color": null,
+        "show_prices": false,
+        "plain": false
+      }
+    },
+    {
+      "name": "box_single",
+      "chart": "box",
+      "width": 4,
+      "height": 8,
+      "categories": [
+        {"name": "Only", "samples": [1, 2, 3, 4, 5, 6, 7, 8, 9]}
+      ],
+      "settings": {
+        "rise_color": null,
+        "area_color": null,
+        "bg_color": "bright_black",
+        "show_prices": false,
+        "plain": false
+      }
+    },
+    {
+      "name": "box_odd",
+      "chart": "box",
+      "width": 1,
+      "height": 8,
+      "categories": [
+        {"name": "Odd", "samples": [1, 2, 3, 4, 5, 6, 7, 8, 9]}
+      ],
+      "settings": {
+        "rise_color": null,
+        "area_color": null,
+        "bg_color": null,
+        "show_prices": false,
+        "plain": true
+      }
     }
   ]
 }

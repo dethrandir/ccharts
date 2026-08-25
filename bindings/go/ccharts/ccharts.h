@@ -609,6 +609,108 @@ CC_INLINE char* cc_heat_create(const double* values, int rows, int cols,
                                int width, int height,
                                const cc_heat_settings_t* settings);
 
+/* ================================ Box plot ===============================
+ * A box plot draws a distribution per category: for each category its
+ * samples' five-number summary [min, Q1, median, Q3, max] is rendered as a
+ * vertical box (the Q1..Q3 interquartile region) with whiskers (the
+ * min..max span) and the median drawn as a solid line. The statistics are
+ * computed deterministically by the renderer from the raw samples (see the
+ * nearest-rank convention in cc_box_create), so every binding reproduces
+ * the same bytes for the same samples. There is no OHLC data — the input is
+ * one array of samples per category. */
+
+/* One category: a label (may be NULL/empty; labels are not printed by the
+ * core — they exist for bindings' own footers) and its `samples` array of
+ * `n` values. A category with n <= 0 or a NULL samples array makes the
+ * WHOLE chart empty, because a box has no well-defined five-number summary
+ * without any samples. */
+typedef struct cc_box_category {
+    const char* name;
+    const double* samples;
+    int n;
+} cc_box_category_t;
+
+/* Box plot rendering options. Unspecified fields fall back to defaults:
+ *   - rise_color : ANSI color for the box (Q1..Q3) and the median line
+ *                  (default green)
+ *   - area_color : ANSI color for the whiskers (the vertical min..max line);
+ *                  the empty string or NULL means the whiskers share
+ *                  rise_color (the default)
+ *   - bg_color   : color of the empty cells above/below each box, or NULL
+ *                  for none
+ *   - show_prices: 1 = prepend an 8-column value axis with the global max
+ *                  on the top row and the global min on the bottom row
+ * All fields are pointers or plain ints, so a partial {0} brace initializer
+ * gets exactly the same defaults as NULL (no double sentinels, so there is
+ * no brace-init ambiguity — unlike the histogram's NaN window fields). */
+typedef struct cc_box_settings {
+    const char* rise_color;
+    const char* area_color;
+    const char* bg_color;
+    int show_prices;
+} cc_box_settings_t;
+
+/* Renders a box plot of `cat_count` categories into a `width` x `height`
+ * grid and returns a malloc'd string (caller frees).
+ *
+ * QUARTILE CONVENTION (nearest-rank). For each category's n sorted samples
+ * s[0..n-1]:
+ *     min    = s[0]
+ *     Q1     = s[floor((n-1) * 0.25)]
+ *     median = s[floor((n-1) * 0.50)]
+ *     Q3     = s[floor((n-1) * 0.75)]
+ *     max    = s[n-1]
+ * This is the nearest-rank method: a quartile is the value of the element
+ * at the rounded-down rank, with no interpolation between elements. For
+ * n == 1 all five collapse to the single sample.
+ *
+ * VALUE AXIS. The global minimum and maximum across every category's samples
+ * define the value span. Each value v maps to a sub-pixel row — there are 8
+ * sub-pixels per cell, height * 8 total — by
+ *     level(v) = (gmax == gmin) ? (pixel_height / 2)
+ *                                : floor((v - gmin) / (gmax - gmin) *
+ *                                        (pixel_height - 1))
+ * so the global min sits on the bottom sub-pixel (row 0) and the global max
+ * on the top sub-pixel (row pixel_height - 1). Cell row r (from the bottom)
+ * is level/8.
+ *
+ * COLUMN MAPPING. Output column w (0..width-1) draws the single category
+ *     cs = floor(w * cat_count / width)
+ * — the FIRST category in that column's long-arithmetic span. When
+ * width >= cat_count a category whose span covers several columns is drawn
+ * in each of them (repeated); when width < cat_count some categories are
+ * skipped so every column still maps to exactly one category, always
+ * deterministically.
+ *
+ * GLYPH MAPPING (per column, bottom row 0 .. top row height-1). Let lo =
+ * level(min)/8, q1 = level(Q1)/8, md = level(median)/8, q3 = level(Q3)/8,
+ * hi = level(max)/8 and LQ1 = level(Q1), LQ3 = level(Q3). A cell row r is
+ * drawn with the first matching rule:
+ *   1. Median line  (r == md):                 full block `█` in rise_color
+ *      — always the full block, even when the median aliases the Q3 top
+ *      edge, so the median is a solid horizontal line (the emphasis)
+ *   2. Box interior (q1 < r < q3):             full block `█` in rise_color
+ *   3. Box top edge (r == q3):                 `cc_lower_eighth(h)` in
+ *      rise_color, h = (LQ3 % 8) + 1 — the Q3 sub-pixel, so the top edge is
+ *      sub-pixel precise (h == 8 renders a full block)
+ *   4. Box bottom edge (r == q1, q1 < q3):     full block `█` in rise_color
+ *      — the Q1 sub-pixel floor rounds down to a full cell; when q1 == q3
+ *      (box within one row) it is `cc_lower_eighth(LQ3 - LQ1 + 1)`
+ *   5. Whisker       (lo <= r <= hi, not a box row): vertical `│`
+ *      (CC_LINE_VERTICAL) in area_color (default rise_color)
+ *   6. Background:                             space, or bg_color
+ * Partial top edges reuse cc_lower_eighth; the whiskers reach from the
+ * global-min row to the global-max row.
+ *
+ * Returns a malloc'd string (caller frees); NULL cats, cat_count <= 0, any
+ * category with n <= 0 / NULL samples, or invalid dimensions yield an empty
+ * string. Scratch buffers are heap-allocated (no VLAs) and freed on every
+ * path. NaN/inf samples are rejected upstream (wrapper/ABI), so this header
+ * stays free of C99-only isfinite. */
+CC_INLINE char* cc_box_create(const cc_box_category_t* cats, int cat_count,
+                              int width, int height,
+                              const cc_box_settings_t* settings);
+
 #ifdef __cplusplus
 }
 #endif
@@ -2765,6 +2867,211 @@ CC_INLINE char* cc_heat_create(const double* values, int rows, int cols,
         *w++ = '\n';
     }
     *w = '\0';
+    free(columns);
+    return chart;
+}
+
+/* ------------------------------- Box renderer ----------------------------
+ * A box plot draws one five-number summary per category. The five values are
+ * computed by nearest-rank (see cc_box_create's documented convention) from
+ * a sorted copy of each category's samples; the global min/max across every
+ * category span the value axis, and each box, its whiskers and its median
+ * are placed at 8-sub-pixel rows. The horizontal placement and exact glyph
+ * mapping are fully specified in cc_box_create. All scratch buffers are
+ * heap-allocated (no VLAs) and freed on every path. */
+
+/* A category's five-number summary (computed by cc_box_summary). */
+typedef struct cc_box_five {
+    double lo;   /* min    */
+    double q1;   /* Q1     */
+    double md;   /* median */
+    double q3;   /* Q3     */
+    double hi;   /* max    */
+} cc_box_five;
+
+CC_INLINE int cc_box_cmp(const void* a, const void* b) {
+    double x = *(const double*)a;
+    double y = *(const double*)b;
+    return (x > y) - (x < y);
+}
+
+/* Sorts s[0..n-1] in place (the caller owns a copy) and returns the
+ * nearest-rank five-number summary. The rank indices use integer arithmetic
+ * so floor((n-1)*0.25) is exact: idx/4, idx/2, idx*3/4 for idx = n-1. */
+CC_INLINE cc_box_five cc_box_summary(double* s, int n) {
+    cc_box_five f;
+    long long idx = (long long)(n - 1);
+    int q1i = (int)(idx / 4);
+    int mdi = (int)(idx / 2);
+    int q3i = (int)((idx * 3) / 4);
+    qsort(s, (size_t)n, sizeof(double), cc_box_cmp);
+    f.lo = s[0];
+    f.q1 = s[q1i];
+    f.md = s[mdi];
+    f.q3 = s[q3i];
+    f.hi = s[n - 1];
+    return f;
+}
+
+/* Maps a value to a 0-based sub-pixel row (bottom 0 .. pixel_height - 1),
+ * scaling the full value span across the chart height. */
+CC_INLINE int cc_box_level(double v, double gmin, double gmax,
+                                  int pixel_height) {
+    if (gmax == gmin) return pixel_height / 2;
+    double r = (v - gmin) / (gmax - gmin);
+    int l = (int)(r * (pixel_height - 1));
+    if (l < 0) l = 0;
+    if (l >= pixel_height) l = pixel_height - 1;
+    return l;
+}
+
+/* Joins the per-cell strings (columns[(x*height + y)*32 .. +32), y counted
+ * from the bottom) into the final box-string, printing rows top-to-bottom.
+ * An optional 8-column value axis (show_prices: global max top, global min
+ * bottom) is prepended to every row. Allocates with a pointer cursor (no
+ * strcat re-scans); caller frees. */
+CC_INLINE char* cc_box_assemble(int width, int height, char* columns,
+                                       const cc_box_settings_t* s,
+                                       double gmin, double gmax) {
+    int margin = s->show_prices ? 8 : 0;
+    char max_label[16] = "";
+    char min_label[16] = "";
+    if (margin > 0) {
+        snprintf(max_label, sizeof(max_label), "%8.4g", gmax);
+        snprintf(min_label, sizeof(min_label), "%8.4g", gmin);
+    }
+    const int line_len = width + margin;
+    /* Bounded by CC_MAX_CELLS: width*height <= 1e6, so this is <= ~32 MB. */
+    size_t total_size = (size_t)line_len * (size_t)height * 32 + (size_t)height + 1;
+    char* chart = (char*)calloc(total_size, 1);
+    if (chart == NULL) return NULL;
+
+    char* w = chart;
+    for (int y = height - 1; y >= 0; y--) {
+        if (margin > 0) {
+            char mlabel[16] = "";
+            if (y == height - 1) snprintf(mlabel, sizeof(mlabel), "%8s", max_label);
+            else if (y == 0)     snprintf(mlabel, sizeof(mlabel), "%8s", min_label);
+            else { memset(mlabel, ' ', 8); mlabel[8] = '\0'; }
+            size_t ml = strlen(mlabel);
+            memcpy(w, mlabel, ml);
+            w += ml;
+        }
+        for (int x = 0; x < width; x++) {
+            const char* cell = columns + ((size_t)x * height + (size_t)y) * 32;
+            size_t cl = strlen(cell);
+            memcpy(w, cell, cl);
+            w += cl;
+        }
+        *w++ = '\n';
+    }
+    *w = '\0';
+    return chart;
+}
+
+CC_INLINE char* cc_box_create(const cc_box_category_t* cats, int cat_count,
+                              int width, int height,
+                              const cc_box_settings_t* settings) {
+    int i, w, r;
+    long long off = 0;
+    long long total = 0;
+    if (cats == NULL || cat_count <= 0 || !cc_dim_ok(width, height)) {
+        return (char*)calloc(1, sizeof(char));
+    }
+    /* A category with no samples has no well-defined five-number summary, so
+     * one empty category empties the whole chart. */
+    for (i = 0; i < cat_count; i++) {
+        if (cats[i].samples == NULL || cats[i].n <= 0) {
+            return (char*)calloc(1, sizeof(char));
+        }
+        total += cats[i].n;
+    }
+
+    cc_box_settings_t s;
+    /* All pointer/int fields: a partial {0} brace initializer matches NULL,
+     * so there is no sentinel ambiguity (unlike the histogram's doubles). */
+    s.rise_color = (settings && settings->rise_color) ? settings->rise_color
+                                                      : CC_COLOR_GREEN;
+    s.area_color = (settings && settings->area_color &&
+                    settings->area_color[0] != '\0')
+                   ? settings->area_color : s.rise_color;
+    s.bg_color   = settings ? settings->bg_color : NULL;
+    s.show_prices = settings ? settings->show_prices : 0;
+    if (s.show_prices < 0) s.show_prices = 0;
+
+    double* scratch = (double*)malloc((size_t)total * sizeof(double));
+    cc_box_five* fives = (cc_box_five*)malloc((size_t)cat_count * sizeof(cc_box_five));
+    char* columns = (char*)malloc((size_t)width * (size_t)height * 32);
+    if (scratch == NULL || fives == NULL || columns == NULL) {
+        free(scratch); free(fives); free(columns);
+        return NULL;
+    }
+
+    double gmin = 0.0, gmax = 0.0;
+    int have_minmax = 0;
+    for (i = 0; i < cat_count; i++) {
+        memcpy(scratch + off, cats[i].samples,
+               (size_t)cats[i].n * sizeof(double));
+        fives[i] = cc_box_summary(scratch + off, cats[i].n);
+        if (!have_minmax || fives[i].lo < gmin) gmin = fives[i].lo;
+        if (!have_minmax || fives[i].hi > gmax) gmax = fives[i].hi;
+        have_minmax = 1;
+        off += cats[i].n;
+    }
+
+    int pixel_height = height * 8;
+
+    for (w = 0; w < width; w++) {
+        int cs = (int)(((long long)w * cat_count) / width);
+        cc_box_five f = fives[cs];
+        int lo  = cc_box_level(f.lo, gmin, gmax, pixel_height) / 8;
+        int q1  = cc_box_level(f.q1, gmin, gmax, pixel_height) / 8;
+        int md  = cc_box_level(f.md, gmin, gmax, pixel_height) / 8;
+        int q3  = cc_box_level(f.q3, gmin, gmax, pixel_height) / 8;
+        int hi  = cc_box_level(f.hi, gmin, gmax, pixel_height) / 8;
+        int lq1 = cc_box_level(f.q1, gmin, gmax, pixel_height);
+        int lq3 = cc_box_level(f.q3, gmin, gmax, pixel_height);
+        const char* wc = s.area_color;
+        const char* bc = s.rise_color;
+        char* col = columns + (size_t)w * (size_t)height * 32;
+        const char* reset_b = cc_reset_for(bc, NULL);
+        const char* reset_w = cc_reset_for(wc, NULL);
+
+        for (r = 0; r < height; r++) {
+            char* cell = col + (size_t)r * 32;
+            int in_box = (q1 <= r && r <= q3);
+            int in_whisker = (lo <= r && r <= hi);
+            const char* boxglyph = CC_BLOCK_FULL;
+
+            if (in_box) {
+                /* Median (rule 1) is a solid full line even on a partial
+                 * top edge; interior (rule 2) is a full block. */
+                if (r == md) {
+                    boxglyph = CC_BLOCK_FULL;
+                } else if (r == q3 && q1 < q3) {
+                    /* top edge (rule 3): the Q3 sub-pixel, precise. */
+                    boxglyph = cc_lower_eighth((lq3 % 8) + 1);
+                } else if (r == q1 && q1 == q3) {
+                    /* single-row box (rule 4): Q1..Q3 height. */
+                    boxglyph = cc_lower_eighth(lq3 - lq1 + 1);
+                } else {
+                    boxglyph = CC_BLOCK_FULL;   /* bottom edge / interior */
+                }
+                snprintf(cell, 32, "%s%s%s", CC_S(bc), boxglyph, reset_b);
+            } else if (in_whisker) {
+                snprintf(cell, 32, "%s%s%s", CC_S(wc), CC_LINE_VERTICAL, reset_w);
+            } else if (s.bg_color != NULL) {
+                snprintf(cell, 32, "%s %s", s.bg_color,
+                         cc_reset_for(s.bg_color, NULL));
+            } else {
+                snprintf(cell, 32, " ");
+            }
+        }
+    }
+
+    char* chart = cc_box_assemble(width, height, columns, &s, gmin, gmax);
+    free(scratch);
+    free(fives);
     free(columns);
     return chart;
 }

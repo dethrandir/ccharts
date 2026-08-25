@@ -270,4 +270,44 @@ class ChartTest {
                 () -> Chart.sparkline(new double[] {Double.NaN, 1.0}, 24, 1));
         assertEquals(CchartsException.Status.NON_FINITE, bad.status());
     }
+
+    @Test
+    @DisplayName("boxplot draws boxes, passes colors/margins and rejects empty/NaN samples")
+    void boxplotRendersAndValidates() {
+        String[] names = {"A", "B"};
+        double[][] samples = {
+            {1, 4, 2, 5, 3},
+            {1, 2, 3, 4, 5, 6, 7, 8, 9},
+        };
+
+        String base = Chart.boxplot(names, samples, 10, 8);
+        assertTrue(base.contains("\u2588"), "box glyphs present");
+        assertEquals(8, base.strip().split("\n").length);
+
+        String priced = Chart.boxplot(names, samples, 10, 8, BoxplotOptions.builder()
+                .showPrices(true)
+                .build());
+        assertNotEquals(base, priced, "show_prices must take effect");
+
+        String colored = Chart.boxplot(names, samples, 10, 8, BoxplotOptions.builder()
+                .riseColor(Color.BLUE)
+                .areaColor(Color.BRIGHT_BLACK)
+                .build());
+        assertNotEquals(base, colored, "rise/area colors must take effect");
+        assertTrue(colored.contains("\u001b[34m"), "rise color passes through");
+
+        String plain = Chart.boxplot(names, samples, 10, 8, BoxplotOptions.builder()
+                .plain(true)
+                .build());
+        assertFalse(plain.contains("\u001b"), "plain must override every color");
+
+        CchartsException empty = assertThrows(CchartsException.class,
+                () -> Chart.boxplot(new String[] {"A"}, new double[][] {new double[0]}, 10, 8));
+        assertEquals(CchartsException.Status.INVALID_ARGUMENT, empty.status());
+
+        CchartsException bad = assertThrows(CchartsException.class,
+                () -> Chart.boxplot(new String[] {"A", "B"},
+                        new double[][] {{1.0}, {Double.NaN}}, 10, 8));
+        assertEquals(CchartsException.Status.NON_FINITE, bad.status());
+    }
 }

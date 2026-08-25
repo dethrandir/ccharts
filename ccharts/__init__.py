@@ -38,7 +38,7 @@ width/height at 100000 cells per side and 1000000 total cells
 
 from ._core import (parse_json, parse_arrays, create_line, create_candle,
                     create_pie, create_hist, create_spark, create_bar,
-                    create_stack, create_heat)
+                    create_stack, create_heat, create_box)
 
 
 def _check_dimensions(width, height):
@@ -455,4 +455,61 @@ class Chart:
             values, width, height,
             low_color, high_color, mid_color, bg_color,
             row_labels, col_labels, int(show_labels),
+        )
+
+    @staticmethod
+    def boxplot(series, *, width=60, height=8, color=None, area_color=None,
+                bg_color=None, show_prices=False, plain=False):
+        """Draw a box plot (one distribution per category) and return it as
+        a string.
+
+        A box plot is not OHLC data, so this is a static method: it takes the
+        per-category samples directly instead of reading ``self``. For each
+        category the samples' five-number summary (min, Q1, median, Q3, max)
+        is computed by the renderer using the **nearest-rank** convention
+        (min = s[0], Q1 = s[floor((n-1)*0.25)], median = s[floor((n-1)*0.5)],
+        Q3 = s[floor((n-1)*0.75)], max = s[-1] over the sorted samples) and
+        drawn as a vertical box with whiskers. A category needs at least one
+        sample, and an empty category empties the whole chart.
+
+        Args:
+            series: list of ``(name, samples)`` tuples or of dicts
+                ``{"name": ..., "samples": [...]}`` — pick one shape and use
+                it consistently. ``name`` may be ``None`` (used only as
+                documentation; the core does not print it). Every value in
+                every ``samples`` array must be finite (NaN/inf raise
+                ``ValueError``).
+            width, height: chart size in cells (positive integers). When
+                ``width`` < the number of categories some are folded into the
+                available columns (the first category of each column's
+                long-arithmetic span); when ``width`` >= it, categories are
+                repeated across their span.
+            color: ANSI escape string for the box (Q1..Q3) and the median
+                line (None = green).
+            area_color: ANSI escape string for the whiskers (None = share
+                ``color``).
+            bg_color: ANSI escape string for the empty cells above/below each
+                box (None = terminal background).
+            show_prices: prepend an 8-column value axis with the global max on
+                the top row and the global min on the bottom row.
+            plain: return text with no ANSI escapes at all, overriding every
+                color.
+
+        Raises ``ValueError`` for non-finite samples, an empty ``series``
+        list, a category with no samples, and invalid dimensions.
+        """
+        _check_dimensions(width, height)
+        if plain:
+            color = area_color = bg_color = ""
+        # Normalize dict-style entries to (name, samples) pairs for the C
+        # wrapper, which only speaks the tuple shape.
+        items = []
+        for entry in series:
+            if isinstance(entry, dict):
+                items.append((entry.get("name"), entry["samples"]))
+            else:
+                items.append(entry)
+        return create_box(
+            items, width, height,
+            color, area_color, bg_color, int(show_prices),
         )

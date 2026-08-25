@@ -99,6 +99,26 @@ internal struct NativeHeatSettings
     public int ShowLabels;
 }
 
+/// <summary>Layout of ccharts_box_category from abi/ccharts_abi.h.</summary>
+[StructLayout(LayoutKind.Sequential)]
+internal struct NativeBoxCategory
+{
+    public IntPtr Name;
+    public IntPtr Samples;
+    public int N;
+}
+
+/// <summary>Layout of ccharts_box_settings from abi/ccharts_abi.h: three
+/// pointers then one int.</summary>
+[StructLayout(LayoutKind.Sequential)]
+internal struct NativeBoxSettings
+{
+    public IntPtr RiseColor;
+    public IntPtr AreaColor;
+    public IntPtr BackgroundColor;
+    public int ShowPrices;
+}
+
 /// <summary>
 /// P/Invoke declarations for the ccharts C ABI. Strings are handled as raw
 /// pointers on both directions: the library owns what it returns, and
@@ -170,6 +190,11 @@ internal static partial class NativeMethods
     internal static partial int Heat(
         [In] double[] values, int rows, int cols, int width, int height,
         in NativeHeatSettings settings, out IntPtr chart, out nuint length);
+
+    [LibraryImport(Library, EntryPoint = "ccharts_box")]
+    internal static partial int Box(
+        [In] NativeBoxCategory[] categories, int catCount, int width, int height,
+        in NativeBoxSettings settings, out IntPtr chart, out nuint length);
 
     [LibraryImport(Library, EntryPoint = "ccharts_color")]
     internal static partial IntPtr ColorAt(int index);

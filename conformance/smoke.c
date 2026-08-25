@@ -330,6 +330,58 @@ int main(void) {
         }
     }
 
+    /* Box plot: per-category samples (variable-length), no dataset or
+     * capsule. The renderer computes the nearest-rank five-number summary. */
+    {
+        static const double a[] = {1, 4, 2, 5, 3};
+        static const double b[] = {1, 2, 3, 4, 5, 6, 7, 8, 9};
+        static const double c[] = {8, 4, 12};
+        ccharts_box_category cats[] = {
+            {"A", a, 5}, {"B", b, 9}, {"C", c, 3}
+        };
+        ccharts_box_settings bs;
+        memset(&bs, 0, sizeof(bs));
+        check(ccharts_box(cats, 3, 30, 8, &bs, &chart, &len) == CCHARTS_OK,
+              "box plot");
+        check(chart != NULL && len > 0, "box plot output");
+        ccharts_string_free(chart);
+
+        bs.rise_color = ccharts_color(CCHARTS_COLOR_BLUE);
+        bs.area_color = ccharts_color(CCHARTS_COLOR_BRIGHT_BLACK);
+        bs.bg_color = ccharts_color(CCHARTS_COLOR_BRIGHT_BLACK);
+        bs.show_prices = 1;
+        check(ccharts_box(cats, 3, 30, 8, &bs, &chart, &len) == CCHARTS_OK,
+              "box plot with settings");
+        check(chart != NULL && len > 0, "box plot settings output");
+        ccharts_string_free(chart);
+
+        check(ccharts_box(NULL, 3, 30, 8, NULL, &chart, &len)
+              == CCHARTS_ERR_INVALID_ARG, "NULL box categories rejected");
+        check(ccharts_box(cats, 3, 0, 8, NULL, &chart, &len)
+              == CCHARTS_ERR_DIMENSIONS, "zero width box plot rejected");
+        {
+            ccharts_box_category nullsamp[] = {{"A", NULL, 5}};
+            ccharts_box_category zero_n[] = {{"A", a, 0}};
+            check(ccharts_box(nullsamp, 1, 30, 8, NULL, &chart, &len)
+                  == CCHARTS_ERR_INVALID_ARG, "NULL box samples rejected");
+            check(ccharts_box(zero_n, 1, 30, 8, NULL, &chart, &len)
+                  == CCHARTS_ERR_INVALID_ARG, "empty box category rejected");
+        }
+        /* NaN/inf samples must be rejected at the boundary. */
+        {
+            static const double one = 1.0;
+            double badba[5] = {1, 2, 3, 4, 5};
+            ccharts_box_category infcats[] = {{"A", badba, 5}};
+            badba[0] = one / 0.0;                   /* +inf without <math.h> */
+            check(ccharts_box(infcats, 1, 30, 8, NULL, &chart, &len)
+                  == CCHARTS_ERR_NON_FINITE, "inf box sample rejected");
+            badba[0] = one / 0.0 - one / 0.0;       /* NaN */
+            check(ccharts_box(infcats, 1, 30, 8, NULL, &chart, &len)
+                  == CCHARTS_ERR_NON_FINITE, "NaN box sample rejected");
+            check(chart == NULL, "no string on box error");
+        }
+    }
+
     /* Invalid dimensions must be reported, not answered with "". */
     check(ccharts_line(data, 0, 5, NULL, &chart, &len) == CCHARTS_ERR_DIMENSIONS,
           "zero width rejected");

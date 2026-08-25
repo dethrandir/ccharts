@@ -1018,6 +1018,125 @@ func Heatmap(values [][]float64, width, height int, opts *HeatOptions) (string, 
 	return C.GoStringN(out, C.int(length)), nil
 }
 
+// BoxCategory is one category of a box plot: a name (the core does not print
+// it) and that category's samples.
+type BoxCategory struct {
+	// Name identifies the category.
+	Name string
+	// Samples holds this category's sample values.
+	Samples []float64
+}
+
+// BoxOptions controls how a box plot is drawn. A nil *BoxOptions behaves
+// like &BoxOptions{}: green box/median, whiskers sharing the box color, no
+// background, no value axis.
+type BoxOptions struct {
+	// RiseColor colors the box and median line (default green).
+	RiseColor Color
+	// AreaColor colors the whiskers (zero value = share RiseColor).
+	AreaColor Color
+	// BackgroundColor fills the empty cells above/below a box (default: the
+	// terminal background).
+	BackgroundColor Color
+	// ShowPrices prints the global max/min value labels in a left margin.
+	ShowPrices bool
+	// Plain renders with no ANSI escapes at all, overriding every color.
+	Plain bool
+}
+
+// Boxplot renders a box plot of the given categories. Each category carries
+// its own (possibly ragged) samples array; the C core computes a nearest-rank
+// five-number summary per category and draws each box and its whiskers over
+// the global min/max span, so the binding passes raw samples and settings
+// only. A box plot has no OHLC dataset, so this is a package function rather
+// than a Chart method.
+//
+// opts may be nil. NaN and inf samples are rejected with ErrNonFinite.
+func Boxplot(series []BoxCategory, width, height int, opts *BoxOptions) (string, error) {
+	if len(series) == 0 {
+		return "", ErrInvalidArgument
+	}
+	for _, c := range series {
+		if len(c.Samples) == 0 {
+			return "", ErrInvalidArgument
+		}
+	}
+	if width <= 0 || height <= 0 || width > int(C.ccharts_max_dim()) ||
+		height > int(C.ccharts_max_dim()) {
+		return "", ErrDimensions
+	}
+
+	var allocated []*C.char
+	defer func() {
+		for _, cs := range allocated {
+			C.free(unsafe.Pointer(cs))
+		}
+	}()
+	strPtr := func(s string) *C.char {
+		cs := C.CString(s)
+		allocated = append(allocated, cs)
+		return cs
+	}
+
+	// Each category's samples must be in C memory: cgo rejects Go-heap
+	// pointers nested inside a struct handed to a C call, and the library
+	// reads the samples through the per-category pointer.
+	var cSamples []unsafe.Pointer
+	defer func() {
+		for _, p := range cSamples {
+			C.free(p)
+		}
+	}()
+	cCats := make([]C.ccharts_box_category, len(series))
+	for i := range series {
+		cCats[i].name = strPtr(series[i].Name)
+		n := len(series[i].Samples)
+		buf := C.malloc(C.size_t(n) * C.size_t(unsafe.Sizeof(float64(0))))
+		if buf == nil {
+			return "", ErrOutOfMemory
+		}
+		cSamples = append(cSamples, buf)
+		dest := unsafe.Slice((*C.double)(buf), n)
+		for j := 0; j < n; j++ {
+			dest[j] = C.double(series[i].Samples[j])
+		}
+		cCats[i].samples = &dest[0]
+		cCats[i].n = C.int32_t(n)
+	}
+
+	var settings C.ccharts_box_settings
+	set := func(dst **C.char, color Color) {
+		if opts == nil {
+			return
+		}
+		if opts.Plain {
+			*dst = strPtr("")
+			return
+		}
+		if color == "" {
+			return
+		}
+		*dst = strPtr(string(color))
+	}
+	if opts != nil {
+		set(&settings.rise_color, opts.RiseColor)
+		set(&settings.area_color, opts.AreaColor)
+		set(&settings.bg_color, opts.BackgroundColor)
+		settings.show_prices = boolToC(opts.ShowPrices)
+	}
+
+	var out *C.char
+	var length C.size_t
+	status := C.ccharts_box(
+		&cCats[0], C.int32_t(len(series)), C.int32_t(width), C.int32_t(height),
+		&settings, &out, &length)
+	if err := statusError(status); err != nil {
+		return "", err
+	}
+	defer C.ccharts_string_free(out)
+	return C.GoStringN(out, C.int(length)), nil
+}
+
 func setColors(settings *C.ccharts_settings, opts *Options) func() {
 	if opts == nil {
 		return func() {}

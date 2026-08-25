@@ -65,7 +65,7 @@ public class ConformanceTests
             File.ReadAllBytes(Path.Combine(suiteDir!, "cases.json")));
         var datasets = document.RootElement.GetProperty("datasets");
         var cases = document.RootElement.GetProperty("cases").EnumerateArray().ToList();
-        Assert.True(cases.Count >= 64, "conformance suite looks truncated");
+        Assert.True(cases.Count >= 70, "conformance suite looks truncated");
 
         foreach (var testCase in cases)
         {
@@ -215,6 +215,29 @@ public class ConformanceTests
                         CategoryLabels = catLabels,
                         ShowLabels = settings.TryGetProperty("show_labels", out var labelsFlag)
                             && labelsFlag.GetBoolean(),
+                        ShowPrices = settings.TryGetProperty("show_prices", out var prices)
+                            && prices.GetBoolean(),
+                        Plain = settings.TryGetProperty("plain", out var plain)
+                            && plain.GetBoolean(),
+                    });
+            }
+            else if (chartName == "box")
+            {
+                var categories = testCase.GetProperty("categories").EnumerateArray()
+                    .Select(c => new BoxCategory(
+                        c.TryGetProperty("name", out var name) ? name.GetString() : null,
+                        c.GetProperty("samples").EnumerateArray()
+                            .Select(v => v.GetDouble()).ToArray()))
+                    .ToList();
+
+                rendered = Chart.Boxplot(categories,
+                    testCase.GetProperty("width").GetInt32(),
+                    testCase.GetProperty("height").GetInt32(),
+                    new BoxOptions
+                    {
+                        RiseColor = ColorFor(settings, "rise_color"),
+                        AreaColor = ColorFor(settings, "area_color"),
+                        BackgroundColor = ColorFor(settings, "bg_color"),
                         ShowPrices = settings.TryGetProperty("show_prices", out var prices)
                             && prices.GetBoolean(),
                         Plain = settings.TryGetProperty("plain", out var plain)

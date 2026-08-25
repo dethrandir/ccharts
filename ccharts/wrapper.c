@@ -1432,6 +1432,222 @@ static PyObject* py_create_heat(PyObject* self, PyObject* args) {
     return result;
 }
 
+/* ================================ Box plot ================================
+ * A box plot renders one distribution per category. Each category's raw
+ * samples (a variable-length array, unlike the rectangular matrix above) are
+ * copied into one flat double array, one cc_box_category_t per category, and
+ * handed to cc_box_create — the renderer computes the nearest-rank five-number
+ * summary. NaN/inf is rejected like every other path; each category needs at
+ * least one sample and a name (or None).
+ * ========================================================================= */
+
+/* Builds the per-category array from `series`, a sequence of `(name,
+ * samples)` pairs (the Python Chart.boxplot normalizes dict-style entries to
+ * this shape before calling). Returns the categories array (caller frees
+ * the array) and writes the flattened samples into *out_flat (caller frees).
+ * NULL with an exception set on any error. 0 = ok. */
+static cc_box_category_t* build_box_cats(PyObject* o_series, double** out_flat,
+                                         Py_ssize_t* out_count) {
+    PyObject* fast;
+    Py_ssize_t n, i;
+    cc_box_category_t* cats;
+    double* flat;
+    long long total = 0;
+    long long off = 0;
+
+    fast = PySequence_Fast(o_series, "box plot series must be a sequence");
+    if (fast == NULL) return NULL;
+    n = PySequence_Fast_GET_SIZE(fast);
+    if (n <= 0) {
+        Py_DECREF(fast);
+        PyErr_SetString(PyExc_ValueError, "box plot needs at least one category");
+        return NULL;
+    }
+
+    cats = (cc_box_category_t*)calloc((size_t)n, sizeof(cc_box_category_t));
+    if (cats == NULL) {
+        Py_DECREF(fast);
+        PyErr_NoMemory();
+        return NULL;
+    }
+
+    for (i = 0; i < n; i++) {
+        PyObject* item = PySequence_Fast_GET_ITEM(fast, i);
+        PyObject* fitem = PySequence_Fast(
+            item, "each category must be a (name, samples) pair");
+        PyObject* fvals;
+        if (fitem == NULL) {
+            free(cats);
+            Py_DECREF(fast);
+            return NULL;
+        }
+        if (PySequence_Fast_GET_SIZE(fitem) != 2) {
+            Py_DECREF(fitem);
+            free(cats);
+            Py_DECREF(fast);
+            PyErr_SetString(PyExc_ValueError,
+                            "each category must be a (name, samples) pair");
+            return NULL;
+        }
+        {
+            PyObject* name = PySequence_Fast_GET_ITEM(fitem, 0);
+            PyObject* vals = PySequence_Fast_GET_ITEM(fitem, 1);
+            if (name == Py_None) {
+                cats[i].name = NULL;
+            } else if (PyUnicode_Check(name)) {
+                cats[i].name = PyUnicode_AsUTF8(name);
+                if (cats[i].name == NULL) {
+                    Py_DECREF(fitem);
+                    free(cats);
+                    Py_DECREF(fast);
+                    return NULL;
+                }
+            } else {
+                Py_DECREF(fitem);
+                free(cats);
+                Py_DECREF(fast);
+                PyErr_SetString(PyExc_TypeError,
+                                "category names must be strings or None");
+                return NULL;
+            }
+            fvals = PySequence_Fast(vals, "category samples must be a sequence");
+        }
+        if (fvals == NULL) {
+            Py_DECREF(fitem);
+            free(cats);
+            Py_DECREF(fast);
+            return NULL;
+        }
+        cats[i].n = (int)PySequence_Fast_GET_SIZE(fvals);
+        if (cats[i].n <= 0) {
+            Py_DECREF(fvals);
+            Py_DECREF(fitem);
+            free(cats);
+            Py_DECREF(fast);
+            PyErr_SetString(PyExc_ValueError,
+                            "each category needs at least one sample");
+            return NULL;
+        }
+        total += cats[i].n;
+        Py_DECREF(fvals);
+        Py_DECREF(fitem);
+    }
+
+    flat = (double*)calloc((size_t)total, sizeof(double));
+    if (flat == NULL) {
+        free(cats);
+        Py_DECREF(fast);
+        PyErr_NoMemory();
+        return NULL;
+    }
+
+    for (i = 0; i < n; i++) {
+        PyObject* item = PySequence_Fast_GET_ITEM(fast, i);
+        PyObject* fitem = PySequence_Fast(
+            item, "each category must be a (name, samples) pair");
+        PyObject* fvals;
+        Py_ssize_t vlen, j;
+        if (fitem == NULL) {
+            free(cats);
+            free(flat);
+            Py_DECREF(fast);
+            return NULL;
+        }
+        fvals = PySequence_Fast(PySequence_Fast_GET_ITEM(fitem, 1),
+                                "category samples must be a sequence");
+        if (fvals == NULL) {
+            Py_DECREF(fitem);
+            free(cats);
+            free(flat);
+            Py_DECREF(fast);
+            return NULL;
+        }
+        vlen = PySequence_Fast_GET_SIZE(fvals);
+        cats[i].samples = flat + off;
+        for (j = 0; j < vlen; j++) {
+            PyObject* o = PySequence_Fast_GET_ITEM(fvals, j);
+            double v = PyFloat_AsDouble(o);
+            if (v == -1.0 && PyErr_Occurred()) {
+                Py_DECREF(fvals);
+                Py_DECREF(fitem);
+                free(cats);
+                free(flat);
+                Py_DECREF(fast);
+                return NULL;
+            }
+            if (!isfinite(v)) {
+                Py_DECREF(fvals);
+                Py_DECREF(fitem);
+                free(cats);
+                free(flat);
+                Py_DECREF(fast);
+                PyErr_SetString(PyExc_ValueError,
+                                "box plot samples must be finite (no NaN or inf)");
+                return NULL;
+            }
+            flat[off + j] = v;
+        }
+        off += vlen;
+        Py_DECREF(fvals);
+        Py_DECREF(fitem);
+    }
+
+    Py_DECREF(fast);
+    *out_flat = flat;
+    *out_count = n;
+    return cats;
+}
+
+static PyObject* py_create_box(PyObject* self, PyObject* args) {
+    PyObject* o_series;
+    const char* rise_color = NULL;
+    const char* area_color = NULL;
+    const char* bg_color = NULL;
+    int width, height;
+    int show_prices = 0;
+    cc_box_category_t* cats;
+    double* flat = NULL;
+    Py_ssize_t count;
+    cc_box_settings_t settings;
+    char* chart;
+    PyObject* result;
+
+    /* "Oii|zzzi": series, width, height, then optional rise/area/bg colors
+     * and the show_prices flag. */
+    if (!PyArg_ParseTuple(args, "Oii|zzzi", &o_series, &width, &height,
+                          &rise_color, &area_color, &bg_color,
+                          &show_prices)) {
+        return NULL;
+    }
+    if (!check_dimensions(width, height)) {
+        PyErr_SetString(PyExc_ValueError,
+                        "width and height must be positive integers within "
+                        "CC_MAX_DIM and CC_MAX_CELLS limits");
+        return NULL;
+    }
+
+    cats = build_box_cats(o_series, &flat, &count);
+    if (cats == NULL) return NULL;
+
+    memset(&settings, 0, sizeof(settings));
+    settings.rise_color = rise_color;
+    settings.area_color = area_color;
+    settings.bg_color = bg_color;
+    settings.show_prices = show_prices;
+
+    chart = cc_box_create(cats, (int)count, width, height, &settings);
+    free(cats);
+    free(flat);
+    if (chart == NULL) {
+        PyErr_SetString(PyExc_RuntimeError, "failed to create chart");
+        return NULL;
+    }
+
+    result = PyUnicode_FromString(chart);
+    free(chart);
+    return result;
+}
+
 /* Module method table + module definition. */
 static PyMethodDef CChartsMethods[] = {
     {"parse_json", py_parse_json, METH_VARARGS, "convert JSON data into OHLC format"},
@@ -1444,6 +1660,7 @@ static PyMethodDef CChartsMethods[] = {
     {"create_bar", py_create_bar, METH_VARARGS, "create a bar chart"},
     {"create_stack", py_create_stack, METH_VARARGS, "create a stacked bar chart"},
     {"create_heat", py_create_heat, METH_VARARGS, "create a heatmap chart"},
+    {"create_box", py_create_box, METH_VARARGS, "create a box plot chart"},
     {NULL, NULL, 0, NULL}
 };
 

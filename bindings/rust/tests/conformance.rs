@@ -7,8 +7,8 @@
 use std::path::{Path, PathBuf};
 
 use ccharts::{
-    BarOptions, Chart, Color, HeatOptions, HistogramOptions, PieOptions, PieSlice, Settings,
-    SparklineOptions, StackOptions,
+    BarOptions, BoxOptions, Chart, Color, HeatOptions, HistogramOptions, PieOptions, PieSlice,
+    Settings, SparklineOptions, StackOptions,
 };
 use serde_json::Value;
 
@@ -67,7 +67,7 @@ fn matches_the_shared_goldens() {
     let doc: Value =
         serde_json::from_slice(&std::fs::read(dir.join("cases.json")).unwrap()).unwrap();
     let cases = doc["cases"].as_array().expect("cases");
-    assert!(cases.len() >= 64, "conformance suite looks truncated");
+    assert!(cases.len() >= 70, "conformance suite looks truncated");
 
     let mut failures = Vec::new();
     for case in cases {
@@ -251,6 +251,38 @@ fn matches_the_shared_goldens() {
                 options = options.col_labels(&names);
             }
             Chart::heatmap(&refs, width, height, &options)
+        } else if case["chart"].as_str().unwrap() == "box" {
+            let cats_arr = case["categories"].as_array().expect("box categories");
+            let cats: Vec<(&str, Vec<f64>)> = cats_arr
+                .iter()
+                .map(|c| {
+                    let name = c["name"].as_str().unwrap_or("");
+                    let samples: Vec<f64> = c["samples"]
+                        .as_array()
+                        .expect("box samples")
+                        .iter()
+                        .map(|v| v.as_f64().expect("box sample value"))
+                        .collect();
+                    (name, samples)
+                })
+                .collect();
+            let refs: Vec<(&str, &[f64])> = cats
+                .iter()
+                .map(|(name, samples)| (*name, samples.as_slice()))
+                .collect();
+            let mut options = BoxOptions::new()
+                .show_prices(cfg["show_prices"].as_bool().unwrap_or(false))
+                .plain(cfg["plain"].as_bool().unwrap_or(false));
+            if let Some(c) = color(&cfg["rise_color"]) {
+                options = options.rise(c);
+            }
+            if let Some(c) = color(&cfg["area_color"]) {
+                options = options.area(c);
+            }
+            if let Some(c) = color(&cfg["bg_color"]) {
+                options = options.background(c);
+            }
+            Chart::boxplot(&refs, width, height, &options)
         } else {
             let dataset = &doc["datasets"][case["dataset"].as_str().unwrap()];
             let chart = if case["source"] == "json" {

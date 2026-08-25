@@ -97,7 +97,7 @@ class ConformanceTest {
                 Files.readAllBytes(suite.resolve("cases.json")));
         JsonNode datasets = document.get("datasets");
         JsonNode cases = document.get("cases");
-        assertTrue(cases.size() >= 64, "conformance suite looks truncated");
+        assertTrue(cases.size() >= 70, "conformance suite looks truncated");
 
         for (JsonNode testCase : cases) {
             String name = testCase.get("name").asText();
@@ -299,6 +299,32 @@ class ConformanceTest {
                         .plain(settings.path("plain").asBoolean(false))
                         .build();
                 rendered = Chart.stackedBar(names, matrix,
+                        testCase.get("width").asInt(), testCase.get("height").asInt(), options);
+            } else if (testCase.get("chart").asText().equals("box")) {
+                JsonNode categoriesNode = testCase.get("categories");
+                int n = categoriesNode.size();
+                String[] names = new String[n];
+                double[][] matrix = new double[n][];
+                for (int i = 0; i < n; i++) {
+                    JsonNode c = categoriesNode.get(i);
+                    JsonNode nameNode = c.get("name");
+                    names[i] = nameNode == null || nameNode.isNull() ? "" : nameNode.asText();
+                    JsonNode arr = c.get("samples");
+                    double[] row = new double[arr.size()];
+                    for (int j = 0; j < row.length; j++) {
+                        row[j] = arr.get(j).asDouble();
+                    }
+                    matrix[i] = row;
+                }
+
+                BoxplotOptions options = BoxplotOptions.builder()
+                        .riseColor(color(settings, "rise_color"))
+                        .areaColor(color(settings, "area_color"))
+                        .backgroundColor(color(settings, "bg_color"))
+                        .showPrices(settings.path("show_prices").asBoolean(false))
+                        .plain(settings.path("plain").asBoolean(false))
+                        .build();
+                rendered = Chart.boxplot(names, matrix,
                         testCase.get("width").asInt(), testCase.get("height").asInt(), options);
             } else {
                 JsonNode dataset = datasets.get(testCase.get("dataset").asText());

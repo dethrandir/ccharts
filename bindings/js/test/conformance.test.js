@@ -37,7 +37,7 @@ function color(name) {
 test("matches the shared goldens", { skip: !existsSync(join(SUITE_DIR, "cases.json")) },
   () => {
     const suite = JSON.parse(readFileSync(join(SUITE_DIR, "cases.json"), "utf8"));
-    assert.ok(suite.cases.length >= 64, "conformance suite looks truncated");
+    assert.ok(suite.cases.length >= 70, "conformance suite looks truncated");
 
     for (const testCase of suite.cases) {
       const settings = testCase.settings;
@@ -106,6 +106,16 @@ test("matches the shared goldens", { skip: !existsSync(join(SUITE_DIR, "cases.js
           rowLabels: settings.row_labels,
           colLabels: settings.col_labels,
           showLabels: settings.show_labels ?? false,
+          plain: settings.plain ?? false,
+        });
+      } else if (testCase.chart === "box") {
+        rendered = Chart.boxplot(testCase.categories, {
+          width: testCase.width,
+          height: testCase.height,
+          riseColor: color(settings.rise_color),
+          areaColor: color(settings.area_color),
+          backgroundColor: color(settings.bg_color),
+          showPrices: settings.show_prices ?? false,
           plain: settings.plain ?? false,
         });
       } else if (testCase.chart === "pie") {

@@ -128,6 +128,25 @@ class HeatSettings(ctypes.Structure):
     ]
 
 
+# Mirrors ccharts_box_category in abi/ccharts_abi.h.
+class BoxCategory(ctypes.Structure):
+    _fields_ = [
+        ("name", ctypes.c_char_p),
+        ("samples", ctypes.POINTER(ctypes.c_double)),
+        ("n", ctypes.c_int32),
+    ]
+
+
+# Mirrors ccharts_box_settings in abi/ccharts_abi.h.
+class BoxSettings(ctypes.Structure):
+    _fields_ = [
+        ("rise_color", ctypes.c_char_p),
+        ("area_color", ctypes.c_char_p),
+        ("bg_color", ctypes.c_char_p),
+        ("show_prices", ctypes.c_int32),
+    ]
+
+
 def find_library(explicit=None):
     if explicit:
         return explicit
@@ -209,6 +228,11 @@ def load(path):
     lib.ccharts_heat.argtypes = [
         ctypes.POINTER(ctypes.c_double), ctypes.c_int32, ctypes.c_int32,
         ctypes.c_int32, ctypes.c_int32, ctypes.POINTER(HeatSettings),
+        ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_size_t)]
+    lib.ccharts_box.restype = ctypes.c_int32
+    lib.ccharts_box.argtypes = [
+        ctypes.POINTER(BoxCategory), ctypes.c_int32,
+        ctypes.c_int32, ctypes.c_int32, ctypes.POINTER(BoxSettings),
         ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_size_t)]
     return lib
 
@@ -475,6 +499,40 @@ def render_heat(lib, case):
         lib.ccharts_string_free(out)
 
 
+def render_box(lib, case):
+    """Renders a box plot case through ccharts_box."""
+    cfg = case["settings"]
+    cats = case["categories"]
+    n = len(cats)
+    sample_bufs = []
+    cats_arr = (BoxCategory * n)()
+    for i, cat in enumerate(cats):
+        buf = (ctypes.c_double * len(cat["samples"]))(*cat["samples"])
+        sample_bufs.append(buf)
+        cats_arr[i].name = cat["name"].encode("utf-8") if cat.get("name") else None
+        cats_arr[i].samples = buf
+        cats_arr[i].n = len(cat["samples"])
+    plain = b"" if cfg.get("plain") else None
+    settings = BoxSettings(
+        rise_color=plain if plain is not None else color(lib, cfg["rise_color"]),
+        area_color=plain if plain is not None else color(lib, cfg["area_color"]),
+        bg_color=plain if plain is not None else color(lib, cfg["bg_color"]),
+        show_prices=int(cfg.get("show_prices", False)),
+    )
+    out = ctypes.c_void_p()
+    length = ctypes.c_size_t()
+    status = lib.ccharts_box(cats_arr, n, case["width"], case["height"],
+                             ctypes.byref(settings), ctypes.byref(out),
+                             ctypes.byref(length))
+    if status != CCHARTS_OK:
+        raise SystemExit("%s: %s" % (case["name"],
+                                     lib.ccharts_error_message(status).decode()))
+    try:
+        return ctypes.string_at(out, length.value)
+    finally:
+        lib.ccharts_string_free(out)
+
+
 def render(lib, case, datasets):
     if case["chart"] == "pie":
         return render_pie(lib, case)
@@ -488,6 +546,8 @@ def render(lib, case, datasets):
         return render_stack(lib, case)
     if case["chart"] == "heat":
         return render_heat(lib, case)
+    if case["chart"] == "box":
+        return render_box(lib, case)
     handle = build_data(lib, datasets[case["dataset"]], case["source"])
     try:
         cfg = case["settings"]

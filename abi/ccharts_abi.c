@@ -535,6 +535,56 @@ int32_t ccharts_heat(const double* values, int32_t rows, int32_t cols,
     return CCHARTS_OK;
 }
 
+/* ------------------------------ Box plot ------------------------------ */
+
+int32_t ccharts_box(const ccharts_box_category* cats, int32_t cat_count,
+                    int32_t width, int32_t height,
+                    const ccharts_box_settings* settings,
+                    char** out, size_t* out_len) {
+    cc_box_settings_t bs;
+    char* chart;
+    int32_t c;
+
+    if (out == NULL) return CCHARTS_ERR_INVALID_ARG;
+    *out = NULL;
+    if (out_len != NULL) *out_len = 0;
+    if (cats == NULL || cat_count <= 0) return CCHARTS_ERR_INVALID_ARG;
+    if (!cc_dim_ok((int)width, (int)height)) return CCHARTS_ERR_DIMENSIONS;
+
+    /* A NULL samples array or n <= 0 is a marshalling error (no five-number
+     * summary without samples), and NaN/inf samples would poison the sort /
+     * nearest-rank / pixel math, so both are rejected at the boundary.
+     * Negative values are fine — a box has no zero baseline. */
+    for (c = 0; c < cat_count; c++) {
+        int32_t k;
+        if (cats[c].samples == NULL || cats[c].n <= 0) {
+            return CCHARTS_ERR_INVALID_ARG;
+        }
+        for (k = 0; k < cats[c].n; k++) {
+            if (!isfinite(cats[c].samples[k])) return CCHARTS_ERR_NON_FINITE;
+        }
+    }
+
+    memset(&bs, 0, sizeof(bs));
+    if (settings != NULL) {
+        bs.rise_color = settings->rise_color;
+        bs.area_color = settings->area_color;
+        bs.bg_color = settings->bg_color;
+        bs.show_prices = (int)settings->show_prices;
+    }
+
+    /* ccharts_box_category and cc_box_category_t have identical {name,
+     * samples, n} layout; a cast (rather than a copy hand) is all the FFI
+     * needs. */
+    chart = cc_box_create((const cc_box_category_t*)cats, (int)cat_count,
+                          (int)width, (int)height, &bs);
+    if (chart == NULL) return CCHARTS_ERR_NOMEM;
+
+    *out = chart;
+    if (out_len != NULL) *out_len = strlen(chart);
+    return CCHARTS_OK;
+}
+
 /* ---------------------------- Introspection ---------------------------- */
 
 const char* ccharts_color(int32_t index) {
