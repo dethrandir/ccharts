@@ -87,6 +87,12 @@ class TestConformance(unittest.TestCase):
                 if cfg.get("colors") else None,
                 show_legend=cfg.get("show_legend", True),
                 show_pct=cfg.get("show_pct", False),
+                slice_gap=cfg.get("slice_gap", 0.0),
+                inner_radius_ratio=cfg.get("inner_radius_ratio"),
+                legend_format=cfg.get("legend_format", 0),
+                start_angle=cfg.get("start_angle"),
+                counter_clockwise=cfg.get("counter_clockwise", False),
+                center_text=cfg.get("center_text"),
             )
         draw = getattr(self._chart(case), case["chart"])
         return draw(

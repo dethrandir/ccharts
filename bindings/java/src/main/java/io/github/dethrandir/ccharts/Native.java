@@ -78,7 +78,9 @@ final class Native {
             FunctionDescriptor.ofVoid(PTR));
     static final MethodHandle PIE_FROM_SLICES = downcall("ccharts_pie_from_slices",
             FunctionDescriptor.of(INT, PTR, INT, INT, INT, INT,
-                    PTR, INT, INT, INT, PTR, PTR));
+                    PTR, INT, INT, INT, ValueLayout.JAVA_DOUBLE,
+                    ValueLayout.JAVA_DOUBLE, INT, ValueLayout.JAVA_DOUBLE,
+                    INT, PTR, PTR, PTR));
     static final MethodHandle COLOR = downcall("ccharts_color",
             FunctionDescriptor.of(PTR, INT));
     static final MethodHandle ERROR_MESSAGE = downcall("ccharts_error_message",

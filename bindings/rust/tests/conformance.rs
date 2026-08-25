@@ -64,7 +64,7 @@ fn matches_the_shared_goldens() {
     let doc: Value =
         serde_json::from_slice(&std::fs::read(dir.join("cases.json")).unwrap()).unwrap();
     let cases = doc["cases"].as_array().expect("cases");
-    assert!(cases.len() >= 10, "conformance suite looks truncated");
+    assert!(cases.len() >= 35, "conformance suite looks truncated");
 
     let mut failures = Vec::new();
     for case in cases {
@@ -87,6 +87,24 @@ fn matches_the_shared_goldens() {
                 .donut(cfg["donut"].as_bool().unwrap_or(false))
                 .show_legend(cfg["show_legend"].as_bool().unwrap_or(true))
                 .show_pct(cfg["show_pct"].as_bool().unwrap_or(false));
+            if let Some(gap) = cfg["slice_gap"].as_f64() {
+                options = options.slice_gap(gap);
+            }
+            if let Some(ratio) = cfg["inner_radius_ratio"].as_f64() {
+                options = options.inner_radius_ratio(ratio);
+            }
+            if let Some(fmt) = cfg["legend_format"].as_i64() {
+                options = options.legend_format(fmt as i32);
+            }
+            if let Some(angle) = cfg["start_angle"].as_f64() {
+                options = options.start_angle(angle);
+            }
+            if let Some(cw) = cfg["counter_clockwise"].as_bool() {
+                options = options.counter_clockwise(cw);
+            }
+            if let Some(text) = cfg["center_text"].as_str() {
+                options = options.center_text(text);
+            }
             if let Some(colors) = cfg["colors"].as_array() {
                 let named: Vec<Color> = colors
                     .iter()

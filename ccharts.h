@@ -259,18 +259,54 @@ typedef struct cc_pie_slice {
  *   - bg_color   : background of cells outside the disk (default: none)
  *   - colors     : per-slice palette override — a NULL-terminated array of
  *                  ANSI color strings — or NULL for the fixed default palette
- *   - donut      : 1 = hollow center (donut), 0 = filled disk (default)
- *   - show_legend: 1 = print one "label  value (pct%)" line per slice below
- *                  the disk
- *   - show_pct   : 1 = append "(NN%)" to each legend entry
- * Build with a designated initializer and pass NULL for full defaults. */
+ *   - donut      : 1 = hollow center (donut), 0 = filled disk (default).
+ *                  Only consulted when inner_radius_ratio is left unspecified.
+ *   - show_legend: 1 = print one legend line per slice below the disk
+ *   - show_pct   : 1 = append "(NN%)" to the default legend entries; ignored
+ *                  by the legend_format variants that always show the percent
+ *   - slice_gap  : angular gap between slices, in radians. 0 = slices touch
+ *                  (default); >0 leaves a thin blank gap between neighbors
+ *   - inner_radius_ratio : donut thickness as a fraction of the outer radius,
+ *                  in [0,1]. 0 = filled disk; (0,1] = hollow center of that
+ *                  radius. NEGATIVE (e.g. -1) = unspecified: the `donut` flag
+ *                  then decides — 0.5 for a donut, 0 for a disk. Values > 1
+ *                  are clamped to 1.
+ *   - legend_format : CC_PIE_LEGEND_* enum controlling each legend entry's
+ *                  composition (see below); 0 reproduces the original output
+ *   - start_angle : angle (radians) where slice 0 begins. NEGATIVE =
+ *                  unspecified (default CC_PI/2, i.e. 12 o'clock)
+ *   - counter_clockwise : 0 = library default direction (counter-clockwise,
+ *                  matching the original output); nonzero = mirrored
+ *                  (clockwise) sweep
+ *   - center_text : text drawn in the hollow center. Only shown when there is
+ *                  a real hollow (inner_radius_ratio > 0); NULL or "" disables
+ *                  it. Truncated to fit the hole.
+ * Build with a designated initializer and pass NULL for full defaults. To
+ * keep the library defaults for a partial brace initializer, leave the double
+ * fields negative (their zero values are meaningful: inner_radius_ratio=0 is
+ * a filled disk, start_angle=0 is 3 o'clock) and set inner_radius_ratio =
+ * -1.0 when you want the `donut` flag's classic hollow. */
 typedef struct cc_pie_settings {
     const char* bg_color;
     const char* const* colors;
     int donut;
     int show_legend;
     int show_pct;
+    /* --- Fas 3 pie/donut settings (all optional) --- */
+    double slice_gap;            /* radians; 0 = adjacent slices */
+    double inner_radius_ratio;   /* [0,1]; <0 = donut flag decides */
+    int    legend_format;        /* CC_PIE_LEGEND_* */
+    double start_angle;          /* radians; <0 = CC_PI/2 */
+    int    counter_clockwise;    /* 0 = default CCW sweep; nonzero = CW */
+    const char* center_text;     /* NULL/"" = none; hollow-center label */
 } cc_pie_settings_t;
+
+/* legend_format values. All other values fall back to CC_PIE_LEGEND_VALUE
+ * (the original "label  value (+ (NN%) when show_pct)" behavior). */
+#define CC_PIE_LEGEND_VALUE      0 /* "label  value" (+ " (NN%)" when show_pct) */
+#define CC_PIE_LEGEND_LABEL_PCT  1 /* "label  NN%"                          */
+#define CC_PIE_LEGEND_VALUE_PCT  2 /* "value  (NN%)"                        */
+#define CC_PIE_LEGEND_LABEL      3 /* "label" only                          */
 
 /* Renders a pie/donut chart of `count` slices into a `width` x `height` grid
  * (cells) and returns a malloc'd string (caller frees). Slices are normalized
@@ -1214,6 +1250,28 @@ CC_INLINE int cc_pie_find_slice(const double* starts, int count, double angle) {
     return count - 1;
 }
 
+/* Gap-aware variant used when slice_gap > 0: each slice spans [starts[i],
+ * starts[i] + widths[i]); the region between a slice's end and the next
+ * slice's start (and the closing gap before 12 o'clock) is blank, so this
+ * returns -1 there. Accounts for the last slice wrapping past the first. */
+CC_INLINE int cc_pie_find_slice_gap(const double* starts, const double* widths,
+                                    int count, double angle) {
+    double base = starts[0];
+    double two_pi = 2.0 * CC_PI;
+    int i;
+
+    while (angle < base) angle += two_pi;
+    while (angle >= base + two_pi) angle -= two_pi;
+    for (i = 0; i < count; i++) {
+        double a, e;
+        if (widths[i] <= 0.0) continue;
+        a = starts[i];
+        e = a + widths[i];
+        if (angle >= a && angle < e) return i;
+    }
+    return -1;
+}
+
 /* Joins the per-cell strings (columns[(x*height + y)*32 .. +32), y counted
  * from the bottom) into the final pie string, printing rows top-to-bottom
  * and appending the legend below when requested. Allocates with a pointer
@@ -1245,11 +1303,28 @@ CC_INLINE char* cc_pie_assemble(int width, int height, char* columns,
         char line[512];
         for (int i = 0; i < count; i++) {
             const char* label = CC_S(slices[i].label);
-            if (s->show_pct) {
-                snprintf(line, sizeof(line), "%s  %g (%.0f%%)", label,
-                         slices[i].value, slices[i].value / total * 100.0);
-            } else {
-                snprintf(line, sizeof(line), "%s  %g", label, slices[i].value);
+            double pct = slices[i].value / total * 100.0;
+            switch (s->legend_format) {
+            case CC_PIE_LEGEND_LABEL_PCT:
+                snprintf(line, sizeof(line), "%s  %.0f%%", label, pct);
+                break;
+            case CC_PIE_LEGEND_VALUE_PCT:
+                snprintf(line, sizeof(line), "%g  (%.0f%%)",
+                         slices[i].value, pct);
+                break;
+            case CC_PIE_LEGEND_LABEL:
+                snprintf(line, sizeof(line), "%s", label);
+                break;
+            case CC_PIE_LEGEND_VALUE:
+            default:
+                if (s->show_pct) {
+                    snprintf(line, sizeof(line), "%s  %g (%.0f%%)", label,
+                             slices[i].value, pct);
+                } else {
+                    snprintf(line, sizeof(line), "%s  %g", label,
+                             slices[i].value);
+                }
+                break;
             }
             size_t ll = strlen(line);
             memcpy(w, line, ll);
@@ -1271,8 +1346,9 @@ CC_INLINE char* cc_pie_create(const cc_pie_slice_t* slices, int count,
     double total = 0.0;
     for (i = 0; i < count; i++) {
         /* A plain positive-range check: NaN fails `> 0.0`, as do zero and
-         * negative amounts. +inf is rejected upstream (wrapper/ABI), which
-         * keeps this header free of C99-only `isfinite`. */
+         * negative amounts. +inf and non-finite option doubles are rejected
+         * upstream (wrapper/ABI), which keeps this header free of C99-only
+         * `isfinite`. */
         if (!(slices[i].value > 0.0)) {
             return (char*)calloc(1, sizeof(char));
         }
@@ -1286,12 +1362,31 @@ CC_INLINE char* cc_pie_create(const cc_pie_slice_t* slices, int count,
         s.donut = settings->donut;
         s.show_legend = settings->show_legend;
         s.show_pct = settings->show_pct;
+        s.slice_gap = settings->slice_gap;
+        s.inner_radius_ratio = settings->inner_radius_ratio;
+        s.legend_format = settings->legend_format;
+        s.start_angle = settings->start_angle;
+        s.counter_clockwise = settings->counter_clockwise;
+        s.center_text = settings->center_text;
     }
 
+    /* Resolve the optional settings to concrete values. Negative doubles are
+     * the "unspecified" sentinel: default to the library defaults. */
+    if (s.slice_gap < 0.0) s.slice_gap = 0.0;
+    if (s.legend_format < CC_PIE_LEGEND_VALUE ||
+        s.legend_format > CC_PIE_LEGEND_LABEL) {
+        s.legend_format = CC_PIE_LEGEND_VALUE;
+    }
+    if (s.start_angle < 0.0) s.start_angle = CC_PI / 2.0;
+
     double* starts = (double*)malloc((size_t)count * sizeof(double));
+    double* widths = (s.slice_gap > 0.0)
+        ? (double*)malloc((size_t)count * sizeof(double)) : NULL;
     char* columns = (char*)malloc((size_t)width * (size_t)height * 32);
-    if (starts == NULL || columns == NULL) {
+    if (starts == NULL || columns == NULL ||
+        (s.slice_gap > 0.0 && widths == NULL)) {
         free(starts);
+        free(widths);
         free(columns);
         return NULL;
     }
@@ -1303,12 +1398,24 @@ CC_INLINE char* cc_pie_create(const cc_pie_slice_t* slices, int count,
     double cy = (double)height * 4.0;
     double min_dim = (width < height) ? (double)width : (double)height;
     double outer_r = min_dim * 4.0;
-    double inner_r = s.donut ? outer_r * CC_PIE_DONUT_RADIUS_RATIO : 0.0;
+    double inner_r;
+    if (s.inner_radius_ratio < 0.0) {
+        /* Unspecified: the donut flag's classic hollow (0.5) or a disk. */
+        inner_r = s.donut ? outer_r * CC_PIE_DONUT_RADIUS_RATIO : 0.0;
+    } else {
+        double r = (s.inner_radius_ratio > 1.0) ? 1.0 : s.inner_radius_ratio;
+        inner_r = outer_r * r;
+    }
 
-    double angle = CC_PI / 2.0;   /* slice 0 starts at 12 o'clock */
+    double angle = s.start_angle;
     for (i = 0; i < count; i++) {
+        double frac = slices[i].value / total;
         starts[i] = angle;
-        angle += (slices[i].value / total) * 2.0 * CC_PI;
+        if (widths != NULL) {
+            double w = frac * 2.0 * CC_PI - s.slice_gap;
+            widths[i] = (w < 0.0) ? 0.0 : w;
+        }
+        angle += frac * 2.0 * CC_PI;
     }
 
     for (int x = 0; x < width; x++) {
@@ -1320,7 +1427,7 @@ CC_INLINE char* cc_pie_create(const cc_pie_slice_t* slices, int count,
             double dist = sqrt(dx * dx + dy * dy);
             char* cell = columns + ((size_t)x * height + (size_t)y) * 32;
 
-            if (dist > outer_r || (s.donut && dist < inner_r)) {
+            if (dist > outer_r || (inner_r > 0.0 && dist < inner_r)) {
                 if (s.bg_color != NULL) {
                     snprintf(cell, 32, "%s %s", s.bg_color,
                              cc_reset_for(s.bg_color, NULL));
@@ -1330,16 +1437,69 @@ CC_INLINE char* cc_pie_create(const cc_pie_slice_t* slices, int count,
                 continue;
             }
 
-            int slice = cc_pie_find_slice(starts, count, atan2(dy, dx));
+            /* counter_clockwise mirrors the horizontal axis, which reverses
+             * the sweep (clockwise) while keeping slice 0 at 12 o'clock. */
+            double probe_x = s.counter_clockwise ? (cx - sx) : (sx - cx);
+            double probe = atan2(dy, probe_x);
+            int slice = (widths != NULL)
+                ? cc_pie_find_slice_gap(starts, widths, count, probe)
+                : cc_pie_find_slice(starts, count, probe);
+            if (slice < 0) {   /* in a slice gap: leave the cell blank */
+                if (s.bg_color != NULL) {
+                    snprintf(cell, 32, "%s %s", s.bg_color,
+                             cc_reset_for(s.bg_color, NULL));
+                } else {
+                    snprintf(cell, 32, " ");
+                }
+                continue;
+            }
             const char* color = cc_pie_palette_color(&s, slice);
             snprintf(cell, 32, "%s%s%s", CC_S(color), CC_BLOCK_FULL,
                      cc_reset_for(color, NULL));
         }
     }
 
+    /* center_text is drawn in the hollow center, centered on the row nearest
+     * the vertical middle and truncated to the hole's width in cells. */
+    if (inner_r > 0.0 && s.center_text != NULL && s.center_text[0] != '\0') {
+        double best = 1.0e18;
+        int y_center = 0;
+        for (int y = 0; y < height; y++) {
+            double sy = (double)y * 8.0 + 4.0;
+            double d = (sy > cy) ? (sy - cy) : (cy - sy);
+            if (d < best) {
+                best = d;
+                y_center = y;
+            }
+        }
+        int x0 = -1;
+        int x1 = -1;
+        for (int x = 0; x < width; x++) {
+            double sx = (double)x * 8.0 + 4.0;
+            double d = (sx > cx) ? (sx - cx) : (cx - sx);
+            if (d < inner_r) {
+                if (x0 < 0) x0 = x;
+                x1 = x;
+            }
+        }
+        if (x0 >= 0) {
+            size_t tlen = strlen(s.center_text);
+            int span = x1 - x0 + 1;
+            int n = (span < (int)tlen) ? span : (int)tlen;
+            int startcol = x0 + (span - n) / 2;
+            for (int k = 0; k < n; k++) {
+                char* cell = columns +
+                             ((size_t)(startcol + k) * height +
+                              (size_t)y_center) * 32;
+                snprintf(cell, 32, "%c", s.center_text[k]);
+            }
+        }
+    }
+
     char* chart = cc_pie_assemble(width, height, columns, slices, count,
                                   total, &s);
     free(starts);
+    free(widths);
     free(columns);
     return chart;
 }

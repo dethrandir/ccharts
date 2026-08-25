@@ -107,6 +107,8 @@ def load(path):
         ctypes.c_int32, ctypes.c_int32, ctypes.c_int32,
         ctypes.POINTER(ctypes.c_char_p), ctypes.c_int32,
         ctypes.c_int32, ctypes.c_int32,
+        ctypes.c_double, ctypes.c_double, ctypes.c_int32,
+        ctypes.c_double, ctypes.c_int32, ctypes.c_char_p,
         ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_size_t)]
     return lib
 
@@ -154,12 +156,24 @@ def render_pie(lib, case):
             *[color(lib, name) for name in color_names])
         color_count = len(color_names)
 
+    # Optional Fas 3 pie settings. The double sentinels (-1) keep the
+    # original behavior when the case leaves them unset, matching the ABI's
+    # negative-means-"unspecified" convention.
+    center_text = cfg.get("center_text")
+    center_text_arg = center_text.encode("utf-8") if center_text else None
+
     out = ctypes.c_void_p()
     length = ctypes.c_size_t()
     status = lib.ccharts_pie_from_slices(
         slices, len(case["slices"]), case["width"], case["height"],
         int(cfg.get("donut", False)), colors, color_count,
         int(cfg.get("show_legend", True)), int(cfg.get("show_pct", False)),
+        float(cfg.get("slice_gap", 0.0)),
+        float(cfg.get("inner_radius_ratio", -1.0)),
+        int(cfg.get("legend_format", 0)),
+        float(cfg.get("start_angle", -1.0)),
+        int(cfg.get("counter_clockwise", False)),
+        center_text_arg,
         ctypes.byref(out), ctypes.byref(length))
     if status != CCHARTS_OK:
         raise SystemExit("%s: %s" % (case["name"],

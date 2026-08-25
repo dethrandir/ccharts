@@ -3,3 +3,6 @@ __pycache__/
 *.pyc
 *.so
 *.egg-info/
+
+# compiled demo binary (avoid gcc -o main)
+main

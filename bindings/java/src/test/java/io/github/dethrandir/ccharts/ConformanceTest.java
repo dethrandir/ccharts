@@ -97,7 +97,7 @@ class ConformanceTest {
                 Files.readAllBytes(suite.resolve("cases.json")));
         JsonNode datasets = document.get("datasets");
         JsonNode cases = document.get("cases");
-        assertTrue(cases.size() >= 10, "conformance suite looks truncated");
+        assertTrue(cases.size() >= 35, "conformance suite looks truncated");
 
         for (JsonNode testCase : cases) {
             String name = testCase.get("name").asText();
@@ -135,6 +135,16 @@ class ConformanceTest {
                         .colorsAnsi(colors)
                         .showLegend(settings.path("show_legend").asBoolean(true))
                         .showPct(settings.path("show_pct").asBoolean(false))
+                        .sliceGap(settings.path("slice_gap").asDouble(0.0))
+                        // A real 0.0 must ship as-is; the -1 sentinel means
+                        // "unspecified" (library default).
+                        .innerRadiusRatio(settings.path("inner_radius_ratio").asDouble(-1.0))
+                        .legendFormat(settings.path("legend_format").asInt(0))
+                        .startAngle(settings.path("start_angle").asDouble(-1.0))
+                        .counterClockwise(settings.path("counter_clockwise").asBoolean(false))
+                        .centerText(settings.get("center_text") != null
+                                && settings.get("center_text").isTextual()
+                                ? settings.get("center_text").asText() : null)
                         .build();
                 rendered = Chart.pie(slices, options);
             } else {

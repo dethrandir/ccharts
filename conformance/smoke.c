@@ -58,11 +58,13 @@ int main(void) {
         const char* colors[] = {ccharts_color(CCHARTS_COLOR_RED),
                                 ccharts_color(CCHARTS_COLOR_GREEN)};
         check(ccharts_pie_from_slices(slices, 3, 24, 10, 0, NULL, 0, 1, 1,
+                                      0.0, -1.0, 0, -1.0, 0, NULL,
                                       &chart, &len) == CCHARTS_OK, "pie");
         check(chart != NULL && len > 0, "pie output");
         ccharts_string_free(chart);
 
         check(ccharts_pie_from_slices(slices, 3, 24, 10, 1, colors, 2, 1, 0,
+                                      0.0, -1.0, 0, -1.0, 0, NULL,
                                       &chart, &len) == CCHARTS_OK, "donut pie");
         ccharts_string_free(chart);
 
@@ -70,6 +72,7 @@ int main(void) {
         {
             ccharts_pie_slice zero[] = {{"Zero", 0}};
             check(ccharts_pie_from_slices(zero, 1, 24, 10, 0, NULL, 0, 1, 1,
+                                          0.0, -1.0, 0, -1.0, 0, NULL,
                                           &chart, &len) == CCHARTS_OK, "all-zero pie");
             check(chart != NULL && chart[0] == '\0', "all-zero pie is empty");
             ccharts_string_free(chart);
@@ -80,14 +83,17 @@ int main(void) {
             ccharts_pie_slice bad[] = {{"Bad", 1.0}, {"Inf", 1.0}};
             bad[1].value = bad[0].value / 0.0;   /* +inf without <math.h> */
             check(ccharts_pie_from_slices(bad, 2, 24, 10, 0, NULL, 0, 1, 0,
+                                          0.0, -1.0, 0, -1.0, 0, NULL,
                                           &chart, &len) == CCHARTS_ERR_NON_FINITE,
                   "inf pie rejected");
             check(chart == NULL, "no string on pie error");
         }
         check(ccharts_pie_from_slices(NULL, 0, 24, 10, 0, NULL, 0, 1, 0,
+                                      0.0, -1.0, 0, -1.0, 0, NULL,
                                       &chart, &len) == CCHARTS_ERR_INVALID_ARG,
               "NULL pie slices rejected");
         check(ccharts_pie_from_slices(slices, 3, 0, 10, 0, NULL, 0, 1, 0,
+                                      0.0, -1.0, 0, -1.0, 0, NULL,
                                       &chart, &len) == CCHARTS_ERR_DIMENSIONS,
               "zero width pie rejected");
     }

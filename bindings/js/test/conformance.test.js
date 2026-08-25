@@ -37,7 +37,7 @@ function color(name) {
 test("matches the shared goldens", { skip: !existsSync(join(SUITE_DIR, "cases.json")) },
   () => {
     const suite = JSON.parse(readFileSync(join(SUITE_DIR, "cases.json"), "utf8"));
-    assert.ok(suite.cases.length >= 10, "conformance suite looks truncated");
+    assert.ok(suite.cases.length >= 35, "conformance suite looks truncated");
 
     for (const testCase of suite.cases) {
       const settings = testCase.settings;
@@ -54,6 +54,12 @@ test("matches the shared goldens", { skip: !existsSync(join(SUITE_DIR, "cases.js
               : undefined,
             showLegend: settings.show_legend ?? true,
             showPct: settings.show_pct ?? false,
+            sliceGap: settings.slice_gap,
+            innerRadiusRatio: settings.inner_radius_ratio,
+            legendFormat: settings.legend_format,
+            startAngle: settings.start_angle,
+            counterClockwise: settings.counter_clockwise,
+            centerText: settings.center_text,
           });
       } else {
         const dataset = suite.datasets[testCase.dataset];

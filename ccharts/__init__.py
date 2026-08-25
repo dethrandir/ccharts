@@ -164,8 +164,10 @@ class Chart:
         )
 
     @staticmethod
-    def pie(labels, values, donut=False, colors=None, bg_color=None,
-            show_legend=True, show_pct=False, width=24, height=10):
+    def pie(labels, values, *, donut=False, colors=None, bg_color=None,
+            show_legend=True, show_pct=False, width=24, height=10,
+            slice_gap=0.0, inner_radius_ratio=None, legend_format=0,
+            start_angle=None, counter_clockwise=False, center_text=None):
         """Draw a pie/donut chart and return it as a string.
 
         A pie is not OHLC data, so this is a static method: it takes the
@@ -178,22 +180,45 @@ class Chart:
                 percentages. Any value ``<= 0`` (zero, negative, NaN) makes
                 the whole render return the empty string.
             donut: True leaves the center hollow (a donut); False is a filled
-                disk.
+                disk. Only consulted when ``inner_radius_ratio`` is None.
             colors: per-slice ANSI escape strings, or ``None`` for the fixed
                 deterministic default palette.
             bg_color: background color of the cells outside the disk.
             show_legend: print one ``label  value (pct%)`` line per slice
                 below the disk.
-            show_pct: append ``(NN%)`` to each legend entry.
+            show_pct: append ``(NN%)`` to each legend entry (format 0 only).
             width, height: chart size in cells (positive integers).
+            slice_gap: angular gap between slices in radians; 0 = adjacent.
+            inner_radius_ratio: donut thickness as a fraction of the outer
+                radius, in ``[0, 1]``. ``0`` = filled disk; ``(0, 1]`` =
+                hollow center of that thickness. ``None`` = donut's default
+                (0.5) when ``donut`` is True, else a disk.
+            legend_format: one of 0 (label  value  (+%(pct)))
+                ``"label  value (pct%)"``, 1 ``"label  NN%"``,
+                2 ``"value  (NN%)"``, 3 ``"label"`` only; 0 reproduces the
+                original output. Values outside 0..3 fall back to 0.
+            start_angle: angle in radians where slice 0 begins; ``None`` =
+                ``CC_PI/2`` (12 o'clock).
+            counter_clockwise: False = default counter-clockwise sweep; True =
+                mirrored (clockwise) sweep.
+            center_text: text drawn in the hollow center. Only shown when the
+                disk has a real hollow (inner_radius_ratio > 0); ``None``/``""``
+                disables it and it is truncated to fit the hole.
 
-        Raises ``ValueError`` for non-finite values (NaN/inf — these would
-        corrupt the angle math), mismatched label/value lengths, and invalid
-        dimensions.
+        Raises ``ValueError`` for non-finite values (NaN/inf in the slice
+        values or the ``slice_gap``/``inner_radius_ratio``/``start_angle``
+        options — these would corrupt the angle math), mismatched label/value
+        lengths, and invalid dimensions.
         """
         _check_dimensions(width, height)
         return create_pie(
             labels, values, width, height,
             int(donut), colors, bg_color,
-            int(show_legend), int(show_pct)
+            int(show_legend), int(show_pct),
+            float(slice_gap),
+            -1.0 if inner_radius_ratio is None else float(inner_radius_ratio),
+            int(legend_format),
+            -1.0 if start_angle is None else float(start_angle),
+            int(counter_clockwise),
+            center_text,
         )

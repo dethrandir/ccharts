@@ -158,6 +158,27 @@ type PieOptions struct {
 	ShowLegend bool
 	// ShowPct appends the "(NN%)" to each legend entry.
 	ShowPct bool
+	// SliceGap is the angular gap between slices, in radians. 0 keeps the
+	// slices adjacent, producing thin gaps when applied to a donut.
+	SliceGap float64
+	// InnerRadiusRatio is the donut thickness in [0, 1]: 0 = a filled disk,
+	// 1 = a hairline ring. nil (unspecified) leaves it to Donut (0.5 for a
+	// donut, 0 for a disk). >1 is clamped to 1.
+	InnerRadiusRatio *float64
+	// LegendFormat selects the legend entry format:
+	// 0 = "label  value" (+ "(NN%)" with ShowPct),
+	// 1 = "label  NN%", 2 = "value  (NN%)", 3 = "label" only. Unknown values
+	// fall back to 0.
+	LegendFormat int
+	// StartAngle is the angle in radians at which slice 0 begins. nil
+	// (unspecified) uses the library default (12 o'clock).
+	StartAngle *float64
+	// CounterClockwise sweeps the slices clockwise instead of the default
+	// counter-clockwise.
+	CounterClockwise bool
+	// CenterText is drawn in the hollow center of a donut (only when there is
+	// a hollow); "" disables it.
+	CenterText string
 }
 
 // Chart is a parsed OHLC dataset that can be rendered repeatedly.
@@ -347,17 +368,42 @@ func Pie(slices []Slice, width, height int, opts *PieOptions) (string, error) {
 	var donut C.int32_t
 	var showLegend C.int32_t
 	var showPct C.int32_t
+	var sliceGap C.double
+	var legendFormat C.int32_t
+	var counterClockwise C.int32_t
 	if opts != nil {
 		donut = boolToC(opts.Donut)
 		showLegend = boolToC(opts.ShowLegend)
 		showPct = boolToC(opts.ShowPct)
+		sliceGap = C.double(opts.SliceGap)
+		legendFormat = C.int32_t(opts.LegendFormat)
+		counterClockwise = boolToC(opts.CounterClockwise)
+	}
+	// A nil pointer is the "unspecified" sentinel, which the C layer maps to
+	// the default (Donut decides InnerRadiusRatio, 12 o'clock for
+	// StartAngle).
+	var innerRatio C.double = -1
+	if opts != nil && opts.InnerRadiusRatio != nil {
+		innerRatio = C.double(*opts.InnerRadiusRatio)
+	}
+	var startAngle C.double = -1
+	if opts != nil && opts.StartAngle != nil {
+		startAngle = C.double(*opts.StartAngle)
+	}
+
+	var centerTextPtr *C.char
+	if opts != nil && opts.CenterText != "" {
+		centerTextPtr = C.CString(opts.CenterText)
+		defer C.free(unsafe.Pointer(centerTextPtr))
 	}
 
 	var out *C.char
 	var length C.size_t
 	status := C.ccharts_pie_from_slices(
 		&cSlices[0], C.int32_t(n), C.int32_t(width), C.int32_t(height),
-		donut, colors, colorCount, showLegend, showPct, &out, &length)
+		donut, colors, colorCount, showLegend, showPct,
+		sliceGap, innerRatio, legendFormat, startAngle, counterClockwise,
+		centerTextPtr, &out, &length)
 	if err := statusError(status); err != nil {
 		return "", err
 	}

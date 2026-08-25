@@ -180,20 +180,35 @@ public sealed class Chart : IDisposable
 
             try
             {
-                var status = NativeMethods.PieFromSlices(
-                    native, slices.Count, options.Width, options.Height,
-                    options.Donut ? 1 : 0, colors, colors?.Length ?? 0,
-                    options.ShowLegend ? 1 : 0, options.ShowPct ? 1 : 0,
-                    out var chart, out var length);
-                CchartsException.ThrowIfError(status);
-
+                var centerText = string.IsNullOrEmpty(options.CenterText) ? IntPtr.Zero
+                    : Marshal.StringToCoTaskMemUTF8(options.CenterText);
                 try
                 {
-                    return Marshal.PtrToStringUTF8(chart, checked((int)length)) ?? string.Empty;
+                    var status = NativeMethods.PieFromSlices(
+                        native, slices.Count, options.Width, options.Height,
+                        options.Donut ? 1 : 0, colors, colors?.Length ?? 0,
+                        options.ShowLegend ? 1 : 0, options.ShowPct ? 1 : 0,
+                        options.SliceGap, options.InnerRadiusRatio,
+                        options.LegendFormat, options.StartAngle,
+                        options.CounterClockwise ? 1 : 0, centerText,
+                        out var chart, out var length);
+                    CchartsException.ThrowIfError(status);
+
+                    try
+                    {
+                        return Marshal.PtrToStringUTF8(chart, checked((int)length)) ?? string.Empty;
+                    }
+                    finally
+                    {
+                        NativeMethods.StringFree(chart);
+                    }
                 }
                 finally
                 {
-                    NativeMethods.StringFree(chart);
+                    if (centerText != IntPtr.Zero)
+                    {
+                        Marshal.FreeCoTaskMem(centerText);
+                    }
                 }
             }
             finally

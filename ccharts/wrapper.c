@@ -579,6 +579,12 @@ static PyObject* py_create_pie(PyObject* self, PyObject* args) {
     const char* bg_color = NULL;
     int width, height;
     int donut = 0, show_legend = 1, show_pct = 0;
+    double slice_gap = 0.0;
+    double inner_ratio = -1.0;      /* sentinel: donut flag decides */
+    int legend_format = CC_PIE_LEGEND_VALUE;
+    double start_angle = -1.0;      /* sentinel: CC_PI/2 */
+    int counter_clockwise = 0;
+    const char* center_text = NULL;
     cc_pie_slice_t* slices;
     const char** colors;
     cc_pie_settings_t settings;
@@ -586,15 +592,25 @@ static PyObject* py_create_pie(PyObject* self, PyObject* args) {
     char* chart;
     PyObject* result;
 
-    if (!PyArg_ParseTuple(args, "OOii|iOzii", &o_labels, &o_values,
+    if (!PyArg_ParseTuple(args, "OOii|iOziiddidiz", &o_labels, &o_values,
                           &width, &height, &donut, &o_colors, &bg_color,
-                          &show_legend, &show_pct)) {
+                          &show_legend, &show_pct, &slice_gap, &inner_ratio,
+                          &legend_format, &start_angle, &counter_clockwise,
+                          &center_text)) {
         return NULL;
     }
     if (!check_dimensions(width, height)) {
         PyErr_SetString(PyExc_ValueError,
                         "width and height must be positive integers within "
                         "CC_MAX_DIM and CC_MAX_CELLS limits");
+        return NULL;
+    }
+    /* Non-finite option doubles must never reach the renderer's geometry. */
+    if (!isfinite(slice_gap) || !isfinite(inner_ratio) ||
+        !isfinite(start_angle)) {
+        PyErr_SetString(PyExc_ValueError,
+                        "slice_gap, inner_radius_ratio and start_angle must "
+                        "be finite (no NaN or inf)");
         return NULL;
     }
 
@@ -611,6 +627,12 @@ static PyObject* py_create_pie(PyObject* self, PyObject* args) {
     settings.donut = donut;
     settings.show_legend = show_legend;
     settings.show_pct = show_pct;
+    settings.slice_gap = slice_gap;
+    settings.inner_radius_ratio = inner_ratio;
+    settings.legend_format = legend_format;
+    settings.start_angle = start_angle;
+    settings.counter_clockwise = counter_clockwise;
+    settings.center_text = center_text;
 
     chart = cc_pie_create(slices, (int)count, width, height, &settings);
     free(slices);

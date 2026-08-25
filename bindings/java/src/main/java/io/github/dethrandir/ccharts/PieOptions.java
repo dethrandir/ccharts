@@ -24,6 +24,12 @@ public final class PieOptions {
     private final String[] colors;
     private final boolean showLegend;
     private final boolean showPct;
+    private final double sliceGap;
+    private final double innerRadiusRatio;
+    private final int legendFormat;
+    private final double startAngle;
+    private final boolean counterClockwise;
+    private final String centerText;
 
     private PieOptions(Builder builder) {
         this.width = builder.width;
@@ -32,6 +38,12 @@ public final class PieOptions {
         this.colors = builder.colors;
         this.showLegend = builder.showLegend;
         this.showPct = builder.showPct;
+        this.sliceGap = builder.sliceGap;
+        this.innerRadiusRatio = builder.innerRadiusRatio;
+        this.legendFormat = builder.legendFormat;
+        this.startAngle = builder.startAngle;
+        this.counterClockwise = builder.counterClockwise;
+        this.centerText = builder.centerText;
     }
 
     /** A new builder. */
@@ -69,6 +81,36 @@ public final class PieOptions {
         return showPct;
     }
 
+    /** Angular gap between slices, in radians. */
+    public double sliceGap() {
+        return sliceGap;
+    }
+
+    /** Donut thickness, or a negative value when unspecified. */
+    public double innerRadiusRatio() {
+        return innerRadiusRatio;
+    }
+
+    /** Legend entry format enum. */
+    public int legendFormat() {
+        return legendFormat;
+    }
+
+    /** Start angle in radians, or a negative value when unspecified. */
+    public double startAngle() {
+        return startAngle;
+    }
+
+    /** Sweep clockwise instead of counter-clockwise. */
+    public boolean counterClockwise() {
+        return counterClockwise;
+    }
+
+    /** Text drawn in the hollow center of a donut, or {@code null}. */
+    String centerText() {
+        return centerText;
+    }
+
     /** Builder for {@link PieOptions}. */
     public static final class Builder {
         private int width = 24;
@@ -77,6 +119,19 @@ public final class PieOptions {
         private String[] colors;
         private boolean showLegend = true;
         private boolean showPct;
+
+        private double sliceGap;
+
+        /** -1 = unspecified (library default, donut 0.5 / disk 0). */
+        private double innerRadiusRatio = -1;
+
+        private int legendFormat;
+
+        /** -1 = unspecified (library default, 12 o'clock). */
+        private double startAngle = -1;
+
+        private boolean counterClockwise;
+        private String centerText;
 
         private Builder() {
         }
@@ -127,6 +182,50 @@ public final class PieOptions {
         /** Append {@code (NN%)} to each legend entry. */
         public Builder showPct(boolean yes) {
             this.showPct = yes;
+            return this;
+        }
+
+        /** Angular gap between slices, in radians. Default {@code 0} (adjacent). */
+        public Builder sliceGap(double radians) {
+            this.sliceGap = radians;
+            return this;
+        }
+
+        /**
+         * Donut thickness in {@code [0, 1]}: {@code 0} a filled disk, {@code 1}
+         * a hairline ring. A negative value leaves it to {@link #donut(boolean)}
+         * ({@code 0.5} for a donut, {@code 0} for a disk). Above 1 is clamped.
+         */
+        public Builder innerRadiusRatio(double ratio) {
+            this.innerRadiusRatio = ratio;
+            return this;
+        }
+
+        /**
+         * Legend entry format: {@code 0} value, {@code 1} label + pct,
+         * {@code 2} value + pct, {@code 3} label. Unknown values fall back to
+         * {@code 0}.
+         */
+        public Builder legendFormat(int format) {
+            this.legendFormat = format;
+            return this;
+        }
+
+        /** Angle (radians) at which slice 0 begins; negative = library default. */
+        public Builder startAngle(double radians) {
+            this.startAngle = radians;
+            return this;
+        }
+
+        /** Sweep the slices clockwise instead of the default counter-clockwise. */
+        public Builder counterClockwise(boolean yes) {
+            this.counterClockwise = yes;
+            return this;
+        }
+
+        /** Text drawn in the hollow center of a donut (only when there is a hollow). */
+        public Builder centerText(String text) {
+            this.centerText = text;
             return this;
         }
 

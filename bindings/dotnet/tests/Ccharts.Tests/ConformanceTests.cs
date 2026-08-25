@@ -65,7 +65,7 @@ public class ConformanceTests
             File.ReadAllBytes(Path.Combine(suiteDir!, "cases.json")));
         var datasets = document.RootElement.GetProperty("datasets");
         var cases = document.RootElement.GetProperty("cases").EnumerateArray().ToList();
-        Assert.True(cases.Count >= 10, "conformance suite looks truncated");
+        Assert.True(cases.Count >= 35, "conformance suite looks truncated");
 
         foreach (var testCase in cases)
         {
@@ -98,6 +98,21 @@ public class ConformanceTests
                     ShowLegend = settings.TryGetProperty("show_legend", out var legend)
                         ? legend.GetBoolean() : true,
                     ShowPct = settings.TryGetProperty("show_pct", out var pct) && pct.GetBoolean(),
+                    SliceGap = settings.TryGetProperty("slice_gap", out var gap)
+                        ? gap.GetDouble() : 0,
+                    // A real 0.0 must be shipped as-is; the record's -1 sentinel
+                    // means "unspecified" (library default).
+                    InnerRadiusRatio = settings.TryGetProperty("inner_radius_ratio", out var ratio)
+                        ? ratio.GetDouble() : -1,
+                    LegendFormat = settings.TryGetProperty("legend_format", out var fmt)
+                        ? fmt.GetInt32() : 0,
+                    StartAngle = settings.TryGetProperty("start_angle", out var angle)
+                        ? angle.GetDouble() : -1,
+                    CounterClockwise = settings.TryGetProperty("counter_clockwise", out var ccw)
+                        && ccw.GetBoolean(),
+                    CenterText = settings.TryGetProperty("center_text", out var center)
+                        && center.ValueKind == JsonValueKind.String
+                        ? center.GetString() : null,
                 });
             }
             else

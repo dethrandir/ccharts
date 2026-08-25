@@ -65,6 +65,29 @@ export interface PieOptions {
   showLegend?: boolean;
   /** Append `(NN%)` to each legend entry. Default false. */
   showPct?: boolean;
+  /** Angular gap between slices, in radians. Default 0 (adjacent). */
+  sliceGap?: number;
+  /**
+   * Donut thickness in `[0, 1]`: `0` = a filled disk, `1` = a hairline ring.
+   * Omitted (default), the thickness comes from `donut` (0.5 for a donut,
+   * 0 for a disk). Values above 1 are clamped.
+   */
+  innerRadiusRatio?: number;
+  /**
+   * Legend entry format: `0` = `label  value` (+ `(NN%)` with `showPct`),
+   * `1` = `label  NN%`, `2` = `value  (NN%)`, `3` = `label` only.
+   * Unknown values fall back to 0. Default 0.
+   */
+  legendFormat?: number;
+  /**
+   * Angle (radians) at which slice 0 begins. Omitted (default) uses the
+   * library default (12 o'clock).
+   */
+  startAngle?: number;
+  /** Sweep the slices clockwise instead of the default counter-clockwise. Default false. */
+  counterClockwise?: boolean;
+  /** Text drawn in the hollow center of a donut (only when there is a hollow). Default: none. */
+  centerText?: string;
 }
 
 /** An error reported by the chart library. */

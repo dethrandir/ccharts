@@ -175,6 +175,22 @@ typedef struct ccharts_pie_slice {
  * `show_legend` appends one "label  value (pct%)" line per slice below the
  * disk when `show_pct` is set, otherwise without the percentage.
  *
+ * The remaining arguments are the optional Fas 3 pie settings, all of which
+ * default to the original behavior when left at their sentinel/zero values:
+ *   - slice_gap          : angular gap between slices, radians; 0 = adjacent
+ *   - inner_radius_ratio : donut thickness in [0,1]; 0 = disk; NEGATIVE
+ *                          (e.g. -1) = unspecified, so `donut` decides (0.5
+ *                          for a donut, 0 for a disk); >1 clamped to 1
+ *   - legend_format      : ccharts_pie_legend_format enum; 0 = original
+ *   - start_angle        : radians where slice 0 begins; NEGATIVE =
+ *                          unspecified (CC_PI/2 = 12 o'clock)
+ *   - counter_clockwise  : 0 = original counter-clockwise sweep; nonzero =
+ *                          mirrored (clockwise) sweep
+ *   - center_text        : text drawn in the hollow center (only when there is
+ *                          a hollow); NULL or "" disables it
+ *
+ * Non-finite slice_gap / inner_radius_ratio / start_angle are rejected.
+ *
  * Same contract as ccharts_line: CCHARTS_OK with *out set to a string on
  * success (including the empty string the header returns when every slice
  * value is <= 0), CCHARTS_ERR_INVALID_ARG for NULL slices / count <= 0,
@@ -187,7 +203,16 @@ CCHARTS_API int32_t ccharts_pie_from_slices(
     int32_t donut,
     const char* const* colors, int32_t color_count,
     int32_t show_legend, int32_t show_pct,
+    double slice_gap, double inner_radius_ratio, int32_t legend_format,
+    double start_angle, int32_t counter_clockwise, const char* center_text,
     char** out, size_t* out_len);
+
+/* legend_format values for ccharts_pie_from_slices, mirroring the header's
+ * CC_PIE_LEGEND_* constants. Unknown values fall back to VALUE (original). */
+#define CCHARTS_PIE_LEGEND_VALUE      0 /* "label  value" (+ "(NN%)" when show_pct) */
+#define CCHARTS_PIE_LEGEND_LABEL_PCT  1 /* "label  NN%"                             */
+#define CCHARTS_PIE_LEGEND_VALUE_PCT  2 /* "value  (NN%)"                           */
+#define CCHARTS_PIE_LEGEND_LABEL      3 /* "label" only                             */
 
 /* ---------------------------- Introspection ---------------------------- */
 

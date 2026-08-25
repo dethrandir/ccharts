@@ -223,10 +223,16 @@ public final class Chart implements AutoCloseable {
 
             MemorySegment out = arena.allocate(ValueLayout.ADDRESS);
             MemorySegment lengthOut = arena.allocate(ValueLayout.JAVA_LONG);
+            // Nullable: a typed local keeps invokeExact's static-type matching
+            // (a conditional expression here would be typed Object).
+            MemorySegment centerText = text(arena, options.centerText());
             int status = (int) Native.PIE_FROM_SLICES.invokeExact(
                     slicesSeg, slices.size(), options.width(), options.height(),
                     options.donut() ? 1 : 0, colorsSeg, colorCount,
                     options.showLegend() ? 1 : 0, options.showPct() ? 1 : 0,
+                    options.sliceGap(), options.innerRadiusRatio(),
+                    options.legendFormat(), options.startAngle(),
+                    options.counterClockwise() ? 1 : 0, centerText,
                     out, lengthOut);
             CchartsException.throwIfError(status);
 

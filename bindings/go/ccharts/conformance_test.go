@@ -34,18 +34,24 @@ type suite struct {
 			Value float64 `json:"value"`
 		} `json:"slices"`
 		Settings struct {
-			RiseColor   *string  `json:"rise_color"`
-			FallColor   *string  `json:"fall_color"`
-			BgColor     *string  `json:"bg_color"`
-			AreaColor   *string  `json:"area_color"`
-			SingleColor bool     `json:"single_color"`
-			ShowPrices  bool     `json:"show_prices"`
-			ShowTimes   bool     `json:"show_times"`
-			Plain       bool     `json:"plain"`
-			Donut       bool     `json:"donut"`
-			Colors      []string `json:"colors"`
-			ShowLegend  bool     `json:"show_legend"`
-			ShowPct     bool     `json:"show_pct"`
+			RiseColor        *string  `json:"rise_color"`
+			FallColor        *string  `json:"fall_color"`
+			BgColor          *string  `json:"bg_color"`
+			AreaColor        *string  `json:"area_color"`
+			SingleColor      bool     `json:"single_color"`
+			ShowPrices       bool     `json:"show_prices"`
+			ShowTimes        bool     `json:"show_times"`
+			Plain            bool     `json:"plain"`
+			Donut            bool     `json:"donut"`
+			Colors           []string `json:"colors"`
+			ShowLegend       bool     `json:"show_legend"`
+			ShowPct          bool     `json:"show_pct"`
+			SliceGap         *float64 `json:"slice_gap"`
+			InnerRadiusRatio *float64 `json:"inner_radius_ratio"`
+			LegendFormat     *int     `json:"legend_format"`
+			StartAngle       *float64 `json:"start_angle"`
+			CounterClockwise *bool    `json:"counter_clockwise"`
+			CenterText       *string  `json:"center_text"`
 		} `json:"settings"`
 	} `json:"cases"`
 }
@@ -74,6 +80,36 @@ func color(t *testing.T, name *string) ccharts.Color {
 	return c
 }
 
+// deref helpers unwrap the pointer-based suite fields used to distinguish an
+// absent setting from an explicit zero.
+func derefF(v *float64) float64 {
+	if v == nil {
+		return 0
+	}
+	return *v
+}
+
+func derefB(v *bool) bool {
+	if v == nil {
+		return false
+	}
+	return *v
+}
+
+func derefI(v *int) int {
+	if v == nil {
+		return 0
+	}
+	return *v
+}
+
+func derefS(v *string) string {
+	if v == nil {
+		return ""
+	}
+	return *v
+}
+
 func TestConformance(t *testing.T) {
 	dir := filepath.Join("..", "..", "..", "conformance")
 	raw, err := os.ReadFile(filepath.Join(dir, "cases.json"))
@@ -85,7 +121,7 @@ func TestConformance(t *testing.T) {
 	if err := json.Unmarshal(raw, &s); err != nil {
 		t.Fatalf("cases.json: %v", err)
 	}
-	if len(s.Cases) < 10 {
+	if len(s.Cases) < 35 {
 		t.Fatalf("conformance suite looks truncated: %d cases", len(s.Cases))
 	}
 
@@ -109,10 +145,16 @@ func TestConformance(t *testing.T) {
 				}
 				got, err = ccharts.Pie(slices, tc.Width, tc.Height,
 					&ccharts.PieOptions{
-						Donut:      tc.Settings.Donut,
-						Colors:     colors,
-						ShowLegend: tc.Settings.ShowLegend,
-						ShowPct:    tc.Settings.ShowPct,
+						Donut:            tc.Settings.Donut,
+						Colors:           colors,
+						ShowLegend:       tc.Settings.ShowLegend,
+						ShowPct:          tc.Settings.ShowPct,
+						SliceGap:         derefF(tc.Settings.SliceGap),
+						InnerRadiusRatio: tc.Settings.InnerRadiusRatio,
+						LegendFormat:     derefI(tc.Settings.LegendFormat),
+						StartAngle:       tc.Settings.StartAngle,
+						CounterClockwise: derefB(tc.Settings.CounterClockwise),
+						CenterText:       derefS(tc.Settings.CenterText),
 					})
 			} else {
 				data, ok := s.Datasets[tc.Dataset]

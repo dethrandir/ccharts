@@ -730,6 +730,114 @@
       }
     },
     {
+      "name": "pie_gap",
+      "chart": "pie",
+      "width": 24,
+      "height": 10,
+      "slices": [
+        { "label": "Alpha", "value": 40 },
+        { "label": "Beta", "value": 30 },
+        { "label": "Gamma", "value": 30 }
+      ],
+      "settings": {
+        "donut": true,
+        "colors": null,
+        "show_legend": true,
+        "show_pct": false,
+        "slice_gap": 0.15
+      }
+    },
+    {
+      "name": "pie_thick_donut",
+      "chart": "pie",
+      "width": 24,
+      "height": 10,
+      "slices": [
+        { "label": "Alpha", "value": 40 },
+        { "label": "Beta", "value": 30 },
+        { "label": "Gamma", "value": 30 }
+      ],
+      "settings": {
+        "donut": true,
+        "colors": null,
+        "show_legend": true,
+        "show_pct": true,
+        "inner_radius_ratio": 0.2
+      }
+    },
+    {
+      "name": "pie_legend_alt",
+      "chart": "pie",
+      "width": 24,
+      "height": 10,
+      "slices": [
+        { "label": "Alpha", "value": 40 },
+        { "label": "Beta", "value": 30 },
+        { "label": "Gamma", "value": 30 }
+      ],
+      "settings": {
+        "donut": false,
+        "colors": null,
+        "show_legend": true,
+        "show_pct": false,
+        "legend_format": 1
+      }
+    },
+    {
+      "name": "pie_start_angle",
+      "chart": "pie",
+      "width": 24,
+      "height": 10,
+      "slices": [
+        { "label": "Alpha", "value": 40 },
+        { "label": "Beta", "value": 30 },
+        { "label": "Gamma", "value": 30 }
+      ],
+      "settings": {
+        "donut": true,
+        "colors": null,
+        "show_legend": true,
+        "show_pct": false,
+        "start_angle": 0.0
+      }
+    },
+    {
+      "name": "pie_clockwise",
+      "chart": "pie",
+      "width": 24,
+      "height": 10,
+      "slices": [
+        { "label": "Alpha", "value": 40 },
+        { "label": "Beta", "value": 30 },
+        { "label": "Gamma", "value": 30 }
+      ],
+      "settings": {
+        "donut": true,
+        "colors": null,
+        "show_legend": true,
+        "show_pct": false,
+        "counter_clockwise": true
+      }
+    },
+    {
+      "name": "pie_center_text",
+      "chart": "pie",
+      "width": 24,
+      "height": 10,
+      "slices": [
+        { "label": "Alpha", "value": 40 },
+        { "label": "Beta", "value": 30 },
+        { "label": "Gamma", "value": 30 }
+      ],
+      "settings": {
+        "donut": true,
+        "colors": null,
+        "show_legend": true,
+        "show_pct": false,
+        "center_text": "42"
+      }
+    },
+    {
       "name": "pie_colors",
       "chart": "pie",
       "width": 20,

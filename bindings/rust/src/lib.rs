@@ -284,6 +284,12 @@ pub struct PieOptions {
     colors: Option<Vec<ColorSpec>>,
     show_legend: bool,
     show_pct: bool,
+    slice_gap: f64,
+    inner_radius_ratio: f64,
+    legend_format: i32,
+    start_angle: f64,
+    counter_clockwise: bool,
+    center_text: Option<String>,
 }
 
 impl PieOptions {
@@ -294,6 +300,12 @@ impl PieOptions {
             colors: None,
             show_legend: true,
             show_pct: false,
+            slice_gap: 0.0,
+            inner_radius_ratio: -1.0,
+            legend_format: 0,
+            start_angle: -1.0,
+            counter_clockwise: false,
+            center_text: None,
         }
     }
 
@@ -331,6 +343,49 @@ impl PieOptions {
     /// Append `(NN%)` to each legend entry.
     pub fn show_pct(mut self, yes: bool) -> Self {
         self.show_pct = yes;
+        self
+    }
+
+    /// Angular gap between slices, in radians. `0.0` (the default) keeps the
+    /// slices adjacent, producing thin gaps when applied to a donut.
+    pub fn slice_gap(mut self, radians: f64) -> Self {
+        self.slice_gap = radians;
+        self
+    }
+
+    /// Donut thickness in `[0, 1]`: `0.0` is a filled disk, `1.0` a hairline
+    /// ring. A negative value (the default) leaves it to [`PieOptions::donut`]:
+    /// `0.5` for a donut, `0.0` for a disk. Values above `1.0` are clamped.
+    pub fn inner_radius_ratio(mut self, ratio: f64) -> Self {
+        self.inner_radius_ratio = ratio;
+        self
+    }
+
+    /// Legend entry format: `0` = `label  value` (+ `(NN%)` with
+    /// [`PieOptions::show_pct`]), `1` = `label  NN%`, `2` = `value  (NN%)`,
+    /// `3` = `label` only. Unknown values fall back to `0`.
+    pub fn legend_format(mut self, format: i32) -> Self {
+        self.legend_format = format;
+        self
+    }
+
+    /// Angle (radians) at which slice 0 begins. A negative value (the default)
+    /// uses the library default (12 o'clock).
+    pub fn start_angle(mut self, radians: f64) -> Self {
+        self.start_angle = radians;
+        self
+    }
+
+    /// Sweep the slices clockwise instead of the default counter-clockwise.
+    pub fn counter_clockwise(mut self, yes: bool) -> Self {
+        self.counter_clockwise = yes;
+        self
+    }
+
+    /// Text drawn in the center of a donut (only when there is a hollow).
+    /// `None` (the default) disables it.
+    pub fn center_text(mut self, text: &str) -> Self {
+        self.center_text = Some(text.to_string());
         self
     }
 }
@@ -472,9 +527,18 @@ impl Chart {
 
         let mut out: *mut c_char = std::ptr::null_mut();
         let mut len: usize = 0;
-        // Safety: every pointer in `raw`/`colors` lives across the call, the C
-        // layer copies the slices immediately, and `out` receives an owned
-        // string we release below.
+        // The center-text pointer must outlive the call.
+        let center_text = options
+            .center_text
+            .as_ref()
+            .map(|text| CString::new(text.as_str()).map_err(|_| Error::InteriorNul))
+            .transpose()?;
+        let center_text_ptr = center_text
+            .as_ref()
+            .map_or(std::ptr::null(), |c| c.as_ptr());
+        // Safety: every pointer in `raw`/`colors`/`center_text_ptr` lives across
+        // the call, the C layer copies the slices immediately, and `out`
+        // receives an owned string we release below.
         let status = unsafe {
             ffi::ccharts_pie_from_slices(
                 raw.as_ptr(),
@@ -486,6 +550,12 @@ impl Chart {
                 colors.len() as i32,
                 options.show_legend as i32,
                 options.show_pct as i32,
+                options.slice_gap,
+                options.inner_radius_ratio,
+                options.legend_format,
+                options.start_angle,
+                options.counter_clockwise as i32,
+                center_text_ptr,
                 &mut out,
                 &mut len,
             )

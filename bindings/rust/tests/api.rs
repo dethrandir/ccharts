@@ -179,3 +179,37 @@ fn pie_renders_disk_and_donut_and_rejects_bad_input() {
                          24, 10, &PieOptions::new());
     assert_eq!(bad.unwrap_err(), ccharts::Error::NonFinite);
 }
+
+#[test]
+fn pie_optional_settings_are_wired_through() {
+    let slices = [PieSlice { label: Some("A"), value: 40.0 },
+                  PieSlice { label: Some("B"), value: 30.0 },
+                  PieSlice { label: Some("C"), value: 30.0 }];
+
+    let base = Chart::pie(&slices, 24, 10, &PieOptions::new().donut(true)).unwrap();
+
+    let gap = Chart::pie(&slices, 24, 10, &PieOptions::new().donut(true).slice_gap(0.15)).unwrap();
+    let thick = Chart::pie(&slices, 24, 10, &PieOptions::new().donut(true)
+        .inner_radius_ratio(0.2)).unwrap();
+    let alt = Chart::pie(&slices, 24, 10, &PieOptions::new().donut(true)
+        .legend_format(1)).unwrap();
+    let angled = Chart::pie(&slices, 24, 10, &PieOptions::new().donut(true)
+        .start_angle(0.0)).unwrap();
+    let cw = Chart::pie(&slices, 24, 10, &PieOptions::new().donut(true)
+        .counter_clockwise(true)).unwrap();
+    let centered = Chart::pie(&slices, 24, 10, &PieOptions::new().donut(true)
+        .center_text("42")).unwrap();
+
+    // Every new option changes at least the render, proving the value reached
+    // the renderer rather than being ignored.
+    assert_ne!(base, gap, "slice_gap must take effect");
+    assert_ne!(base, thick, "inner_radius_ratio must take effect");
+    assert_ne!(base, alt, "legend_format must take effect");
+    assert_ne!(base, angled, "start_angle must take effect");
+    assert_ne!(base, cw, "counter_clockwise must take effect");
+    assert_ne!(base, centered, "center_text must take effect");
+
+    // An interior NUL in the center text is rejected.
+    let err = Chart::pie(&slices, 24, 10, &PieOptions::new().center_text("a\0b")).unwrap_err();
+    assert_eq!(err, ccharts::Error::InteriorNul);
+}

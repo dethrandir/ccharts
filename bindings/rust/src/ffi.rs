@@ -75,6 +75,12 @@ extern "C" {
         color_count: i32,
         show_legend: i32,
         show_pct: i32,
+        slice_gap: f64,
+        inner_radius_ratio: f64,
+        legend_format: i32,
+        start_angle: f64,
+        counter_clockwise: i32,
+        center_text: *const c_char,
         out: *mut *mut c_char,
         out_len: *mut usize,
     ) -> i32;

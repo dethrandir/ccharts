@@ -107,6 +107,8 @@ static void render_pies(void) {
     cc_pie_settings_t disk = {
         .show_legend = 1,
         .show_pct    = 1,
+        .start_angle = -1.0,   /* negative = unspecified -> CC_PI/2 (12 o'clock) */
+        .inner_radius_ratio = -1.0,
     };
     char* d = cc_pie_create(budget, 5, 20, 8, &disk);
     if (d != NULL) {
@@ -118,6 +120,8 @@ static void render_pies(void) {
         .donut       = 1,
         .show_legend = 1,
         .show_pct    = 1,
+        .inner_radius_ratio = -1.0,   /* unspecified -> donut's 0.5 hollow */
+        .start_angle = -1.0,
     };
     char* dn = cc_pie_create(budget, 5, 20, 12, &donut);
     if (dn != NULL) {
@@ -131,6 +135,8 @@ static void render_pies(void) {
                                               CC_COLOR_GREEN, CC_COLOR_YELLOW, NULL },
         .show_legend = 1,
         .show_pct    = 1,
+        .inner_radius_ratio = -1.0,
+        .start_angle = -1.0,
     };
     char* ov = cc_pie_create(budget, 5, 24, 10, &override);
     if (ov != NULL) {

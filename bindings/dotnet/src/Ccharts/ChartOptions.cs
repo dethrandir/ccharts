@@ -135,4 +135,35 @@ public sealed record PieOptions
 
     /// <summary>Append <c>(NN%)</c> to each legend entry.</summary>
     public bool ShowPct { get; init; }
+
+    /// <summary>Angular gap between slices, in radians. Default <c>0</c> (adjacent).</summary>
+    public double SliceGap { get; init; }
+
+    /// <summary>
+    /// Donut thickness in <c>[0, 1]</c>: <c>0</c> = a filled disk, <c>1</c> = a
+    /// hairline ring. A negative value (the default <c>-1</c>) leaves it to
+    /// <see cref="Donut"/> (<c>0.5</c> for a donut, <c>0</c> for a disk). Values
+    /// above 1 are clamped.
+    /// </summary>
+    public double InnerRadiusRatio { get; init; } = -1;
+
+    /// <summary>
+    /// Legend entry format: <c>0</c> = <c>label  value</c> (+ <c>(NN%)</c> with
+    /// <see cref="ShowPct"/>), <c>1</c> = <c>label  NN%</c>, <c>2</c> =
+    /// <c>value  (NN%)</c>, <c>3</c> = <c>label</c> only. Unknown values fall
+    /// back to <c>0</c>.
+    /// </summary>
+    public int LegendFormat { get; init; }
+
+    /// <summary>
+    /// Angle (radians) at which slice 0 begins. A negative value (the default
+    /// <c>-1</c>) uses the library default (12 o'clock).
+    /// </summary>
+    public double StartAngle { get; init; } = -1;
+
+    /// <summary>Sweep the slices clockwise instead of the default counter-clockwise.</summary>
+    public bool CounterClockwise { get; init; }
+
+    /// <summary>Text drawn in the hollow center of a donut (only when there is a hollow).</summary>
+    public string? CenterText { get; init; }
 }

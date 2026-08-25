@@ -66,6 +66,8 @@ internal static partial class NativeMethods
     internal static partial int PieFromSlices(
         [In] NativePieSlice[] slices, int count, int width, int height, int donut,
         [In] IntPtr[]? colors, int colorCount, int showLegend, int showPct,
+        double sliceGap, double innerRadiusRatio, int legendFormat,
+        double startAngle, int counterClockwise, IntPtr centerText,
         out IntPtr chart, out nuint length);
 
     [LibraryImport(Library, EntryPoint = "ccharts_color")]

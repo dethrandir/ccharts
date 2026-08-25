@@ -234,6 +234,10 @@ int32_t ccharts_pie_from_slices(const ccharts_pie_slice* slices, int32_t count,
                                 int32_t donut,
                                 const char* const* colors, int32_t color_count,
                                 int32_t show_legend, int32_t show_pct,
+                                double slice_gap, double inner_radius_ratio,
+                                int32_t legend_format, double start_angle,
+                                int32_t counter_clockwise,
+                                const char* center_text,
                                 char** out, size_t* out_len) {
     cc_pie_settings_t ps;
     cc_pie_slice_t* slice_rows = NULL;
@@ -250,9 +254,15 @@ int32_t ccharts_pie_from_slices(const ccharts_pie_slice* slices, int32_t count,
 
     /* NaN/inf must not reach the renderer: cc_pie_create guards values with a
      * positive-range check, but +inf would slip through (inf > 0 is true) and
-     * corrupt the angle math. Mirror the ABI's finite guard for prices. */
+     * corrupt the angle math, and non-finite option doubles (slice_gap,
+     * inner_radius_ratio, start_angle) would poison the geometry. Mirror the
+     * ABI's finite guard for prices. */
     for (i = 0; i < count; i++) {
         if (!isfinite(slices[i].value)) return CCHARTS_ERR_NON_FINITE;
+    }
+    if (!isfinite(slice_gap) || !isfinite(inner_radius_ratio) ||
+        !isfinite(start_angle)) {
+        return CCHARTS_ERR_NON_FINITE;
     }
 
     status = resolve_pie_colors(colors, color_count, &resolved_colors);
@@ -273,6 +283,12 @@ int32_t ccharts_pie_from_slices(const ccharts_pie_slice* slices, int32_t count,
     ps.donut = (int)donut;
     ps.show_legend = (int)show_legend;
     ps.show_pct = (int)show_pct;
+    ps.slice_gap = slice_gap;
+    ps.inner_radius_ratio = inner_radius_ratio;
+    ps.legend_format = (int)legend_format;
+    ps.start_angle = start_angle;
+    ps.counter_clockwise = (int)counter_clockwise;
+    ps.center_text = center_text;
 
     chart = cc_pie_create(slice_rows, (int)count, (int)width, (int)height, &ps);
     free(slice_rows);

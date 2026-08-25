@@ -305,6 +305,8 @@ export class Chart {
     const {
       width = 24, height = 10,
       donut = false, colors, showLegend = true, showPct = false,
+      sliceGap = 0, innerRadiusRatio = -1, legendFormat = 0,
+      startAngle = -1, counterClockwise = false, centerText,
     } = options;
 
     if (!Array.isArray(slices) || slices.length === 0) {
@@ -317,6 +319,7 @@ export class Chart {
     const owned = [];
     let slicesPtr = 0;
     let colorsPtr = 0;
+    let centerTextPtr = 0;
     let outPtr = 0;
     let lenPtr = 0;
     try {
@@ -346,12 +349,19 @@ export class Chart {
         colorCount = colors.length;
       }
 
+      if (centerText !== undefined && centerText !== null && centerText !== "") {
+        centerTextPtr = writeCString(String(centerText));
+        owned.push(centerTextPtr);
+      }
+
       outPtr = malloc(4);
       lenPtr = malloc(4);
       const status = exports.ccharts_pie_from_slices(
         slicesPtr, slices.length, width, height,
         donut ? 1 : 0, colorsPtr, colorCount,
         showLegend ? 1 : 0, showPct ? 1 : 0,
+        sliceGap, innerRadiusRatio, legendFormat,
+        startAngle, counterClockwise ? 1 : 0, centerTextPtr,
         outPtr, lenPtr);
       if (status !== STATUS.OK) throw fail(status);
 
