@@ -32,6 +32,9 @@ DESTINATIONS = {
     # Ruby compiles the vendored C into a Fiddle-loadable shared object via
     # mkmf, so it needs its own copy of the sources.
     "bindings/ruby": "ext/ccharts/vendor",
+    # Lua compiles the vendored C into a Lua C module via LuaRocks, so it
+    # needs its own copy of the sources too.
+    "bindings/lua": "vendor",
     # bindings/dotnet and bindings/java are absent on purpose: they link the
     # prebuilt shared library from the CMake build and never compile the C.
 }

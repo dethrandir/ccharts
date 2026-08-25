@@ -25,6 +25,7 @@ MANIFESTS = {
     "bindings/dotnet/src/Ccharts/Ccharts.csproj": r'^<Version>([^<]+)</Version>',
     "bindings/java/pom.xml": r'^<version>([^<]+)</version>',
     "bindings/ruby/lib/ccharts/version.rb": r'^\s*VERSION\s*=\s*"([^"]+)"',
+    "bindings/lua/src/ccharts/version.lua": r'^\s*VERSION\s*=\s*"([^"]+)"',
 }
 
 REFERENCE = "pyproject.toml"

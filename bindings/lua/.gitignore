@@ -1,0 +1,5 @@
+# Build artifacts (compiled Lua C module and derivative copies).
+build/
+*.so
+*.o
+*.rock
