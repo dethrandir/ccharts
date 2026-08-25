@@ -207,7 +207,7 @@ func TestConcurrentRendering(t *testing.T) {
 }
 
 func TestMetadata(t *testing.T) {
-	if ccharts.Version() != "0.2.1" {
+	if ccharts.Version() != "0.2.2" {
 		t.Errorf("Version() = %q", ccharts.Version())
 	}
 	if ccharts.MaxDim() != 100000 || ccharts.MaxCells() != 1000000 {

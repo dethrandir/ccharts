@@ -94,6 +94,19 @@ class TestConformance(unittest.TestCase):
                 counter_clockwise=cfg.get("counter_clockwise", False),
                 center_text=cfg.get("center_text"),
             )
+        if case["chart"] == "hist":
+            return Chart.histogram(
+                case["samples"],
+                width=case["width"], height=case["height"],
+                bin_count=cfg.get("bin_count", 0),
+                min_value=cfg.get("min_value"),
+                max_value=cfg.get("max_value"),
+                rise_color=COLORS.get(cfg["rise_color"]),
+                bg_color=COLORS.get(cfg["bg_color"]),
+                show_bins=cfg.get("show_bins", False),
+                show_prices=cfg.get("show_prices", False),
+                plain=cfg.get("plain", False),
+            )
         draw = getattr(self._chart(case), case["chart"])
         return draw(
             width=case["width"], height=case["height"],

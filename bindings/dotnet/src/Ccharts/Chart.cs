@@ -237,6 +237,74 @@ public sealed class Chart : IDisposable
         }
     }
 
+    /// <summary>
+    /// Renders a histogram of the given scalar samples. A histogram has no
+    /// OHLC dataset, so this is a static method taking the raw sample values.
+    /// </summary>
+    /// <param name="samples">The scalar values to bin.</param>
+    /// <param name="options">Histogram options, or <c>null</c> for the defaults.</param>
+    /// <returns>The chart as a printable string.</returns>
+    /// <exception cref="CchartsException">
+    /// The samples were empty or held NaN/infinity, or the dimensions were out
+    /// of range.
+    /// </exception>
+    public static string Histogram(IReadOnlyList<double> samples, HistogramOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(samples);
+        NativeLibraryResolver.EnsureInstalled();
+
+        options ??= new HistogramOptions();
+        if (samples.Count == 0)
+        {
+            throw new CchartsException(CchartsStatus.InvalidArgument,
+                "need at least one sample");
+        }
+
+        var colors = new IntPtr[2];
+        try
+        {
+            // An empty C string means "emit no escape at all", which is
+            // different from a null pointer (use the default color).
+            colors[0] = options.Plain ? Empty() : Utf8(options.Color);
+            colors[1] = options.Plain ? Empty() : Utf8(options.BackgroundColor);
+
+            var settings = new NativeHistSettings
+            {
+                RiseColor = colors[0],
+                BackgroundColor = colors[1],
+                BinCount = options.BinCount,
+                // null is the NaN "auto" sentinel: use the data min/max.
+                MinValue = options.MinValue ?? double.NaN,
+                MaxValue = options.MaxValue ?? double.NaN,
+                ShowBins = options.ShowBins ? 1 : 0,
+                ShowPrices = options.ShowPrices ? 1 : 0,
+            };
+
+            var status = NativeMethods.Hist(samples.ToArray(), samples.Count,
+                options.Width, options.Height, in settings, out var chart, out var length);
+            CchartsException.ThrowIfError(status);
+
+            try
+            {
+                return Marshal.PtrToStringUTF8(chart, checked((int)length));
+            }
+            finally
+            {
+                NativeMethods.StringFree(chart);
+            }
+        }
+        finally
+        {
+            foreach (var color in colors)
+            {
+                if (color != IntPtr.Zero)
+                {
+                    Marshal.FreeCoTaskMem(color);
+                }
+            }
+        }
+    }
+
     /// <summary>Version of the underlying C library.</summary>
     public static string Version
     {

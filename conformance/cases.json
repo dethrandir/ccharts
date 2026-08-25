@@ -884,6 +884,108 @@
         "show_legend": true,
         "show_pct": true
       }
+    },
+    {
+      "name": "hist_default",
+      "chart": "hist",
+      "width": 60,
+      "height": 8,
+      "samples": [0,1,1,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,5,5,6,6,6,6,6,7,7,7,7,8,8,8,9,9,10],
+      "settings": {
+        "rise_color": null,
+        "bg_color": null,
+        "bin_count": 0,
+        "min_value": null,
+        "max_value": null,
+        "show_bins": false,
+        "show_prices": false,
+        "plain": false
+      }
+    },
+    {
+      "name": "hist_bins_wide",
+      "chart": "hist",
+      "width": 10,
+      "height": 6,
+      "samples": [0,1,1,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,5,5,6,6,6,6,6,7,7,7,7,8,8,8,9,9,10,10,11,11,12,12],
+      "settings": {
+        "rise_color": "blue",
+        "bg_color": null,
+        "bin_count": 30,
+        "min_value": null,
+        "max_value": null,
+        "show_bins": false,
+        "show_prices": false,
+        "plain": false
+      }
+    },
+    {
+      "name": "hist_range",
+      "chart": "hist",
+      "width": 60,
+      "height": 8,
+      "samples": [0,1,1,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,5,5,6,6,6,6,6,7,7,7,7,8,8,8,9,9,10],
+      "settings": {
+        "rise_color": null,
+        "bg_color": "bright_black",
+        "bin_count": 0,
+        "min_value": -5,
+        "max_value": 15,
+        "show_bins": false,
+        "show_prices": false,
+        "plain": false
+      }
+    },
+    {
+      "name": "hist_bins",
+      "chart": "hist",
+      "width": 20,
+      "height": 6,
+      "samples": [0,1,1,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,5,5,6,6,6,6,6,7,7,7,7,8,8,8,9,9,10],
+      "settings": {
+        "rise_color": null,
+        "bg_color": null,
+        "bin_count": 5,
+        "min_value": null,
+        "max_value": null,
+        "show_bins": false,
+        "show_prices": false,
+        "plain": false
+      }
+    },
+    {
+      "name": "hist_prices",
+      "chart": "hist",
+      "width": 40,
+      "height": 6,
+      "samples": [0,1,1,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,5,5,6,6,6,6,6,7,7,7,7,8,8,8,9,9,10],
+      "settings": {
+        "rise_color": null,
+        "bg_color": null,
+        "bin_count": 0,
+        "min_value": null,
+        "max_value": null,
+        "show_bins": true,
+        "show_prices": true,
+        "plain": false
+      }
+    },
+    {
+      "name": "hist_single",
+      "chart": "hist",
+      "width": 10,
+      "height": 3,
+      "samples": [5],
+      "settings": {
+        "rise_color": null,
+        "bg_color": null,
+        "bin_count": 0,
+        "min_value": null,
+        "max_value": null,
+        "show_bins": true,
+        "show_prices": false,
+        "plain": false
+      }
     }
   ]
 }

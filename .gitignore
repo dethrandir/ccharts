@@ -4,5 +4,5 @@ __pycache__/
 *.so
 *.egg-info/
 
-# compiled demo binary (avoid gcc -o main)
-main
+# compiled demo binary (avoid gcc -o main); anchored so bindings' src/main dirs are not matched
+/main

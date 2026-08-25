@@ -260,6 +260,72 @@ public final class Chart implements AutoCloseable {
     }
 
     /**
+     * Renders a histogram of the given scalar samples. A histogram has no
+     * OHLC dataset, so this is a static method taking the raw sample values.
+     *
+     * @param samples the scalar values to bin
+     * @param width chart width in cells
+     * @param height chart height in cells
+     * @param options histogram options
+     * @return the chart as a printable string
+     * @throws CchartsException if the samples are empty, hold NaN/infinity,
+     *     or the dimensions are out of range
+     */
+    public static String histogram(double[] samples, int width, int height,
+            HistogramOptions options) {
+        if (samples == null || samples.length == 0) {
+            throw new CchartsException(CchartsException.Status.INVALID_ARGUMENT,
+                    "need at least one sample");
+        }
+
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment settings = arena.allocate(Native.HIST_SETTINGS);
+            // An empty C string means "emit no escape at all", which is
+            // different from a null pointer (use the default color).
+            String forced = options.plain() ? "" : null;
+            settings.set(ValueLayout.ADDRESS, 0,
+                    text(arena, forced != null ? forced : options.color()));
+            settings.set(ValueLayout.ADDRESS, 8,
+                    text(arena, forced != null ? forced : options.backgroundColor()));
+            settings.set(ValueLayout.JAVA_INT, 16, options.binCount());
+            settings.set(ValueLayout.JAVA_DOUBLE, 24, options.minValue());
+            settings.set(ValueLayout.JAVA_DOUBLE, 32, options.maxValue());
+            settings.set(ValueLayout.JAVA_INT, 40, options.showBins() ? 1 : 0);
+            settings.set(ValueLayout.JAVA_INT, 44, options.showPrices() ? 1 : 0);
+
+            MemorySegment out = arena.allocate(ValueLayout.ADDRESS);
+            MemorySegment lengthOut = arena.allocate(ValueLayout.JAVA_LONG);
+            int status = (int) Native.HIST.invokeExact(
+                    arena.allocateFrom(ValueLayout.JAVA_DOUBLE, samples),
+                    samples.length, width, height, settings, out, lengthOut);
+            CchartsException.throwIfError(status);
+
+            MemorySegment chart = out.get(ValueLayout.ADDRESS, 0);
+            long size = lengthOut.get(ValueLayout.JAVA_LONG, 0);
+            try {
+                byte[] bytes = chart.reinterpret(size).toArray(ValueLayout.JAVA_BYTE);
+                return new String(bytes, StandardCharsets.UTF_8);
+            } finally {
+                Native.STRING_FREE.invokeExact(chart);
+            }
+        } catch (Throwable t) {
+            throw Native.wrap(t);
+        }
+    }
+
+    /**
+     * Renders a histogram of the given samples with the default options.
+     *
+     * @param samples the scalar values to bin
+     * @param width chart width in cells
+     * @param height chart height in cells
+     * @return the chart as a printable string
+     */
+    public static String histogram(double[] samples, int width, int height) {
+        return histogram(samples, width, height, HistogramOptions.DEFAULTS);
+    }
+
+    /**
      * Number of candles in the dataset.
      *
      * @return the candle count

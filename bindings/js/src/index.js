@@ -178,7 +178,29 @@ const registry = new FinalizationRegistry((handle) => {
 
 const SETTINGS_BYTES = 4 * 4 + 3 * 4; // four 32-bit pointers + three int32
 const PIE_SLICE_BYTES = 16; // 32-bit label pointer, 4 bytes padding, double value
+// ccharts_hist_settings: two 32-bit pointers, int32 bin_count, padding, then
+// two doubles (8-byte aligned), then two int32. 4+4+4+4 + (8+8) + 4+4 = 40.
+const HIST_SETTINGS_BYTES = 40;
 const PTR_BYTES = 4;
+
+/**
+ * Allocates and writes an ANSI color string into wasm memory, returning its
+ * pointer. An empty C string tells the library to emit no escape at all,
+ * which is different from a null pointer (use the default color); `plain`
+ * forces the empty string over every color. The pointer is pushed onto
+ * `owned` so the caller frees it in one pass.
+ */
+function colorPtr(owned, plain, color) {
+  if (plain) {
+    const ptr = writeCString("");
+    owned.push(ptr);
+    return ptr;
+  }
+  if (color === undefined || color === null || color === "") return 0;
+  const ptr = writeCString(String(color));
+  owned.push(ptr);
+  return ptr;
+}
 
 /** A parsed OHLC dataset that can be rendered repeatedly. */
 export class Chart {
@@ -380,6 +402,76 @@ export class Chart {
     }
   }
 
+  /**
+   * Renders a histogram of the given scalar samples. A histogram has no OHLC
+   * dataset, so this is a static method taking the raw sample values.
+   *
+   * @param {ArrayLike<number>} samples the scalar values to bin
+   * @param {HistogramOptions} [options]
+   * @returns {string}
+   */
+  static histogram(samples, options = {}) {
+    const {
+      width = 60, height = 8,
+      binCount = 0, minValue = Number.NaN, maxValue = Number.NaN,
+      color, backgroundColor, showBins = false, showPrices = false,
+      plain = false,
+    } = options;
+
+    if (!Array.isArray(samples) || samples.length === 0) {
+      throw new CchartsError(STATUS.INVALID_ARGUMENT, "need at least one sample");
+    }
+    if (!Number.isInteger(width) || !Number.isInteger(height)) {
+      throw new CchartsError(STATUS.DIMENSIONS, "width and height must be integers");
+    }
+
+    const owned = [];
+    let samplesPtr = 0;
+    let settings = 0;
+    let outPtr = 0;
+    let lenPtr = 0;
+    try {
+      samplesPtr = malloc(samples.length * 8);
+      owned.push(samplesPtr);
+      new Float64Array(exports.memory.buffer, samplesPtr, samples.length).set(
+        samples instanceof Float64Array ? samples : Float64Array.from(samples, Number));
+
+      settings = malloc(HIST_SETTINGS_BYTES);
+      owned.push(settings);
+      const rise = colorPtr(owned, plain, color);
+      const background = colorPtr(owned, plain, backgroundColor);
+
+      const dv = view();
+      dv.setUint32(settings, rise, true);
+      dv.setUint32(settings + 4, background, true);
+      dv.setInt32(settings + 8, binCount, true);
+      // NaN min_value/max_value is the "auto" sentinel in the C library.
+      dv.setFloat64(settings + 16, minValue, true);
+      dv.setFloat64(settings + 24, maxValue, true);
+      dv.setInt32(settings + 32, showBins ? 1 : 0, true);
+      dv.setInt32(settings + 36, showPrices ? 1 : 0, true);
+
+      outPtr = malloc(4);
+      lenPtr = malloc(4);
+      const status = exports.ccharts_hist(
+        samplesPtr, samples.length, width, height, settings, outPtr, lenPtr);
+      if (status !== STATUS.OK) throw fail(status);
+
+      const dv2 = view();
+      const chartPtr = dv2.getUint32(outPtr, true);
+      const length = dv2.getUint32(lenPtr, true);
+      try {
+        return decoder.decode(u8().subarray(chartPtr, chartPtr + length));
+      } finally {
+        exports.ccharts_string_free(chartPtr);
+      }
+    } finally {
+      for (const ptr of owned) exports.free(ptr);
+      if (outPtr) exports.free(outPtr);
+      if (lenPtr) exports.free(lenPtr);
+    }
+  }
+
   /** Number of candles in the dataset. */
   get length() {
     return this.#length;
@@ -419,19 +511,6 @@ export class Chart {
     }
 
     const owned = [];
-    const colorPtr = (color) => {
-      // An empty C string means "emit no escape at all", which is different
-      // from a null pointer (use the default color).
-      if (plain) {
-        const ptr = writeCString("");
-        owned.push(ptr);
-        return ptr;
-      }
-      if (color === undefined || color === null || color === "") return 0;
-      const ptr = writeCString(String(color));
-      owned.push(ptr);
-      return ptr;
-    };
 
     let settings = 0;
     let outPtr = 0;
@@ -439,10 +518,10 @@ export class Chart {
     try {
       settings = malloc(SETTINGS_BYTES);
       owned.push(settings);
-      const rise = colorPtr(riseColor);
-      const fall = colorPtr(fallColor);
-      const background = colorPtr(backgroundColor);
-      const area = colorPtr(areaColor);
+      const rise = colorPtr(owned, plain, riseColor);
+      const fall = colorPtr(owned, plain, fallColor);
+      const background = colorPtr(owned, plain, backgroundColor);
+      const area = colorPtr(owned, plain, areaColor);
 
       const dv = view();
       dv.setUint32(settings, rise, true);

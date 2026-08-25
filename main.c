@@ -32,8 +32,9 @@ static char* read_file(const char* path) {
     return buf;
 }
 
-/* Forward declaration — render_pies is defined after main(). */
+/* Forward declarations — render_pies and render_hist are defined after main(). */
 static void render_pies(void);
+static void render_hist(void);
 
 int main() {
     char* json = read_file("prices.txt");
@@ -89,6 +90,8 @@ int main() {
 
     printf("\n");
     render_pies();
+    printf("\n");
+    render_hist();
 
     free(ohlc);
     return 0;
@@ -142,5 +145,34 @@ static void render_pies(void) {
     if (ov != NULL) {
         printf("PIE (donut, colors override)\n%s\n", ov);
         free(ov);
+    }
+}
+
+/* Samples some histograms to eyeball the histogram renderer. */
+static void render_hist(void) {
+    /* Roughly normal-ish distribution around a mean. */
+    double samples[] = {
+        3.1, 3.9, 4.2, 4.5, 4.8, 5.0, 5.1, 5.2, 5.3, 5.4,
+        5.4, 5.5, 5.5, 5.6, 5.6, 5.7, 5.8, 5.9, 6.0, 6.1,
+        6.2, 6.3, 6.5, 6.8, 7.1, 7.9, 3.4, 4.0, 5.5, 6.4,
+    };
+    int n = (int)(sizeof(samples) / sizeof(samples[0]));
+
+    cc_hist_settings_t plain = {0};   /* auto bins, no labels */
+    char* h = cc_hist_create(samples, n, 40, 8, &plain);
+    if (h != NULL) {
+        printf("HIST (auto bins)\n%s\n", h);
+        free(h);
+    }
+
+    cc_hist_settings_t labeled = {
+        .bin_count  = 10,
+        .show_bins  = 1,
+        .show_prices = 1,
+    };
+    char* hl = cc_hist_create(samples, n, 40, 8, &labeled);
+    if (hl != NULL) {
+        printf("HIST (10 bins, labels+prices)\n%s\n", hl);
+        free(hl);
     }
 }

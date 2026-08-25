@@ -1,7 +1,7 @@
 //! Behavioral tests for the safe wrapper. The rendering itself is checked
 //! against the shared goldens in conformance.rs.
 
-use ccharts::{Chart, Color, Error, PieOptions, PieSlice, Settings};
+use ccharts::{Chart, Color, Error, HistogramOptions, PieOptions, PieSlice, Settings};
 
 fn sample() -> Chart {
     Chart::from_arrays(
@@ -152,7 +152,7 @@ fn charts_are_shareable_across_threads() {
 
 #[test]
 fn exposes_library_metadata() {
-    assert_eq!(ccharts::version(), "0.2.1");
+    assert_eq!(ccharts::version(), "0.2.2");
     assert_eq!(ccharts::max_dim(), 100_000);
     assert_eq!(ccharts::max_cells(), 1_000_000);
 }
@@ -212,4 +212,47 @@ fn pie_optional_settings_are_wired_through() {
     // An interior NUL in the center text is rejected.
     let err = Chart::pie(&slices, 24, 10, &PieOptions::new().center_text("a\0b")).unwrap_err();
     assert_eq!(err, ccharts::Error::InteriorNul);
+}
+
+#[test]
+fn histogram_renders_and_wires_options() {
+    let samples = [0.0, 1.0, 1.0, 2.0, 2.0, 2.0, 3.0, 3.0, 4.0, 4.0, 5.0];
+    let base = Chart::histogram(&samples, 40, 6, &HistogramOptions::new()).unwrap();
+    assert!(base.contains('█'), "bar glyphs present");
+    assert_eq!(base.lines().count(), 6);
+
+    // A >0 bin count and an explicit range each change the render.
+    let binned =
+        Chart::histogram(&samples, 40, 6, &HistogramOptions::new().bin_count(5)).unwrap();
+    assert_ne!(base, binned, "bin_count must take effect");
+
+    let ranged = Chart::histogram(
+        &samples,
+        40,
+        6,
+        &HistogramOptions::new().min_value(-2.0).max_value(8.0),
+    )
+    .unwrap();
+    assert_ne!(base, ranged, "min/max range must take effect");
+
+    let margined =
+        Chart::histogram(&samples, 40, 6, &HistogramOptions::new().show_prices(true)).unwrap();
+    assert_ne!(base, margined, "show_prices must take effect");
+
+    let footed =
+        Chart::histogram(&samples, 40, 6, &HistogramOptions::new().show_bins(true)).unwrap();
+    assert_ne!(base, footed, "show_bins must take effect");
+
+    // NaN/inf samples are rejected with Error::NonFinite.
+    for bad in [f64::NAN, f64::INFINITY] {
+        assert_eq!(
+            Chart::histogram(&[bad], 40, 6, &HistogramOptions::new()).unwrap_err(),
+            ccharts::Error::NonFinite
+        );
+    }
+
+    // Colors flow through.
+    let colored = Chart::histogram(&samples, 40, 6, &HistogramOptions::new().rise(Color::Blue))
+        .unwrap();
+    assert!(colored.contains("\u{1b}[34m"));
 }

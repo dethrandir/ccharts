@@ -23,6 +23,19 @@ internal struct NativePieSlice
     public double Value;
 }
 
+/// <summary>Layout of ccharts_hist_settings from abi/ccharts_abi.h.</summary>
+[StructLayout(LayoutKind.Sequential)]
+internal struct NativeHistSettings
+{
+    public IntPtr RiseColor;
+    public IntPtr BackgroundColor;
+    public int BinCount;
+    public double MinValue;
+    public double MaxValue;
+    public int ShowBins;
+    public int ShowPrices;
+}
+
 /// <summary>
 /// P/Invoke declarations for the ccharts C ABI. Strings are handled as raw
 /// pointers on both directions: the library owns what it returns, and
@@ -69,6 +82,11 @@ internal static partial class NativeMethods
         double sliceGap, double innerRadiusRatio, int legendFormat,
         double startAngle, int counterClockwise, IntPtr centerText,
         out IntPtr chart, out nuint length);
+
+    [LibraryImport(Library, EntryPoint = "ccharts_hist")]
+    internal static partial int Hist(
+        [In] double[] samples, int count, int width, int height,
+        in NativeHistSettings settings, out IntPtr chart, out nuint length);
 
     [LibraryImport(Library, EntryPoint = "ccharts_color")]
     internal static partial IntPtr ColorAt(int index);

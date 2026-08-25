@@ -27,6 +27,17 @@ pub struct ccharts_pie_slice {
     pub value: f64,
 }
 
+#[repr(C)]
+pub struct ccharts_hist_settings {
+    pub rise_color: *const c_char,
+    pub bg_color: *const c_char,
+    pub bin_count: i32,
+    pub min_value: f64,
+    pub max_value: f64,
+    pub show_bins: i32,
+    pub show_prices: i32,
+}
+
 extern "C" {
     pub fn ccharts_from_arrays(
         open: *const f64,
@@ -64,6 +75,16 @@ extern "C" {
         out_len: *mut usize,
     ) -> i32;
     pub fn ccharts_string_free(s: *mut c_char);
+
+    pub fn ccharts_hist(
+        samples: *const f64,
+        count: i32,
+        width: i32,
+        height: i32,
+        settings: *const ccharts_hist_settings,
+        out: *mut *mut c_char,
+        out_len: *mut usize,
+    ) -> i32;
 
     pub fn ccharts_pie_from_slices(
         slices: *const ccharts_pie_slice,

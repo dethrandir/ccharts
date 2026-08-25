@@ -37,7 +37,7 @@ width/height at 100000 cells per side and 1000000 total cells
 """
 
 from ._core import (parse_json, parse_arrays, create_line, create_candle,
-                    create_pie)
+                    create_pie, create_hist)
 
 
 def _check_dimensions(width, height):
@@ -221,4 +221,50 @@ class Chart:
             -1.0 if start_angle is None else float(start_angle),
             int(counter_clockwise),
             center_text,
+        )
+
+    @staticmethod
+    def histogram(samples, *, width=60, height=8, bin_count=0,
+                  min_value=None, max_value=None, rise_color=None,
+                  bg_color=None, show_bins=False, show_prices=False,
+                  plain=False):
+        """Draw a histogram of a scalar sample sequence and return it as a
+        string.
+
+        A histogram is not OHLC data, so this is a static method: it takes
+        the raw samples directly instead of reading ``self``.
+
+        Args:
+            samples: one scalar value per observation — a list, tuple,
+                numpy array, array.array or any other sized sequence.
+            width, height: chart size in cells (positive integers).
+            bin_count: number of equal-width bins across the value window;
+                ``0`` (or negative) auto-selects (20 for ``>= 40`` samples,
+                else 10, trimmed to the width).
+            min_value, max_value: the value window to bin across.
+                ``None`` auto-selects that endpoint from the data range.
+            rise_color: ANSI escape string for the bar fill (None = green).
+            bg_color: ANSI escape string for the empty cells below a bar
+                (None = terminal background).
+            show_bins: append a value-axis footer row under the chart
+                (window min on the left, window max on the right).
+            show_prices: print the max-count / min-count labels in an
+                8-column left margin (a vertical count axis).
+            plain: return text with no ANSI escapes at all, overriding every
+                color.
+
+        Raises ``ValueError`` for non-finite samples (NaN/inf would corrupt
+        the bin math), mismatched/non-numeric items, and invalid dimensions.
+        An empty ``samples`` sequence renders the empty string.
+        """
+        _check_dimensions(width, height)
+        if plain:
+            rise_color = bg_color = ""
+        return create_hist(
+            samples, width, height,
+            rise_color, bg_color,
+            int(bin_count),
+            float("nan") if min_value is None else float(min_value),
+            float("nan") if max_value is None else float(max_value),
+            int(show_bins), int(show_prices),
         )

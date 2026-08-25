@@ -172,7 +172,7 @@ class ChartTest {
     @Test
     @DisplayName("exposes library metadata")
     void exposesLibraryMetadata() {
-        assertEquals("0.2.1", Chart.version());
+        assertEquals("0.2.2", Chart.version());
         assertEquals(100000, Chart.maxDim());
         assertEquals(1000000, Chart.maxCells());
     }
@@ -205,5 +205,43 @@ class ChartTest {
         assertEquals(CchartsException.Status.NON_FINITE, error.status());
 
         assertThrows(CchartsException.class, () -> Chart.pie(List.of()));
+    }
+
+    @Test
+    @DisplayName("histogram renders bins, prices, range and rejects empty/NaN samples")
+    void histogramRendersAndValidates() {
+        double[] samples = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
+
+        String bars = Chart.histogram(samples, 20, 6, HistogramOptions.builder()
+                .binCount(6)
+                .build());
+        assertTrue(bars.contains("▄") || bars.contains("█"),
+                "histogram draws bars");
+
+        String color = Chart.histogram(samples, 20, 6, HistogramOptions.builder()
+                .color(Color.BLUE)
+                .build());
+        assertTrue(color.contains("\u001b[34m"), "bar color passes through");
+
+        String prices = Chart.histogram(samples, 40, 6, HistogramOptions.builder()
+                .showBins(true)
+                .showPrices(true)
+                .build());
+        assertTrue(prices.contains("12") || prices.contains("1"),
+                "prices/bins show labels");
+
+        String bounded = Chart.histogram(samples, 40, 6, HistogramOptions.builder()
+                .minValue(0.0)
+                .maxValue(20.0)
+                .build());
+        assertTrue(bounded.length() > 0);
+
+        CchartsException empty = assertThrows(CchartsException.class,
+                () -> Chart.histogram(new double[0], 40, 6));
+        assertEquals(CchartsException.Status.INVALID_ARGUMENT, empty.status());
+
+        CchartsException bad = assertThrows(CchartsException.class,
+                () -> Chart.histogram(new double[] {Double.NaN, 1.0}, 40, 6));
+        assertEquals(CchartsException.Status.NON_FINITE, bad.status());
     }
 }

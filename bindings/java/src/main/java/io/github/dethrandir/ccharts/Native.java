@@ -46,6 +46,18 @@ final class Native {
             ValueLayout.ADDRESS.withName("label"),
             ValueLayout.JAVA_DOUBLE.withName("value"));
 
+    /** Layout of {@code ccharts_hist_settings}: two pointers, an int, padding,
+     * then two doubles, then two ints. */
+    static final StructLayout HIST_SETTINGS = MemoryLayout.structLayout(
+            ValueLayout.ADDRESS.withName("rise_color"),
+            ValueLayout.ADDRESS.withName("bg_color"),
+            ValueLayout.JAVA_INT.withName("bin_count"),
+            MemoryLayout.paddingLayout(4),
+            ValueLayout.JAVA_DOUBLE.withName("min_value"),
+            ValueLayout.JAVA_DOUBLE.withName("max_value"),
+            ValueLayout.JAVA_INT.withName("show_bins"),
+            ValueLayout.JAVA_INT.withName("show_prices"));
+
     private static final Linker LINKER = Linker.nativeLinker();
 
     /** Lives as long as the process: the library must not be unloaded. */
@@ -81,6 +93,9 @@ final class Native {
                     PTR, INT, INT, INT, ValueLayout.JAVA_DOUBLE,
                     ValueLayout.JAVA_DOUBLE, INT, ValueLayout.JAVA_DOUBLE,
                     INT, PTR, PTR, PTR));
+    static final MethodHandle HIST = downcall("ccharts_hist",
+            FunctionDescriptor.of(INT, PTR, INT, INT, INT, PTR,
+                    PTR, PTR));
     static final MethodHandle COLOR = downcall("ccharts_color",
             FunctionDescriptor.of(PTR, INT));
     static final MethodHandle ERROR_MESSAGE = downcall("ccharts_error_message",

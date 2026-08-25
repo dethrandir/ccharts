@@ -451,5 +451,74 @@ class TestPie(unittest.TestCase):
             Chart.pie(self.LABELS, self.VALUES, width=1000, height=2000)
 
 
+class TestHistogram(unittest.TestCase):
+    """Histogram rendering (Chart.histogram) — a static method, raw samples."""
+
+    SAMPLES = [0, 1, 1, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4,
+               5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 7, 7, 7,
+               7, 8, 8, 8, 9, 9, 10]
+
+    def test_histogram_returns_string(self):
+        out = Chart.histogram(self.SAMPLES)
+        self.assertIsInstance(out, str)
+        self.assertGreater(len(out), 0)
+        self.assertIn("\n", out)
+
+    def test_histogram_uses_block_bars(self):
+        out = Chart.histogram(self.SAMPLES)
+        self.assertTrue(any(ch in out for ch in "▁▂▃▅▆▇█"),
+                        "histogram should use eighth-block bar characters")
+
+    def test_histogram_is_deterministic(self):
+        self.assertEqual(Chart.histogram(self.SAMPLES),
+                         Chart.histogram(self.SAMPLES))
+
+    def test_histogram_explicit_bin_count(self):
+        default_auto = Chart.histogram(self.SAMPLES, width=20)
+        explicit = Chart.histogram(self.SAMPLES, width=20, bin_count=5)
+        self.assertGreater(len(explicit), 0)
+        self.assertNotEqual(default_auto, explicit)
+
+    def test_histogram_explicit_range_changes_output(self):
+        auto = Chart.histogram(self.SAMPLES, width=60)
+        ranged = Chart.histogram(self.SAMPLES, width=60,
+                                 min_value=-5, max_value=15)
+        self.assertNotEqual(auto, ranged)
+
+    def test_histogram_show_bins_adds_footer(self):
+        out = Chart.histogram(self.SAMPLES, show_bins=True, height=8)
+        # one extra value-axis footer row below the 8 plot rows
+        self.assertEqual(len(out.strip("\n").split("\n")), 9)
+
+    def test_histogram_show_prices_adds_margin(self):
+        out = Chart.histogram(self.SAMPLES, show_prices=True)
+        self.assertNotEqual(out, Chart.histogram(self.SAMPLES))
+        self.assertIn("6", out)  # tallest-bin count appears in the left margin
+
+    def test_histogram_non_finite_raises(self):
+        for bad in (float("nan"), float("inf"), float("-inf")):
+            with self.assertRaises(ValueError):
+                Chart.histogram([1.0, bad])
+
+    def test_histogram_zero_count_is_empty(self):
+        self.assertEqual(Chart.histogram([]), "")
+
+    def test_histogram_dimension_validation(self):
+        with self.assertRaises(ValueError):
+            Chart.histogram(self.SAMPLES, width=0)
+        with self.assertRaises(ValueError):
+            Chart.histogram(self.SAMPLES, height=-1)
+        with self.assertRaises(TypeError):
+            Chart.histogram(self.SAMPLES, width=2.5)
+
+    def test_histogram_buffer_input(self):
+        out = Chart.histogram(array.array("d", self.SAMPLES), width=20, height=4)
+        self.assertGreater(len(out), 0)
+
+    def test_histogram_plain_has_no_escapes(self):
+        out = Chart.histogram(self.SAMPLES, plain=True)
+        self.assertNotIn("\x1b", out)
+
+
 if __name__ == "__main__":
     unittest.main()

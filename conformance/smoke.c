@@ -98,6 +98,43 @@ int main(void) {
               "zero width pie rejected");
     }
 
+    /* Histogram: raw scalar samples, no dataset or capsule. */
+    {
+        static const double samples[] = {1,1,2,2,2,3,3,3,3,4,4,4,4,4,5,5,5,5,6,6,7};
+        ccharts_hist_settings hs;
+        memset(&hs, 0, sizeof(hs));
+        check(ccharts_hist(samples, 21, 40, 5, &hs, &chart, &len) == CCHARTS_OK, "hist");
+        check(chart != NULL && len > 0, "hist output");
+        ccharts_string_free(chart);
+
+        hs.bin_count = 5;
+        hs.show_prices = 1;
+        hs.show_bins = 1;
+        check(ccharts_hist(samples, 21, 40, 5, &hs, &chart, &len) == CCHARTS_OK,
+              "hist with settings");
+        check(chart != NULL && len > 0, "hist settings output");
+        ccharts_string_free(chart);
+
+        check(ccharts_hist(NULL, 0, 40, 5, NULL, &chart, &len) == CCHARTS_ERR_INVALID_ARG,
+              "NULL hist samples rejected");
+        check(ccharts_hist(samples, 21, 0, 5, NULL, &chart, &len) == CCHARTS_ERR_DIMENSIONS,
+              "zero width hist rejected");
+
+        /* NaN/inf samples must be rejected at the boundary. */
+        {
+            double inf_s[2] = {1.0, 1.0};
+            double nan_s[2] = {1.0, 0.0};
+            static const double one = 1.0;
+            inf_s[1] = one / 0.0;                       /* +inf without <math.h> */
+            nan_s[1] = one / 0.0 - one / 0.0;           /* NaN */
+            check(ccharts_hist(inf_s, 2, 40, 5, NULL, &chart, &len)
+                  == CCHARTS_ERR_NON_FINITE, "inf hist sample rejected");
+            check(ccharts_hist(nan_s, 2, 40, 5, NULL, &chart, &len)
+                  == CCHARTS_ERR_NON_FINITE, "NaN hist sample rejected");
+            check(chart == NULL, "no string on hist error");
+        }
+    }
+
     /* Invalid dimensions must be reported, not answered with "". */
     check(ccharts_line(data, 0, 5, NULL, &chart, &len) == CCHARTS_ERR_DIMENSIONS,
           "zero width rejected");

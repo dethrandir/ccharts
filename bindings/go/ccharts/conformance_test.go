@@ -33,6 +33,8 @@ type suite struct {
 			Label string  `json:"label"`
 			Value float64 `json:"value"`
 		} `json:"slices"`
+		// Samples carries the scalar histogram input (no OHLC dataset).
+		Samples []float64 `json:"samples"`
 		Settings struct {
 			RiseColor        *string  `json:"rise_color"`
 			FallColor        *string  `json:"fall_color"`
@@ -52,6 +54,10 @@ type suite struct {
 			StartAngle       *float64 `json:"start_angle"`
 			CounterClockwise *bool    `json:"counter_clockwise"`
 			CenterText       *string  `json:"center_text"`
+			BinCount         int      `json:"bin_count"`
+			MinValue         *float64 `json:"min_value"`
+			MaxValue         *float64 `json:"max_value"`
+			ShowBins         bool     `json:"show_bins"`
 		} `json:"settings"`
 	} `json:"cases"`
 }
@@ -121,7 +127,7 @@ func TestConformance(t *testing.T) {
 	if err := json.Unmarshal(raw, &s); err != nil {
 		t.Fatalf("cases.json: %v", err)
 	}
-	if len(s.Cases) < 35 {
+	if len(s.Cases) < 41 {
 		t.Fatalf("conformance suite looks truncated: %d cases", len(s.Cases))
 	}
 
@@ -130,7 +136,19 @@ func TestConformance(t *testing.T) {
 			var got string
 			var err error
 
-			if tc.Chart == "pie" {
+			if tc.Chart == "hist" {
+				got, err = ccharts.Histogram(tc.Samples, tc.Width, tc.Height,
+					&ccharts.HistogramOptions{
+						RiseColor:       color(t, tc.Settings.RiseColor),
+						BackgroundColor: color(t, tc.Settings.BgColor),
+						BinCount:        tc.Settings.BinCount,
+						MinValue:        tc.Settings.MinValue,
+						MaxValue:        tc.Settings.MaxValue,
+						ShowBins:        tc.Settings.ShowBins,
+						ShowPrices:      tc.Settings.ShowPrices,
+						Plain:           tc.Settings.Plain,
+					})
+			} else if tc.Chart == "pie" {
 				slices := make([]ccharts.Slice, len(tc.Slices))
 				for i, slice := range tc.Slices {
 					slices[i] = ccharts.Slice{Label: slice.Label, Value: slice.Value}

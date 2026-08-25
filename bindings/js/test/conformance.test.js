@@ -37,12 +37,29 @@ function color(name) {
 test("matches the shared goldens", { skip: !existsSync(join(SUITE_DIR, "cases.json")) },
   () => {
     const suite = JSON.parse(readFileSync(join(SUITE_DIR, "cases.json"), "utf8"));
-    assert.ok(suite.cases.length >= 35, "conformance suite looks truncated");
+    assert.ok(suite.cases.length >= 41, "conformance suite looks truncated");
 
     for (const testCase of suite.cases) {
       const settings = testCase.settings;
       let rendered;
-      if (testCase.chart === "pie") {
+      if (testCase.chart === "hist") {
+        const minValue = settings.min_value === null || settings.min_value === undefined
+          ? Number.NaN : settings.min_value;
+        const maxValue = settings.max_value === null || settings.max_value === undefined
+          ? Number.NaN : settings.max_value;
+        rendered = Chart.histogram(testCase.samples, {
+          width: testCase.width,
+          height: testCase.height,
+          binCount: settings.bin_count ?? 0,
+          minValue,
+          maxValue,
+          color: color(settings.rise_color),
+          backgroundColor: color(settings.bg_color),
+          showBins: settings.show_bins ?? false,
+          showPrices: settings.show_prices ?? false,
+          plain: settings.plain ?? false,
+        });
+      } else if (testCase.chart === "pie") {
         rendered = Chart.pie(
           testCase.slices.map((slice) => ({ label: slice.label ?? null, value: slice.value })),
           {

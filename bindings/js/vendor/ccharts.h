@@ -321,6 +321,53 @@ CC_INLINE char* cc_pie_create(const cc_pie_slice_t* slices, int count,
                               int width, int height,
                               const cc_pie_settings_t* settings);
 
+/* ============================ Histogram ============================
+ * A histogram is a frequency distribution of a scalar sample sequence.
+ * Unlike line/candle there is no OHLC data: the samples are grouped into
+ * equal-width bins across a value window and each bin is drawn as a
+ * vertical bar sampled at 8 sub-pixels per cell (cc_lower_eighth bar
+ * tops, the same smoothness as the line chart). */
+
+/* Histogram rendering options. Unspecified fields fall back to defaults:
+ *   - rise_color : bar fill color                  (default green)
+ *   - bg_color   : background of empty cells below a bar (default: none)
+ *   - bin_count  : number of equal-width bins; <= 0 auto-selects (20 bins
+ *                  for >= 40 samples, else 10, trimmed to the width)
+ *   - min_value  : window minimum; NaN = the data minimum
+ *   - max_value  : window maximum; NaN = the data maximum
+ *   - show_bins  : append a value-axis footer row under the chart (window
+ *                  min on the left, window max on the right)
+ *   - show_prices: print the max-count / min-count labels in an 8-column
+ *                  left margin (a vertical count axis)
+ * Build with a designated initializer and pass NULL to any chart function
+ * for full defaults. min_value/max_value use NaN as their "auto" sentinel,
+ * but a partial {0} initializer (min==max==0.0) is ALSO auto, because a
+ * valid explicit window always has min < max; any range where that does
+ * not hold (NaN, equal, inverted) falls back to the data min/max so the
+ * histogram auto-scales instead of collapsing to a single bar. */
+typedef struct cc_hist_settings {
+    const char* rise_color;
+    const char* bg_color;
+    int   bin_count;
+    double min_value;
+    double max_value;
+    int   show_bins;
+    int   show_prices;
+} cc_hist_settings_t;
+
+/* Renders a histogram of `count` samples into a `width` x `height` grid
+ * (cells) and returns a malloc'd string (caller frees). Samples are counted
+ * into equal-width bins across [min_value, max_value] — NaN endpoints
+ * auto-select from the data range. Outliers are clamped into the edge bins
+ * so a single huge value cannot empty every other bin, and a flat window
+ * (min == max) is widened by +-1 so the mapping never divides by zero. Each
+ * bar is scaled to the tallest bin and drawn with 8 sub-pixel rows
+ * (cc_lower_eighth tops). Returns an empty string for NULL samples,
+ * count <= 0, or invalid dimensions. */
+CC_INLINE char* cc_hist_create(const double* samples, int count,
+                               int width, int height,
+                               const cc_hist_settings_t* settings);
+
 #ifdef __cplusplus
 }
 #endif
@@ -1512,6 +1559,219 @@ CC_INLINE char* cc_pie_create(const cc_pie_slice_t* slices, int count,
     free(starts);
     free(widths);
     free(columns);
+    return chart;
+}
+
+/* ---------------------------- Histogram renderer ---------------------------
+ * Samples are counted into equal-width bins across a [min, max] value
+ * window; each bin / column is drawn as a vertical bar scaled to the
+ * tallest bin and sampled at 8 sub-pixels per cell (cc_lower_eighth), so
+ * bar tops are smooth like the line chart. When width >= bin_count a bin
+ * may span several columns; when width < bin_count several bins are
+ * aggregated into each column — a single deterministic long-arithmetic
+ * mapping covers both. Outlier samples are clamped into the edge bins so a
+ * single huge value cannot empty every other bin, and a flat window
+ * (min == max) is widened by +-1 so the value-to-bin division never hits
+ * zero. Non-finite samples are rejected upstream (wrapper/ABI); a NaN
+ * window double is the "auto" sentinel that selects the data range. All
+ * scratch buffers are heap-allocated (no VLAs) and freed on every path.
+ * ------------------------------------------------------------------------- */
+
+/* Joins the per-cell strings (columns[(x*height + y)*32 .. +32), y counted
+ * from the bottom) into the final histogram string, printing rows
+ * top-to-bottom. With show_prices it prepends an 8-column left margin
+ * holding the max-count (top) / min-count (bottom) labels; with show_bins
+ * it appends a value-axis footer row (window min left, window max right).
+ * Allocates with a pointer cursor (no strcat re-scans); the caller frees
+ * the result. */
+CC_INLINE char* cc_hist_assemble(int width, int height, char* columns,
+                                 const cc_hist_settings_t* s,
+                                 double wmin, double wmax,
+                                 int max_count, int min_count) {
+    int margin = s->show_prices ? 8 : 0;
+    char max_label[16] = "";
+    char min_label[16] = "";
+    if (margin > 0) {
+        snprintf(max_label, sizeof(max_label), "%8d", max_count);
+        snprintf(min_label, sizeof(min_label), "%8d", min_count);
+    }
+
+    char lo[16] = "";
+    char hi[16] = "";
+    int footer = 0;
+    if (s->show_bins) {
+        snprintf(lo, sizeof(lo), "%.2f", wmin);
+        snprintf(hi, sizeof(hi), "%.2f", wmax);
+        footer = 1;
+    }
+
+    const int line_len = width + margin;
+    const int rows = height + footer;
+    /* Bounded by CC_MAX_CELLS: width*height <= 1e6, so this is <= ~32 MB. */
+    size_t total_size = (size_t)line_len * (size_t)rows * 32 + (size_t)rows + 1;
+    char* chart = (char*)calloc(total_size, 1);
+    if (chart == NULL) return NULL;
+
+    char* w = chart;
+    for (int y = height - 1; y >= 0; y--) {
+        if (margin > 0) {
+            char mlabel[16] = "";
+            if (y == height - 1) snprintf(mlabel, sizeof(mlabel), "%8s", max_label);
+            else if (y == 0)     snprintf(mlabel, sizeof(mlabel), "%8s", min_label);
+            else { memset(mlabel, ' ', 8); mlabel[8] = '\0'; }
+            size_t ml = strlen(mlabel);
+            memcpy(w, mlabel, ml);
+            w += ml;
+        }
+        for (int x = 0; x < width; x++) {
+            const char* cell = columns + ((size_t)x * height + (size_t)y) * 32;
+            size_t cl = strlen(cell);
+            memcpy(w, cell, cl);
+            w += cl;
+        }
+        *w++ = '\n';
+    }
+
+    if (footer) {
+        for (int i = 0; i < line_len; i++) *w++ = ' ';
+        size_t l0 = strlen(lo);
+        if (l0 > (size_t)line_len) l0 = (size_t)line_len;
+        size_t l1 = strlen(hi);
+        if (l1 > (size_t)line_len) l1 = (size_t)line_len;
+        if (l0 > 0) memcpy(w - line_len, lo, l0);
+        if (l1 > 0) memcpy(w - l1, hi, l1);
+        *w++ = '\n';
+    }
+    *w = '\0';
+    return chart;
+}
+
+CC_INLINE char* cc_hist_create(const double* samples, int count,
+                               int width, int height,
+                               const cc_hist_settings_t* settings) {
+    if (samples == NULL || count <= 0 || !cc_dim_ok(width, height)) {
+        return (char*)calloc(1, sizeof(char));
+    }
+
+    cc_hist_settings_t s;
+    s.rise_color  = (settings && settings->rise_color) ? settings->rise_color : CC_COLOR_GREEN;
+    s.bg_color    = settings ? settings->bg_color : NULL;
+    s.bin_count   = settings ? settings->bin_count : 0;
+    /* NaN is the "auto" sentinel for the window doubles (0.0 is meaningful). */
+    s.min_value   = (settings && settings->min_value == settings->min_value)
+                    ? settings->min_value : 0.0/0.0;
+    s.max_value   = (settings && settings->max_value == settings->max_value)
+                    ? settings->max_value : 0.0/0.0;
+    s.show_bins   = settings ? settings->show_bins : 0;
+    s.show_prices = settings ? settings->show_prices : 0;
+
+    double dmin = samples[0];
+    double dmax = samples[0];
+    for (int i = 1; i < count; i++) {
+        if (samples[i] < dmin) dmin = samples[i];
+        if (samples[i] > dmax) dmax = samples[i];
+    }
+
+    /* The value window used for binning. A valid explicit window ALWAYS
+     * has min < max; anything else — the NaN auto-sentinels, a partial
+     * {0} initializer that yields 0.0/0.0, or an inverted range — falls
+     * back to the data min/max so a brace-init {0} histogram auto-scales
+     * and renders multiple bars instead of fixing a single-bar [0,0] window. */
+    double wmin, wmax;
+    if (s.min_value < s.max_value) {
+        wmin = s.min_value;
+        wmax = s.max_value;
+    } else {
+        wmin = dmin;
+        wmax = dmax;
+        if (wmax == wmin) {   /* all samples equal: widen the flat window */
+            wmin -= 1.0;
+            wmax += 1.0;
+        }
+    }
+    double range = wmax - wmin;
+
+    /* Auto-select the bin count when <= 0: 20 for busy sequences, 10
+     * otherwise, and never more bins than the chart has columns. */
+    int bins = s.bin_count;
+    if (bins <= 0) {
+        bins = (count >= 40) ? 20 : 10;
+    }
+    if (bins > width) bins = width;
+    if (bins < 1) bins = 1;
+
+    int* counts = (int*)calloc((size_t)bins, sizeof(int));
+    int* colv = (int*)calloc((size_t)width, sizeof(int));
+    char* columns = (char*)malloc((size_t)width * (size_t)height * 32);
+    if (counts == NULL || colv == NULL || columns == NULL) {
+        free(counts); free(colv); free(columns);
+        return NULL;
+    }
+
+    for (int i = 0; i < count; i++) {
+        double t = (samples[i] - wmin) / range;
+        int b = (int)(t * bins);
+        if (b < 0) b = 0;
+        if (b >= bins) b = bins - 1;
+        counts[b]++;
+    }
+
+    /* Fold the bins into `width` columns. The same long-arithmetic mapping
+     * covers both decompositions: width >= bins gives each bin several
+     * columns (aggregating the single bin's count), width < bins aggregates
+     * several bins per column. */
+    for (int w = 0; w < width; w++) {
+        int bs = (int)(((long long)w * bins) / width);
+        int be = (int)((((long long)w + 1) * bins) / width);
+        if (be <= bs) be = bs + 1;
+        int sum = 0;
+        for (int b = bs; b < be && b < bins; b++) sum += counts[b];
+        colv[w] = sum;
+    }
+
+    int max_count = 0;
+    int min_count = colv[0];
+    for (int w = 0; w < width; w++) {
+        if (colv[w] > max_count) max_count = colv[w];
+        if (colv[w] < min_count) min_count = colv[w];
+    }
+
+    const char* color = s.rise_color;
+    int pixel_height = height * 8;
+
+    for (int w = 0; w < width; w++) {
+        int pix;
+        if (max_count <= 0) pix = 0;
+        else pix = (int)((double)colv[w] * pixel_height / max_count);
+        if (pix < 0) pix = 0;
+        if (pix > pixel_height) pix = pixel_height;
+
+        int nfull = pix / 8;
+        int rem = pix % 8;
+        char* col = columns + (size_t)w * height * 32;
+
+        for (int r = 0; r < nfull && r < height; r++) {
+            snprintf(col + (size_t)r * 32, 32, "%s%s%s", CC_S(color),
+                     CC_BLOCK_FULL, cc_reset_for(color, NULL));
+        }
+        if (rem > 0 && nfull < height) {
+            snprintf(col + (size_t)nfull * 32, 32, "%s%s%s", CC_S(color),
+                     cc_lower_eighth(rem), cc_reset_for(color, NULL));
+        }
+        for (int r = (rem > 0 ? nfull + 1 : nfull); r < height; r++) {
+            char* cell = col + (size_t)r * 32;
+            if (s.bg_color != NULL) {
+                snprintf(cell, 32, "%s %s", s.bg_color,
+                         cc_reset_for(s.bg_color, NULL));
+            } else {
+                snprintf(cell, 32, " ");
+            }
+        }
+    }
+
+    char* chart = cc_hist_assemble(width, height, columns, &s,
+                                   wmin, wmax, max_count, min_count);
+    free(counts); free(colv); free(columns);
     return chart;
 }
 

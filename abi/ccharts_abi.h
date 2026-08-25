@@ -214,6 +214,43 @@ CCHARTS_API int32_t ccharts_pie_from_slices(
 #define CCHARTS_PIE_LEGEND_VALUE_PCT  2 /* "value  (NN%)"                           */
 #define CCHARTS_PIE_LEGEND_LABEL      3 /* "label" only                             */
 
+/* ------------------------------ Histogram ------------------------------ */
+
+/* Histogram rendering options. Every color is a NUL-terminated ANSI escape
+ * string or NULL for the library default, exactly like ccharts_settings;
+ * pass NULL for the whole struct to take every default. `bin_count` <= 0
+ * auto-selects (20 bins for >= 40 samples, else 10, trimmed to the width).
+ * `min_value`/`max_value` are the value window for the histogram: NaN means
+ * auto-select that endpoint from the data range (so NaN is allowed, unlike
+ * the samples). `show_bins` appends a value-axis footer row (window min
+ * left, window max right); `show_prices` prepends an 8-column left margin
+ * with the max-count / min-count labels. Mirrors cc_hist_settings_t in
+ * ccharts.h (the two structs stay separate: the header channels are
+ * internally linked, this one is the FFI surface). */
+typedef struct ccharts_hist_settings {
+    const char* rise_color;
+    const char* bg_color;
+    int32_t bin_count;
+    double  min_value;
+    double  max_value;
+    int32_t show_bins;
+    int32_t show_prices;
+} ccharts_hist_settings;
+
+/* Renders a histogram of `count` scalar samples (a 1-D sequence, not OHLC
+ * rows) into a `width` x `height` grid. Same contract as ccharts_line:
+ * CCHARTS_OK with *out (NUL-terminated UTF-8, release with
+ * ccharts_string_free) on success, CCHARTS_ERR_INVALID_ARG for NULL
+ * samples / count <= 0 / NULL out, CCHARTS_ERR_NON_FINITE for NaN/inf
+ * samples or +-inf min_value/max_value (NaN min/max is the "auto" sentinel
+ * and is allowed), CCHARTS_ERR_DIMENSIONS for width/height outside
+ * cc_dim_ok, CCHARTS_ERR_NOMEM on allocation failure. On error *out is set
+ * to NULL. */
+CCHARTS_API int32_t ccharts_hist(const double* samples, int32_t count,
+                                 int32_t width, int32_t height,
+                                 const ccharts_hist_settings* settings,
+                                 char** out, size_t* out_len);
+
 /* ---------------------------- Introspection ---------------------------- */
 
 /* ANSI escape for a ccharts_color_index, or NULL when out of range. */

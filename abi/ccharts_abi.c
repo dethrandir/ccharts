@@ -298,6 +298,55 @@ int32_t ccharts_pie_from_slices(const ccharts_pie_slice* slices, int32_t count,
     return CCHARTS_OK;
 }
 
+/* ------------------------------ Histogram ------------------------------ */
+
+int32_t ccharts_hist(const double* samples, int32_t count,
+                     int32_t width, int32_t height,
+                     const ccharts_hist_settings* settings,
+                     char** out, size_t* out_len) {
+    cc_hist_settings_t hs;
+    char* chart;
+    int32_t i;
+
+    if (out == NULL) return CCHARTS_ERR_INVALID_ARG;
+    *out = NULL;
+    if (out_len != NULL) *out_len = 0;
+    if (samples == NULL || count <= 0) return CCHARTS_ERR_INVALID_ARG;
+    if (!cc_dim_ok((int)width, (int)height)) return CCHARTS_ERR_DIMENSIONS;
+
+    for (i = 0; i < count; i++) {
+        if (!isfinite(samples[i])) return CCHARTS_ERR_NON_FINITE;
+    }
+
+    memset(&hs, 0, sizeof(hs));
+    if (settings != NULL) {
+        hs.rise_color = settings->rise_color;
+        hs.bg_color = settings->bg_color;
+        hs.bin_count = (int)settings->bin_count;
+        hs.min_value = settings->min_value;
+        hs.max_value = settings->max_value;
+        hs.show_bins = (int)settings->show_bins;
+        hs.show_prices = (int)settings->show_prices;
+        /* NaN min/max is the "auto" sentinel (allowed); inf must not reach
+         * the binned geometry, so reject any other non-finite value. */
+        if (settings->min_value == settings->min_value &&
+            !isfinite(settings->min_value)) return CCHARTS_ERR_NON_FINITE;
+        if (settings->max_value == settings->max_value &&
+            !isfinite(settings->max_value)) return CCHARTS_ERR_NON_FINITE;
+    } else {
+        hs.bin_count = 0;                 /* auto */
+        hs.min_value = 0.0 / 0.0;         /* auto sentinel (NaN) */
+        hs.max_value = 0.0 / 0.0;         /* auto sentinel (NaN) */
+    }
+
+    chart = cc_hist_create(samples, (int)count, (int)width, (int)height, &hs);
+    if (chart == NULL) return CCHARTS_ERR_NOMEM;
+
+    *out = chart;
+    if (out_len != NULL) *out_len = strlen(chart);
+    return CCHARTS_OK;
+}
+
 /* ---------------------------- Introspection ---------------------------- */
 
 const char* ccharts_color(int32_t index) {

@@ -97,7 +97,7 @@ class ConformanceTest {
                 Files.readAllBytes(suite.resolve("cases.json")));
         JsonNode datasets = document.get("datasets");
         JsonNode cases = document.get("cases");
-        assertTrue(cases.size() >= 35, "conformance suite looks truncated");
+        assertTrue(cases.size() >= 41, "conformance suite looks truncated");
 
         for (JsonNode testCase : cases) {
             String name = testCase.get("name").asText();
@@ -147,6 +147,28 @@ class ConformanceTest {
                                 ? settings.get("center_text").asText() : null)
                         .build();
                 rendered = Chart.pie(slices, options);
+            } else if (testCase.get("chart").asText().equals("hist")) {
+                JsonNode samplesNode = testCase.get("samples");
+                double[] samples = new double[samplesNode.size()];
+                for (int i = 0; i < samples.length; i++) {
+                    samples[i] = samplesNode.get(i).asDouble();
+                }
+
+                HistogramOptions options = HistogramOptions.builder()
+                        .size(testCase.get("width").asInt(), testCase.get("height").asInt())
+                        .color(color(settings, "rise_color"))
+                        .backgroundColor(color(settings, "bg_color"))
+                        .binCount(settings.path("bin_count").asInt(0))
+                        // A real 0.0 must ship as-is; NaN means "unspecified"
+                        // (auto window from the data min/max).
+                        .minValue(settings.path("min_value").asDouble(Double.NaN))
+                        .maxValue(settings.path("max_value").asDouble(Double.NaN))
+                        .showBins(settings.path("show_bins").asBoolean(false))
+                        .showPrices(settings.path("show_prices").asBoolean(false))
+                        .plain(settings.path("plain").asBoolean(false))
+                        .build();
+                rendered = Chart.histogram(samples, testCase.get("width").asInt(),
+                        testCase.get("height").asInt(), options);
             } else {
                 JsonNode dataset = datasets.get(testCase.get("dataset").asText());
 

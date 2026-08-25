@@ -36,6 +36,7 @@ import "C"
 
 import (
 	"errors"
+	"math"
 	"runtime"
 	"unsafe"
 )
@@ -404,6 +405,104 @@ func Pie(slices []Slice, width, height int, opts *PieOptions) (string, error) {
 		donut, colors, colorCount, showLegend, showPct,
 		sliceGap, innerRatio, legendFormat, startAngle, counterClockwise,
 		centerTextPtr, &out, &length)
+	if err := statusError(status); err != nil {
+		return "", err
+	}
+	defer C.ccharts_string_free(out)
+	return C.GoStringN(out, C.int(length)), nil
+}
+
+// HistogramOptions controls how a histogram is drawn. A nil *HistogramOptions
+// behaves like &HistogramOptions{}: green bars, auto bin count, auto value
+// range from the data, no footer or margin.
+type HistogramOptions struct {
+	// RiseColor colors the bars (default green).
+	RiseColor Color
+	// BackgroundColor fills empty cells (default: the terminal background).
+	BackgroundColor Color
+	// BinCount is the number of equal-width bins; 0 selects a value from the
+	// sample count, bounded by the chart width.
+	BinCount int
+	// MinValue is the lower edge of the value window; nil uses the data
+	// minimum. When set, must be strictly less than MaxValue.
+	MinValue *float64
+	// MaxValue is the upper edge of the value window; nil uses the data
+	// maximum. When set, must be strictly greater than MinValue.
+	MaxValue *float64
+	// ShowBins appends a value-axis footer row (window min left, window max
+	// right).
+	ShowBins bool
+	// ShowPrices prints the max-count / min-count labels in a left margin.
+	ShowPrices bool
+	// Plain renders with no ANSI escapes at all, overriding every color.
+	Plain bool
+}
+
+// Histogram renders a histogram of the given scalar samples. A histogram has
+// no OHLC dataset, so this is a package function rather than a Chart method.
+//
+// opts may be nil. NaN and inf samples are rejected with ErrNonFinite.
+func Histogram(samples []float64, width, height int, opts *HistogramOptions) (string, error) {
+	if len(samples) == 0 {
+		return "", ErrInvalidArgument
+	}
+	if width <= 0 || height <= 0 || width > int(C.ccharts_max_dim()) ||
+		height > int(C.ccharts_max_dim()) {
+		return "", ErrDimensions
+	}
+
+	var settings C.ccharts_hist_settings
+	settings.bin_count = C.int32_t(0)
+	settings.min_value = C.double(math.NaN())
+	settings.max_value = C.double(math.NaN())
+	if opts != nil {
+		settings.bin_count = C.int32_t(opts.BinCount)
+		if opts.MinValue != nil {
+			settings.min_value = C.double(*opts.MinValue)
+		}
+		if opts.MaxValue != nil {
+			settings.max_value = C.double(*opts.MaxValue)
+		}
+		settings.show_bins = boolToC(opts.ShowBins)
+		settings.show_prices = boolToC(opts.ShowPrices)
+	}
+	var allocated []*C.char
+	defer func() {
+		for _, cs := range allocated {
+			C.free(unsafe.Pointer(cs))
+		}
+	}()
+	set := func(dst **C.char, color Color) {
+		if opts == nil {
+			return
+		}
+		if opts.Plain {
+			cs := C.CString("")
+			allocated = append(allocated, cs)
+			*dst = cs
+			return
+		}
+		if color == "" {
+			return
+		}
+		cs := C.CString(string(color))
+		allocated = append(allocated, cs)
+		*dst = cs
+	}
+	set(&settings.rise_color, opts.RiseColor)
+	if opts != nil {
+		set(&settings.bg_color, opts.BackgroundColor)
+	} else {
+		settings.bg_color = nil
+	}
+
+	var out *C.char
+	var length C.size_t
+	status := C.ccharts_hist(
+		(*C.double)(unsafe.Pointer(&samples[0])), C.int32_t(len(samples)),
+		C.int32_t(width), C.int32_t(height),
+		&settings, &out, &length)
+	runtime.KeepAlive(samples)
 	if err := statusError(status); err != nil {
 		return "", err
 	}

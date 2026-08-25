@@ -65,15 +65,41 @@ public class ConformanceTests
             File.ReadAllBytes(Path.Combine(suiteDir!, "cases.json")));
         var datasets = document.RootElement.GetProperty("datasets");
         var cases = document.RootElement.GetProperty("cases").EnumerateArray().ToList();
-        Assert.True(cases.Count >= 35, "conformance suite looks truncated");
+        Assert.True(cases.Count >= 41, "conformance suite looks truncated");
 
         foreach (var testCase in cases)
         {
             var name = testCase.GetProperty("name").GetString()!;
             var settings = testCase.GetProperty("settings");
+            var chartName = testCase.GetProperty("chart").GetString();
 
             string rendered;
-            if (testCase.GetProperty("chart").GetString() == "pie")
+            if (chartName == "hist")
+            {
+                var samples = testCase.GetProperty("samples").EnumerateArray()
+                    .Select(v => v.GetDouble()).ToArray();
+                var minValue = settings.TryGetProperty("min_value", out var min)
+                    && min.ValueKind != JsonValueKind.Null ? (double?)min.GetDouble() : null;
+                var maxValue = settings.TryGetProperty("max_value", out var max)
+                    && max.ValueKind != JsonValueKind.Null ? (double?)max.GetDouble() : null;
+
+                rendered = Chart.Histogram(samples, new HistogramOptions
+                {
+                    Width = testCase.GetProperty("width").GetInt32(),
+                    Height = testCase.GetProperty("height").GetInt32(),
+                    Color = ColorFor(settings, "rise_color"),
+                    BackgroundColor = ColorFor(settings, "bg_color"),
+                    BinCount = settings.TryGetProperty("bin_count", out var binCount)
+                        ? binCount.GetInt32() : 0,
+                    MinValue = minValue,
+                    MaxValue = maxValue,
+                    ShowBins = settings.TryGetProperty("show_bins", out var bins) && bins.GetBoolean(),
+                    ShowPrices = settings.TryGetProperty("show_prices", out var prices)
+                        && prices.GetBoolean(),
+                    Plain = settings.TryGetProperty("plain", out var plain) && plain.GetBoolean(),
+                });
+            }
+            else if (chartName == "pie")
             {
                 var slices = testCase.GetProperty("slices").EnumerateArray()
                     .Select(s => new PieSlice(

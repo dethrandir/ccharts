@@ -90,6 +90,41 @@ export interface PieOptions {
   centerText?: string;
 }
 
+/** Options accepted by {@link Chart.histogram}. */
+export interface HistogramOptions {
+  /** Chart width in cells. Default 60. */
+  width?: number;
+  /** Chart height in cells. Default 8. */
+  height?: number;
+  /**
+   * Number of equal-width bins; `0` selects a value from the sample count,
+   * bounded by the chart width. Default 0 (auto).
+   */
+  binCount?: number;
+  /**
+   * Lower edge of the value window. Omitted/`undefined` (or `NaN`) uses the
+   * data minimum.
+   */
+  minValue?: number;
+  /**
+   * Upper edge of the value window. Omitted/`undefined` (or `NaN`) uses the
+   * data maximum.
+   */
+  maxValue?: number;
+  /** ANSI escape for the bars. Default green. */
+  color?: string;
+  /** ANSI escape filling empty cells. Default: the terminal background. */
+  backgroundColor?: string;
+  /** Print a value-axis footer row (window min left, max right). Default false. */
+  showBins?: boolean;
+  /** Print the max-count / min-count labels in a left margin. Default false. */
+  showPrices?: boolean;
+  /**
+   * Render with no ANSI escapes at all, overriding every color. Default false.
+   */
+  plain?: boolean;
+}
+
 /** An error reported by the chart library. */
 export class CchartsError extends Error {
   /** The ccharts_status code: 1 invalid argument, 2 parse, 3 out of memory, 4 non-finite, 5 dimensions. */
@@ -156,6 +191,13 @@ export class Chart {
    * @throws {CchartsError} on empty input, non-finite values or bad dimensions.
    */
   static pie(slices: PieSlice[], options?: PieOptions): string;
+
+  /**
+   * Renders a histogram of the given scalar samples. A histogram has no OHLC
+   * dataset, so this is a static method taking the raw sample values.
+   * @throws {CchartsError} on empty input, non-finite samples or bad dimensions.
+   */
+  static histogram(samples: ArrayLike<number>, options?: HistogramOptions): string;
 
   /** Releases the dataset. Safe to call more than once. */
   free(): void;

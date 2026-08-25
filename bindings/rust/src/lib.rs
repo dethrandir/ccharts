@@ -396,6 +396,117 @@ impl Default for PieOptions {
     }
 }
 
+/// Options for [`Chart::histogram`]. Every field is optional; unset ones
+/// take the library defaults (green bars, auto bin count, auto value range
+/// from the data min/max, no footer or margin).
+///
+/// `min_value`/`max_value` are `f64::NAN` by default, which is the "auto"
+/// sentinel: the range is taken from the data. Set either to a real number
+/// to fix that end of the window.
+#[derive(Debug, Clone)]
+pub struct HistogramOptions {
+    rise: Option<ColorSpec>,
+    background: Option<ColorSpec>,
+    bin_count: i32,
+    min_value: f64,
+    max_value: f64,
+    show_bins: bool,
+    show_prices: bool,
+    plain: bool,
+}
+
+impl HistogramOptions {
+    /// Options with every field at its default.
+    pub fn new() -> Self {
+        Self {
+            rise: None,
+            background: None,
+            bin_count: 0,
+            min_value: f64::NAN,
+            max_value: f64::NAN,
+            show_bins: false,
+            show_prices: false,
+            plain: false,
+        }
+    }
+
+    color_setter!(rise, rise_ansi, rise, "Bar fill color.");
+    color_setter!(
+        background,
+        background_ansi,
+        background,
+        "Background color of empty cells."
+    );
+
+    /// Number of equal-width bins. `0` (the default) selects a value from the
+    /// sample count, bounded by the chart width.
+    pub fn bin_count(mut self, bins: i32) -> Self {
+        self.bin_count = bins;
+        self
+    }
+
+    /// Lower edge of the value window. `f64::NAN` (the default) uses the data
+    /// minimum. Must be strictly less than [`HistogramOptions::max_value`]
+    /// when both are set.
+    pub fn min_value(mut self, min: f64) -> Self {
+        self.min_value = min;
+        self
+    }
+
+    /// Upper edge of the value window. `f64::NAN` (the default) uses the data
+    /// maximum. Must be strictly greater than [`HistogramOptions::min_value`]
+    /// when both are set.
+    pub fn max_value(mut self, max: f64) -> Self {
+        self.max_value = max;
+        self
+    }
+
+    /// Append a value-axis footer row (window min left, window max right).
+    pub fn show_bins(mut self, yes: bool) -> Self {
+        self.show_bins = yes;
+        self
+    }
+
+    /// Print max-count / min-count labels in a left margin.
+    pub fn show_prices(mut self, yes: bool) -> Self {
+        self.show_prices = yes;
+        self
+    }
+
+    /// Render with no ANSI escapes at all, overriding every color.
+    pub fn plain(mut self, yes: bool) -> Self {
+        self.plain = yes;
+        self
+    }
+
+    fn to_raw(&self) -> ffi::ccharts_hist_settings {
+        const EMPTY: &[u8] = b"\0";
+        let plain = EMPTY.as_ptr() as *const c_char;
+        let ptr = |spec: &Option<ColorSpec>| -> *const c_char {
+            if self.plain {
+                plain
+            } else {
+                spec.as_ref().map_or(std::ptr::null(), ColorSpec::as_ptr)
+            }
+        };
+        ffi::ccharts_hist_settings {
+            rise_color: ptr(&self.rise),
+            bg_color: ptr(&self.background),
+            bin_count: self.bin_count,
+            min_value: self.min_value,
+            max_value: self.max_value,
+            show_bins: self.show_bins as i32,
+            show_prices: self.show_prices as i32,
+        }
+    }
+}
+
+impl Default for HistogramOptions {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// A parsed OHLC dataset that can be rendered as a line or candle chart.
 pub struct Chart {
     handle: NonNull<ffi::ccharts_data>,
@@ -556,6 +667,53 @@ impl Chart {
                 options.start_angle,
                 options.counter_clockwise as i32,
                 center_text_ptr,
+                &mut out,
+                &mut len,
+            )
+        };
+        if status != 0 {
+            return Err(Error::from_status(status));
+        }
+        // Safety: `out` is a library-owned buffer released by take_string.
+        unsafe { Self::take_string(out, len) }
+    }
+
+    /// Renders a histogram of the given scalar samples.
+    ///
+    /// A histogram has no OHLC data, so (like [`Chart::pie`]) this is an
+    /// associated function: it takes the samples directly. `options.min_value`
+    /// / `options.max_value` fix the window when set (each defaults to `NaN`
+    /// = auto from the data), `options.bin_count` fixes the number of bins
+    /// (0 = auto). NaN or infinite samples are rejected with
+    /// [`Error::NonFinite`].
+    pub fn histogram(
+        samples: &[f64],
+        width: u32,
+        height: u32,
+        options: &HistogramOptions,
+    ) -> Result<String> {
+        if samples.is_empty() {
+            return Err(Error::InvalidArgument("need at least one sample"));
+        }
+        let count = i32::try_from(samples.len())
+            .map_err(|_| Error::InvalidArgument("too many samples"))?;
+        let (width, height) = match (i32::try_from(width), i32::try_from(height)) {
+            (Ok(w), Ok(h)) => (w, h),
+            _ => return Err(Error::Dimensions),
+        };
+
+        let raw = options.to_raw();
+        let mut out: *mut c_char = std::ptr::null_mut();
+        let mut len: usize = 0;
+        // Safety: the samples and settings live across the call, and `out`
+        // receives an owned string we release below.
+        let status = unsafe {
+            ffi::ccharts_hist(
+                samples.as_ptr(),
+                count,
+                width,
+                height,
+                &raw,
                 &mut out,
                 &mut len,
             )

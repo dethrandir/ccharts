@@ -53,6 +53,19 @@ class PieSlice(ctypes.Structure):
     ]
 
 
+# Mirrors ccharts_hist_settings in abi/ccharts_abi.h.
+class HistSettings(ctypes.Structure):
+    _fields_ = [
+        ("rise_color", ctypes.c_char_p),
+        ("bg_color", ctypes.c_char_p),
+        ("bin_count", ctypes.c_int32),
+        ("min_value", ctypes.c_double),
+        ("max_value", ctypes.c_double),
+        ("show_bins", ctypes.c_int32),
+        ("show_prices", ctypes.c_int32),
+    ]
+
+
 def find_library(explicit=None):
     if explicit:
         return explicit
@@ -109,6 +122,11 @@ def load(path):
         ctypes.c_int32, ctypes.c_int32,
         ctypes.c_double, ctypes.c_double, ctypes.c_int32,
         ctypes.c_double, ctypes.c_int32, ctypes.c_char_p,
+        ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_size_t)]
+    lib.ccharts_hist.restype = ctypes.c_int32
+    lib.ccharts_hist.argtypes = [
+        ctypes.POINTER(ctypes.c_double), ctypes.c_int32,
+        ctypes.c_int32, ctypes.c_int32, ctypes.POINTER(HistSettings),
         ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_size_t)]
     return lib
 
@@ -184,9 +202,42 @@ def render_pie(lib, case):
         lib.ccharts_string_free(out)
 
 
+def render_hist(lib, case):
+    """Renders a histogram case through ccharts_hist."""
+    cfg = case["settings"]
+    n = len(case["samples"])
+    samples = (ctypes.c_double * n)(*case["samples"])
+    plain = b"" if cfg.get("plain") else None
+    settings = HistSettings(
+        rise_color=plain if plain is not None else color(lib, cfg["rise_color"]),
+        bg_color=plain if plain is not None else color(lib, cfg["bg_color"]),
+        bin_count=int(cfg["bin_count"]),
+        min_value=(float("nan") if cfg["min_value"] is None
+                   else float(cfg["min_value"])),
+        max_value=(float("nan") if cfg["max_value"] is None
+                   else float(cfg["max_value"])),
+        show_bins=int(cfg["show_bins"]),
+        show_prices=int(cfg["show_prices"]),
+    )
+    out = ctypes.c_void_p()
+    length = ctypes.c_size_t()
+    status = lib.ccharts_hist(samples, n, case["width"], case["height"],
+                              ctypes.byref(settings), ctypes.byref(out),
+                              ctypes.byref(length))
+    if status != CCHARTS_OK:
+        raise SystemExit("%s: %s" % (case["name"],
+                                     lib.ccharts_error_message(status).decode()))
+    try:
+        return ctypes.string_at(out, length.value)
+    finally:
+        lib.ccharts_string_free(out)
+
+
 def render(lib, case, datasets):
     if case["chart"] == "pie":
         return render_pie(lib, case)
+    if case["chart"] == "hist":
+        return render_hist(lib, case)
     handle = build_data(lib, datasets[case["dataset"]], case["source"])
     try:
         cfg = case["settings"]

@@ -167,3 +167,53 @@ public sealed record PieOptions
     /// <summary>Text drawn in the hollow center of a donut (only when there is a hollow).</summary>
     public string? CenterText { get; init; }
 }
+
+/// <summary>
+/// How a histogram is drawn. The default instance gives green bars, an auto
+/// bin count, and an auto value window from the data.
+/// </summary>
+public sealed record HistogramOptions
+{
+    /// <summary>Chart width in cells. Default 60.</summary>
+    public int Width { get; init; } = 60;
+
+    /// <summary>Chart height in cells. Default 8.</summary>
+    public int Height { get; init; } = 8;
+
+    /// <summary>ANSI escape for the bars. Default green.</summary>
+    public string? Color { get; init; }
+
+    /// <summary>ANSI escape filling empty cells. Default: the terminal background.</summary>
+    public string? BackgroundColor { get; init; }
+
+    /// <summary>
+    /// Number of equal-width bins; <c>0</c> selects a value from the sample
+    /// count, bounded by the chart width. Default <c>0</c> (auto).
+    /// </summary>
+    public int BinCount { get; init; }
+
+    /// <summary>
+    /// Lower edge of the value window; <c>null</c> (NaN) uses the data
+    /// minimum. When set, must be strictly less than <see cref="MaxValue"/>.
+    /// </summary>
+    public double? MinValue { get; init; }
+
+    /// <summary>
+    /// Upper edge of the value window; <c>null</c> (NaN) uses the data
+    /// maximum. When set, must be strictly greater than <see cref="MinValue"/>.
+    /// </summary>
+    public double? MaxValue { get; init; }
+
+    /// <summary>Print a value-axis footer row (window min left, max right).</summary>
+    public bool ShowBins { get; init; }
+
+    /// <summary>Print the max-count / min-count labels in a left margin.</summary>
+    public bool ShowPrices { get; init; }
+
+    /// <summary>
+    /// Render with no ANSI escapes at all, overriding every color. Use it when
+    /// the chart is going somewhere that does not interpret escapes — a log
+    /// file, an HTML block, a commit message.
+    /// </summary>
+    public bool Plain { get; init; }
+}

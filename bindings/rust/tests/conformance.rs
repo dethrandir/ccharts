@@ -6,7 +6,7 @@
 
 use std::path::{Path, PathBuf};
 
-use ccharts::{Chart, Color, PieOptions, PieSlice, Settings};
+use ccharts::{Chart, Color, HistogramOptions, PieOptions, PieSlice, Settings};
 use serde_json::Value;
 
 fn suite_dir() -> Option<PathBuf> {
@@ -64,7 +64,7 @@ fn matches_the_shared_goldens() {
     let doc: Value =
         serde_json::from_slice(&std::fs::read(dir.join("cases.json")).unwrap()).unwrap();
     let cases = doc["cases"].as_array().expect("cases");
-    assert!(cases.len() >= 35, "conformance suite looks truncated");
+    assert!(cases.len() >= 41, "conformance suite looks truncated");
 
     let mut failures = Vec::new();
     for case in cases {
@@ -73,7 +73,28 @@ fn matches_the_shared_goldens() {
         let height = case["height"].as_u64().unwrap() as u32;
         let cfg = &case["settings"];
 
-        let rendered = if case["chart"].as_str().unwrap() == "pie" {
+        let rendered = if case["chart"].as_str().unwrap() == "hist" {
+            let samples: Vec<f64> = case["samples"]
+                .as_array()
+                .expect("hist samples")
+                .iter()
+                .map(|v| v.as_f64().expect("sample value"))
+                .collect();
+            let mut opts = HistogramOptions::new()
+                .bin_count(cfg["bin_count"].as_i64().unwrap_or(0) as i32)
+                .min_value(cfg["min_value"].as_f64().unwrap_or(f64::NAN))
+                .max_value(cfg["max_value"].as_f64().unwrap_or(f64::NAN))
+                .show_bins(cfg["show_bins"].as_bool().unwrap_or(false))
+                .show_prices(cfg["show_prices"].as_bool().unwrap_or(false))
+                .plain(cfg["plain"].as_bool().unwrap_or(false));
+            if let Some(c) = color(&cfg["rise_color"]) {
+                opts = opts.rise(c);
+            }
+            if let Some(c) = color(&cfg["bg_color"]) {
+                opts = opts.background(c);
+            }
+            Chart::histogram(&samples, width, height, &opts)
+        } else if case["chart"].as_str().unwrap() == "pie" {
             let slices: Vec<PieSlice> = case["slices"]
                 .as_array()
                 .expect("pie slices")
