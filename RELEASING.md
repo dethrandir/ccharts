@@ -19,9 +19,9 @@ hataların tekrarlanmaması için buraya yazılmıştır.
 
 ## 1. Versiyon bump — hangi dosyalar, tek seferde
 
-`version` **6 manifestte + vendored C kopyalarda + Cargo.lock** tek sürümde.
+`version` **9 manifestte + vendored C kopyalarda + Cargo.lock** tek sürümde.
 
-check_versions.py'nin referans aldığı 6 manifest:
+check_versions.py'nin referans aldığı 9 manifest:
 
 | Dosya | Alan |
 |------|------|
@@ -31,12 +31,18 @@ check_versions.py'nin referans aldığı 6 manifest:
 | `bindings/js/package.json` | `"version": "..."` |
 | `bindings/dotnet/src/Ccharts/Ccharts.csproj` | `<Version>...</Version>` |
 | `bindings/java/pom.xml` | `<version>...</version>` |
+| `bindings/ruby/lib/ccharts/version.rb` | `VERSION = "..."` |
+| `bindings/lua/src/ccharts/version.lua` | `VERSION = "..."` |
+| `bindings/julia/Project.toml` | `version = "..."` |
 
 Ayrıca elle güncellenmesi gerekenler (check_versions KONTROL ETMEZ):
 
 - `bindings/rust/Cargo.lock` — ccharts `version` satırı.
+- `bindings/lua/ccharts-*.rockspec` — dosya adı ve `version` satırı (`3.0.0-1`).
 - Vendored C kopyaları: `bindings/rust/vendor/ccharts_abi.h`,
-  `bindings/js/vendor/ccharts_abi.h`, `bindings/go/ccharts/ccharts_abi.h`.
+  `bindings/js/vendor/ccharts_abi.h`, `bindings/go/ccharts/ccharts_abi.h`,
+  `bindings/ruby/ext/ccharts/vendor/ccharts_abi.h`, `bindings/lua/vendor/ccharts_abi.h`,
+  `bindings/julia/vendor/ccharts_abi.h`.
   Bunları **elle değil** `python3 scripts/sync_sources.py` ile tazele
   (abi/ccharts_abi.h'ten kopyalar). CCHARTS_VERSION makrosunun yanı sıra,
   `abi/ccharts_abi.h` içinde "Library version (...)" yorum satırı da sürüm
@@ -46,7 +52,7 @@ Ayrıca elle güncellenmesi gerekenler (check_versions KONTROL ETMEZ):
 **Doğrulama (push etmeden önce şart):**
 
 ```sh
-python3 scripts/check_versions.py            # 6 manifest aynı sürümde olmalı
+python3 scripts/check_versions.py            # 9 manifest aynı sürümde olmalı
 python3 scripts/sync_sources.py --check      # vendored kaynaklar güncel olmalı
 make test                                    # C demo (line + candle)
 python3 -m unittest discover -s tests -v     # Python testleri
@@ -69,6 +75,8 @@ git tag v<version> && git push origin main --tags
 - `publish-npm` — `node --test` + `npm publish --provenance`.
 - `publish-nuget` — native'ler + `NuGet/login@v1` (trusted publishing) + push.
 - `publish-maven` — native'ler + `mvn -Prelease -DskipTests deploy` (Central Portal).
+- `publish-gem` — `gem build` + `gem push` (RubyGems).
+- `publish-luarocks` — `luarocks upload` (LuaRocks).
 - `tag-go-module` — `bindings/go/v<version>` alt tag'ini otomatik pushlar.
 
 Farklı registry'lerin bağımsız versiyonlarını yayınılmatla bu mono-tag akışı
@@ -86,6 +94,8 @@ Farklı registry'lerin bağımsız versiyonlarını yayınılmatla bu mono-tag a
 | `MAVEN_CENTRAL_PASSWORD` | Maven | Central Portal "User Token" password |
 | `MAVEN_GPG_PRIVATE_KEY` | Maven | ASCII-armored private key (base64 DEĞİL!) |
 | `MAVEN_GPG_PASSPHRASE` | Maven | GPG key passphrase |
+| `RUBYGEMS_API_KEY` | RubyGems | `GEM_HOST_API_KEY` olarak `gem push` yetkili API key |
+| `LUAROCKS_API_KEY` | LuaRocks | `luarocks upload --api-key` yetkili API key |
 
 **İsim-aslında-adi notu:** Secret isimlerini README'ye yazma — bunlar iç ops
 detayı, kullanıcı-yönelik dokümanda sekerek durmamalı. "registry + credential

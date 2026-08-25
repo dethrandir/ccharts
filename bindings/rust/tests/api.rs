@@ -155,7 +155,7 @@ fn charts_are_shareable_across_threads() {
 
 #[test]
 fn exposes_library_metadata() {
-    assert_eq!(ccharts::version(), "0.2.2");
+    assert_eq!(ccharts::version(), "3.0.0");
     assert_eq!(ccharts::max_dim(), 100_000);
     assert_eq!(ccharts::max_cells(), 1_000_000);
 }

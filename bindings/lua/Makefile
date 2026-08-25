@@ -37,7 +37,7 @@ src/ccharts.so: src/ccharts_core.c vendor/ccharts_abi.c
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ src/ccharts_core.c vendor/ccharts_abi.c $(LDLIBS)
 
 test: all
-	$(LUA) -e 'package.cpath="./src/?.so;"..package.cpath; local c=require "ccharts"; assert(c.version=="0.2.2","version mismatch"); print("ccharts version: "..c.version)'
+	$(LUA) -e 'package.cpath="./src/?.so;"..package.cpath; local c=require "ccharts"; assert(c.version=="3.0.0","version mismatch"); print("ccharts version: "..c.version)'
 	$(LUA) tests/test_api.lua
 	$(LUA) tests/test_conformance.lua
 

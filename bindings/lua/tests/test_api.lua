@@ -17,7 +17,7 @@ local function assert_no_escape(s, what)
 end
 
 test("version and introspection match the ABI", function()
-  assert_equal("0.2.2", ccharts.version)
+  assert_equal("3.0.0", ccharts.version)
   assert(type(ccharts.max_dim) == "number" and ccharts.max_dim > 0)
   assert(type(ccharts.max_cells) == "number" and ccharts.max_cells > 0)
 end)

@@ -1,5 +1,5 @@
 package = "ccharts"
-version = "0.2.2-1"
+version = "3.0.0-1"
 
 source = {
    url = "git+https://github.com/dethrandir/ccharts.git"
@@ -12,7 +12,7 @@ description = {
       stacked bar, heatmap and box-plot charts rendered to strings, from a
       single-header C library (ccharts). This is the Lua binding: a C module
       that compiles the vendored C ABI at install time. The version tracks the
-      library's CCHARTS_VERSION (0.2.2).
+      library's CCHARTS_VERSION (3.0.0).
    ]],
    homepage = "https://github.com/dethrandir/ccharts",
    license = "MIT"

@@ -35,6 +35,9 @@ DESTINATIONS = {
     # Lua compiles the vendored C into a Lua C module via LuaRocks, so it
     # needs its own copy of the sources too.
     "bindings/lua": "vendor",
+    # Julia compiles the vendored C into a shared object via deps/build.jl
+    # (gcc) and links it through ccall, so it needs its own copy too.
+    "bindings/julia": "vendor",
     # bindings/dotnet and bindings/java are absent on purpose: they link the
     # prebuilt shared library from the CMake build and never compile the C.
 }

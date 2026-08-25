@@ -6,7 +6,7 @@ require_relative "helper"
 # covered by test_conformance.rb.
 test "library version matches the gem VERSION" do
   assert_equal Ccharts::VERSION, Ccharts.version
-  assert_equal "0.2.2", Ccharts.version
+  assert_equal "3.0.0", Ccharts.version
 end
 
 test "max_dim and max_cells are positive" do

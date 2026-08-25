@@ -6,7 +6,7 @@
 
   <groupId>io.github.dethrandir</groupId>
   <artifactId>ccharts</artifactId>
-  <version>0.2.2</version>
+  <version>3.0.0</version>
   <packaging>jar</packaging>
 
   <name>ccharts</name>

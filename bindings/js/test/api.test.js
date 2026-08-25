@@ -111,7 +111,7 @@ test("many charts do not exhaust wasm memory", () => {
 });
 
 test("exposes library metadata", () => {
-  assert.equal(version, "0.2.2");
+  assert.equal(version, "3.0.0");
   assert.equal(maxDim, 100000);
   assert.equal(maxCells, 1000000);
 });

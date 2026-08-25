@@ -222,3 +222,65 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e .
           python -m unittest tests.test_python_api -v
+
+  ruby:
+    name: Ruby binding (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    defaults:
+      run:
+        working-directory: bindings/ruby
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+      - name: Compile and run unit tests
+        run: |
+          cd ext/ccharts
+          ruby extconf.rb
+          make
+          cp ccharts_ext.* ../../lib/
+          cd ../..
+          ruby -Ilib test/test_ccharts_api.rb
+          ruby -Ilib test/test_conformance.rb
+
+  lua:
+    name: Lua binding
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: bindings/lua
+    steps:
+      - uses: actions/checkout@v7
+      - uses: leafo/gh-actions-lua@v10
+        with:
+          luaVersion: "5.4"
+      - uses: leafo/gh-actions-luarocks@v5
+      - name: Build and test
+        run: |
+          luarocks make --local
+          lua tests/test_api.lua
+          lua tests/test_conformance.lua
+
+  julia:
+    name: Julia binding (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: "1.10"
+      - uses: julia-actions/julia-buildpkg@v1
+        with:
+          project: bindings/julia
+      - uses: julia-actions/julia-runtest@v1
+        with:
+          project: bindings/julia

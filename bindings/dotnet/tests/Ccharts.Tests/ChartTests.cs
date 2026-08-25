@@ -156,7 +156,7 @@ public class ChartTests
     [Fact]
     public void ExposesLibraryMetadata()
     {
-        Assert.Equal("0.2.2", Chart.Version);
+        Assert.Equal("3.0.0", Chart.Version);
         Assert.Equal(100000, Chart.MaxDim);
         Assert.Equal(1000000, Chart.MaxCells);
     }

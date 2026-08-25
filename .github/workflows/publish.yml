@@ -12,6 +12,8 @@ name: Publish
 #                                              MAVEN_CENTRAL_PASSWORD,
 #                                              MAVEN_GPG_PRIVATE_KEY,
 #                                              MAVEN_GPG_PASSPHRASE
+#   RubyGems  gem push                           RUBYGEMS_API_KEY
+#   LuaRocks  luarocks upload                    LUAROCKS_API_KEY
 #
 # The Go module is not published to a registry; it is served from the tag, so
 # the last job pushes the `bindings/go/v<version>` tag Go requires for a module
@@ -335,3 +337,49 @@ jobs:
           # environment is wired up in PyPI -> Publishing settings:
           #   https://docs.pypi.org/trusted-publishers/
           # Then drop `password` and keep the id-token: write permission.
+
+  publish-gem:
+    name: Publish the Ruby gem
+    needs: check-version
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: bindings/ruby
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+      - name: Build and test gem
+        run: |
+          cd ext/ccharts && ruby extconf.rb && make && cp ccharts_ext.* ../../lib/ && cd ../..
+          ruby -Ilib test/test_ccharts_api.rb
+          ruby -Ilib test/test_conformance.rb
+          gem build ccharts.gemspec
+      - name: Publish to RubyGems
+        env:
+          GEM_HOST_API_KEY: ${{ secrets.RUBYGEMS_API_KEY }}
+        run: gem push ccharts-*.gem
+
+  publish-luarocks:
+    name: Publish to LuaRocks
+    needs: check-version
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: bindings/lua
+    steps:
+      - uses: actions/checkout@v7
+      - uses: leafo/gh-actions-lua@v10
+        with:
+          luaVersion: "5.4"
+      - uses: leafo/gh-actions-luarocks@v5
+      - name: Build and test
+        run: |
+          luarocks make --local
+          lua tests/test_api.lua
+          lua tests/test_conformance.lua
+      - name: Upload to LuaRocks
+        run: luarocks upload ccharts-*.rockspec --api-key="${{ secrets.LUAROCKS_API_KEY }}"

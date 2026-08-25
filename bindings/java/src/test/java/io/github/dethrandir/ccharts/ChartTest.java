@@ -172,7 +172,7 @@ class ChartTest {
     @Test
     @DisplayName("exposes library metadata")
     void exposesLibraryMetadata() {
-        assertEquals("0.2.2", Chart.version());
+        assertEquals("3.0.0", Chart.version());
         assertEquals(100000, Chart.maxDim());
         assertEquals(1000000, Chart.maxCells());
     }

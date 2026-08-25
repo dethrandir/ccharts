@@ -26,6 +26,7 @@ MANIFESTS = {
     "bindings/java/pom.xml": r'^<version>([^<]+)</version>',
     "bindings/ruby/lib/ccharts/version.rb": r'^\s*VERSION\s*=\s*"([^"]+)"',
     "bindings/lua/src/ccharts/version.lua": r'^\s*VERSION\s*=\s*"([^"]+)"',
+    "bindings/julia/Project.toml": r'^version\s*=\s*"([^"]+)"',
 }
 
 REFERENCE = "pyproject.toml"

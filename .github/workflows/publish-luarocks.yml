@@ -1,0 +1,34 @@
+name: Publish LuaRocks only
+
+# Publish just the Lua rockspec to LuaRocks, independently of the full tag-based release.
+#
+# Run it from the Actions tab (Run workflow) or:
+#   gh workflow run publish-luarocks.yml
+#
+# Requires the LUAROCKS_API_KEY repository secret.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish-luarocks:
+    name: Publish to LuaRocks
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: bindings/lua
+    steps:
+      - uses: actions/checkout@v7
+      - uses: leafo/gh-actions-lua@v10
+        with:
+          luaVersion: "5.4"
+      - uses: leafo/gh-actions-luarocks@v5
+      - name: Build and test
+        run: |
+          luarocks make --local
+          lua tests/test_api.lua
+          lua tests/test_conformance.lua
+      - name: Upload to LuaRocks
+        run: luarocks upload ccharts-*.rockspec --api-key="${{ secrets.LUAROCKS_API_KEY }}"

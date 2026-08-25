@@ -1,0 +1,36 @@
+name: Publish RubyGem only
+
+# Publish just the Ruby gem to RubyGems, independently of the full tag-based release.
+#
+# Run it from the Actions tab (Run workflow) or:
+#   gh workflow run publish-gem.yml
+#
+# Requires the RUBYGEMS_API_KEY repository secret.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish-gem:
+    name: Publish the Ruby gem
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: bindings/ruby
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+      - name: Build and test gem
+        run: |
+          cd ext/ccharts && ruby extconf.rb && make && cp ccharts_ext.* ../../lib/ && cd ../..
+          ruby -Ilib test/test_ccharts_api.rb
+          ruby -Ilib test/test_conformance.rb
+          gem build ccharts.gemspec
+      - name: Publish to RubyGems
+        env:
+          GEM_HOST_API_KEY: ${{ secrets.RUBYGEMS_API_KEY }}
+        run: gem push ccharts-*.gem

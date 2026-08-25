@@ -1,0 +1,15 @@
+# This file is machine-generated - editing it directly is not advised
+
+julia_version = "1.12.7"
+manifest_format = "2.0"
+project_hash = "357b23ab02dbeee8271002d541ec72246583b086"
+
+[[deps.Ccharts]]
+deps = ["Libdl"]
+path = "."
+uuid = "06cbf164-b523-4b7c-a659-91ceb4e94ae1"
+version = "0.2.2"
+
+[[deps.Libdl]]
+uuid = "8f399da3-3557-5675-b5ff-fb832c97cbdb"
+version = "1.11.0"
