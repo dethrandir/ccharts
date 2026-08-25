@@ -1214,6 +1214,13 @@ CC_INLINE char* cc_candle_create(const cc_ohlc_t* data, int size, int width, int
 
 #define CC_PI 3.14159265358979323846    /* M_PI is not portable C89/C99 */
 #define CC_PIE_DONUT_RADIUS_RATIO 0.5   /* inner radius = this * outer radius */
+/* Terminal character cells are roughly twice as tall as they are wide
+ * (~2:1). The pie renderer draws the disk in square sub-pixel space (8x8 per
+ * cell), so an unscaled circle would read as a stretched ellipse on screen.
+ * CC_PIE_ASPECT is the terminal cell aspect (width / height, ~0.5): the
+ * renderer compresses the horizontal axis by this factor when testing
+ * distance and slice angles, so the disk renders as a round circle. */
+#define CC_PIE_ASPECT 0.5               /* terminal cell width / height */
 
 /* Deterministic fixed palette. Never random — a random palette would break
  * the byte-for-byte conformance goldens. Indexed per slice (mod length). */
@@ -1424,7 +1431,7 @@ CC_INLINE char* cc_pie_create(const cc_pie_slice_t* slices, int count,
         double sx = (double)x * 8.0 + 4.0;
         for (int y = 0; y < height; y++) {
             double sy = (double)y * 8.0 + 4.0;
-            double dx = sx - cx;
+            double dx = (sx - cx) * CC_PIE_ASPECT;  /* 1:1 with dy's terminal aspect */
             double dy = sy - cy;
             double dist = sqrt(dx * dx + dy * dy);
             char* cell = columns + ((size_t)x * height + (size_t)y) * 32;
@@ -1441,7 +1448,8 @@ CC_INLINE char* cc_pie_create(const cc_pie_slice_t* slices, int count,
 
             /* counter_clockwise mirrors the horizontal axis, which reverses
              * the sweep (clockwise) while keeping slice 0 at 12 o'clock. */
-            double probe_x = s.counter_clockwise ? (cx - sx) : (sx - cx);
+            double probe_x = (s.counter_clockwise ? (cx - sx) : (sx - cx))
+                             * CC_PIE_ASPECT;
             double probe = atan2(dy, probe_x);
             int slice = (widths != NULL)
                 ? cc_pie_find_slice_gap(starts, widths, count, probe)
@@ -1479,7 +1487,8 @@ CC_INLINE char* cc_pie_create(const cc_pie_slice_t* slices, int count,
         for (int x = 0; x < width; x++) {
             double sx = (double)x * 8.0 + 4.0;
             double d = (sx > cx) ? (sx - cx) : (cx - sx);
-            if (d < inner_r) {
+            /* Same aspect-scaled hollow test as the disk geometry. */
+            if (d * CC_PIE_ASPECT < inner_r) {
                 if (x0 < 0) x0 = x;
                 x1 = x;
             }
