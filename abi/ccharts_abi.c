@@ -335,8 +335,8 @@ int32_t ccharts_hist(const double* samples, int32_t count,
             !isfinite(settings->max_value)) return CCHARTS_ERR_NON_FINITE;
     } else {
         hs.bin_count = 0;                 /* auto */
-        hs.min_value = 0.0 / 0.0;         /* auto sentinel (NaN) */
-        hs.max_value = 0.0 / 0.0;         /* auto sentinel (NaN) */
+        hs.min_value = CC_NAN;            /* auto sentinel (NaN) */
+        hs.max_value = CC_NAN;            /* auto sentinel (NaN) */
     }
 
     chart = cc_hist_create(samples, (int)count, (int)width, (int)height, &hs);

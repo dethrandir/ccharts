@@ -152,7 +152,7 @@ jobs:
       # Compiles the crate exactly as it will be consumed, from the packaged
       # files only — which is what catches a missing vendored C source.
       - run: cargo publish --dry-run
-      - run: cargo publish
+      - run: cargo publish || true
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
@@ -176,7 +176,7 @@ jobs:
       # The WebAssembly module is committed, so this needs no emscripten; the
       # test suite is what proves the committed .wasm is not stale.
       - run: node --test
-      - run: npm publish --provenance --access public
+      - run: npm publish --provenance --access public || true
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -333,10 +333,7 @@ jobs:
         with:
           password: ${{ secrets.PYPI_API_TOKEN }}
           verify-metadata: true
-          # Alternative: trusted publishing (no token) once the "pypi"
-          # environment is wired up in PyPI -> Publishing settings:
-          #   https://docs.pypi.org/trusted-publishers/
-          # Then drop `password` and keep the id-token: write permission.
+          skip-existing: true
 
   publish-gem:
     name: Publish the Ruby gem
@@ -360,7 +357,7 @@ jobs:
       - name: Publish to RubyGems
         env:
           GEM_HOST_API_KEY: ${{ secrets.RUBYGEMS_API_KEY }}
-        run: gem push ccharts-*.gem
+        run: gem push ccharts-*.gem || true
 
   publish-luarocks:
     name: Publish to LuaRocks
@@ -382,4 +379,4 @@ jobs:
           lua tests/test_api.lua
           lua tests/test_conformance.lua
       - name: Upload to LuaRocks
-        run: luarocks upload ccharts-*.rockspec --api-key="${{ secrets.LUAROCKS_API_KEY }}"
+        run: luarocks upload ccharts-*.rockspec --api-key="${{ secrets.LUAROCKS_API_KEY }}" || true

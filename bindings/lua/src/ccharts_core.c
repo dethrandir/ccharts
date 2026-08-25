@@ -328,8 +328,8 @@ static int l_hist(lua_State* L) {
         opt_cstr(L, t, "rise_color", &s.rise_color);
         opt_cstr(L, t, "bg_color", &s.bg_color);
         s.bin_count = opt_int(L, t, "bin_count", 0);
-        s.min_value = opt_double(L, t, "min_value", (double)(0.0 / 0.0));
-        s.max_value = opt_double(L, t, "max_value", (double)(0.0 / 0.0));
+        s.min_value = opt_double(L, t, "min_value", CC_NAN);
+        s.max_value = opt_double(L, t, "max_value", CC_NAN);
         s.show_bins = opt_bool(L, t, "show_bins", 0);
         s.show_prices = opt_bool(L, t, "show_prices", 0);
     }

@@ -1,96 +1,103 @@
 # ccharts
 
-**Financial OHLC data in, a string out.** Line and candlestick charts drawn
-with Unicode block characters and returned as text — so the chart goes wherever
-text goes: a terminal, a log line, a chat message, an HTML `<pre>`, a commit
-comment, a `.txt` file, a `printf`.
+[![Version](https://img.shields.io/badge/version-v3.0.0-blue.svg)](https://github.com/dethrandir/ccharts)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![PyPI version](https://img.shields.io/pypi/v/ccharts.svg)](https://pypi.org/project/ccharts)
+[![crates.io](https://img.shields.io/crates/v/ccharts.svg)](https://crates.io/crates/ccharts)
+[![npm](https://img.shields.io/npm/v/@dethrandir/ccharts.svg)](https://www.npmjs.com/package/@dethrandir/ccharts)
+[![NuGet](https://img.shields.io/nuget/v/Ccharts.svg)](https://www.nuget.org/packages/Ccharts)
+[![Maven Central](https://img.shields.io/maven-central/v/io.github.dethrandir/ccharts.svg)](https://central.sonatype.com/artifact/io.github.dethrandir/ccharts)
+[![RubyGems](https://img.shields.io/gem/v/ccharts.svg)](https://rubygems.org/gems/ccharts)
+[![LuaRocks](https://img.shields.io/luarocks/v/dethrandir/ccharts.svg)](https://luarocks.org/modules/dethrandir/ccharts)
 
-```
-  328.00████████████
-                   █
-                   █           █████████████▁▁▁▁▁▁▁▁▁▁▁▁
-                   █████████████                       █
-                                                       █
+**Financial and statistical data in, a string out.** High-density terminal charts drawn with Unicode block characters and returned as plain text strings — so the chart goes wherever text goes: a terminal, a log line, a chat message, an HTML `<pre>`, a commit comment, or a `printf`.
+
+```text
+  328.00████████████                                                
+                   █                                                
+                   █           █████████████▁▁▁▁▁▁▁▁▁▁▁▁            
+                   █████████████                       █            
+                                                       █            
+                                                       █            
+                                                       █            
   301.00                                               █▁▁▁▁▁▁▁▁▁▁▁▁
 2026-07-20                                                2026-07-24
 ```
 
-Color is optional: by default rising and falling segments carry ANSI escapes,
-and `plain` renders with none at all, for the destinations where escapes would
-only be noise.
+There is no canvas, no image buffer, no GUI, and no terminal detection hooks — one function call returns a string, and what you do with it is your business.
 
-There is no canvas, no image, no renderer to drive and nothing to draw into —
-one call returns a string, and what you do with it is your business.
+Written as a single-header C89 library with a flat C ABI and idiomatic bindings for **Python**, **Rust**, **Go**, **JavaScript/WASM**, **.NET/C#**, **Java**, **Ruby**, **Lua**, and **Julia**. Every binding produces byte-identical output across platforms.
 
-Written as a single-header C library with a flat C ABI and bindings for
-Python, Rust, Go, JavaScript, C# and Java. Every one of them produces
-byte-identical output.
+---
 
-Licensed under the [MIT License](LICENSE).
+## Language Ecosystem
 
-[![PyPI version](https://img.shields.io/pypi/v/ccharts.svg)](https://pypi.org/project/ccharts)
-[![License](https://img.shields.io/pypi/l/ccharts.svg)](https://pypi.org/project/ccharts)
-[![crates.io](https://img.shields.io/crates/v/ccharts.svg)](https://crates.io/crates/ccharts)
-[![npm](https://img.shields.io/npm/v/@dethrandir/ccharts.svg)](https://www.npmjs.com/package/@dethrandir/ccharts)
-[![NuGet](https://img.shields.io/nuget/v/Ccharts.svg)](https://www.nuget.org/packages/Ccharts)
+| Language | Package / Target | Registry | Installation Command |
+| :--- | :--- | :--- | :--- |
+| **Python** | `ccharts` | [PyPI](https://pypi.org/project/ccharts) | `pip install ccharts` (or `pip install ccharts[pandas]`) |
+| **Rust** | `ccharts` | [crates.io](https://crates.io/crates/ccharts) | `cargo add ccharts` |
+| **Go** | `ccharts` | [GitHub](https://github.com/dethrandir/ccharts) | `go get github.com/dethrandir/ccharts/bindings/go/ccharts` |
+| **JavaScript / WASM** | `@dethrandir/ccharts` | [npm](https://www.npmjs.com/package/@dethrandir/ccharts) | `npm install @dethrandir/ccharts` |
+| **.NET / C#** | `Ccharts` | [NuGet](https://www.nuget.org/packages/Ccharts) | `dotnet add package Ccharts` |
+| **Java** (JDK 22+) | `io.github.dethrandir:ccharts` | [Maven Central](https://central.sonatype.com/artifact/io.github.dethrandir/ccharts) | Maven / Gradle dependency |
+| **Ruby** | `ccharts` | [RubyGems](https://rubygems.org/gems/ccharts) | `gem install ccharts` |
+| **Lua** | `ccharts` | [LuaRocks](https://luarocks.org/modules/dethrandir/ccharts) | `luarocks install ccharts` |
+| **Julia** | `Ccharts` | [General](https://github.com/dethrandir/ccharts) | `using Pkg; Pkg.add("Ccharts")` |
 
-## Installation
+---
 
-```sh
-pip install ccharts
+## Supported Chart Types
+
+`ccharts` supports **9 visual chart types**, each optimized with fractional Unicode glyphs:
+
+```
+  1. Line Chart          2. Candlestick          3. Pie / Donut
+  328.00██████             330.25▄▄▄▄▄ █████               ████████      
+              █                         │                ████████████    
+              █                                         ██████  ██████   
+              █▁▁▁▁                     █████           ████      ████   
+                                300.75  █████             ██████████     
+                                2026-07-20              Kira  40 (40%)
+
+  4. Histogram           5. Sparkline            6. Categorical Bar
+         8     ████      ▂▃▅▆▇██▇▆▅▄▃            100.00      ████        
+               ████                                          ████  ████  
+         1 ████████                              0.00  ████  ████  ████  
+       3.10    7.90                                    Q1    Q2    Q3    
+
+  7. Stacked Bar         8. Heatmap              9. Box Plot
+       150.00  ████      Mon █ █ █ █ █ █         120.00        │         
+               ████      Tue █ █ █ █ █ █                       ████      
+         0.00  ████      Wed █ █ █ █ █ █          10.00  ▂     █   │     
+               Prod      Thu █ █ █ █ █ █                 Cat A Cat B     
 ```
 
-For pandas DataFrame support (optional — the package itself has no runtime
-dependencies):
+1. **Line (`line`)**: High-resolution curves using 8 vertical sub-pixel levels (`▁▂▃▄▅▆▇█`). Supports area fills, single or directional colors, and automatic downsampling.
+2. **Candlestick (`candle`)**: Open, High, Low, Close (OHLC) financial charts with solid bodies (`▀▄█`), thin vertical wicks (`│`), and automatic downsampling (`cc_agg_ohlc`).
+3. **Pie & Donut (`pie`)**: Proportional charts with terminal aspect ratio compensation, custom hole sizes (`donut=True`), slice gaps, center text, and customizable legends.
+4. **Histogram (`histogram` / `hist`)**: Frequency distributions across continuous sample data with automatic or custom binning and outlier clamping.
+5. **Sparkline (`sparkline` / `spark`)**: Compact, axis-less micro trend lines (height 1 to 3) for inline dashboards and log lines.
+6. **Bar (`bar`)**: Categorical bar charts scaled from a shared zero baseline with 8 sub-pixel tops and categorical label footers.
+7. **Stacked Bar (`stacked_bar` / `stack`)**: Multi-series part-to-whole categorical breakdowns showing total sums and series segments.
+8. **Heatmap (`heatmap` / `heat`)**: 2-D matrix density visualization using a 10-step deterministic colormap ladder and 2-D block-average downsampling.
+9. **Box Plot (`boxplot` / `box`)**: Statistical 5-number summaries ($Min, Q_1, Median, Q_3, Max$) computed deterministically via nearest-rank quartiles.
 
-```sh
-pip install ccharts[pandas]
-```
+---
 
-Pre-built wheels for Linux (x86_64 and aarch64), macOS (x86_64 and arm64)
-and Windows (x86_64), built on GitHub Actions CI for CPython 3.9-3.14, are
-published together with each release — no C toolchain is needed on the
-target machine. Install the sdist instead and a C compiler (gcc/Clang on
-Linux/macOS, MSVC on Windows) is required, because the package wraps the C
-single-header library `ccharts.h`.
+## Quickstart Examples
 
-## Features
-
-- **Strings, not output** — every entry point returns a string. Nothing is
-  printed, no stream is written to, no terminal is detected or resized around.
-- **Plain or colored** — `plain` yields text with no ANSI escapes at all;
-  otherwise colors are escape strings you choose, including 256-color and
-  truecolor.
-- **Line charts** — smooth curves using 8-level vertical resolution
-  (`▁▂▃▄▅▆▇█`), per-segment coloring, optional area fill under the line.
-- **Candlestick charts** — solid bodies between open/close, thin vertical
-  wicks (`│`) between high/low, gap-separated candles, automatic
-  downsampling when there are more candles than columns.
-- **Axis labels** — optional max/min price margin and first/last timestamp
-  footer. The timestamp format is picked automatically from the candle
-  interval (`YYYY-MM-DD` for daily+, `HH:MM` for intraday).
-- **Timestamps** — optional per-candle epoch timestamps, parsed from ISO8601
-  or a plain number.
-- **Parsers** — CSV (`cc_str_to_ohlc`) and a fixed-schema JSON parser
-  (`cc_json_to_ohlc`).
-- **pandas / columnar input** (Python) — `Chart.from_dataframe(df)` and
-  `Chart.from_arrays(...)` copy price columns straight into the C array, with
-  no JSON round-trip. pandas is optional.
-
-## C usage
-
+### C (Single-Header)
 ```c
 #define CCHARTS_IMPLEMENTATION
 #include "ccharts.h"
 
 int main(void) {
-    const char* json = ...;                 // [{ts,open,high,low,close}, ...]
+    const char* json = "[{\"open\":100,\"high\":105,\"low\":98,\"close\":103}]";
     cc_ohlc_t* ohlc = NULL;
     int size = 0;
     cc_json_to_ohlc(json, &ohlc, &size);
 
-    cc_settings_t s = { .rise_color = CC_COLOR_BLUE,
-                        .show_prices = 1, .show_times = 1 };
+    cc_settings_t s = { .rise_color = CC_COLOR_BLUE, .show_prices = 1, .show_times = 1 };
     char* chart = cc_line_create(ohlc, size, 60, 8, &s);
     printf("%s\n", chart);
 
@@ -100,307 +107,130 @@ int main(void) {
 }
 ```
 
-`cc_line_create` hands back a `char*` you own: print it, log it, embed it,
-`free()` it. Compile with `-lm` (math lib). `CCHARTS_IMPLEMENTATION` must be
-defined in exactly one translation unit; every other unit can include the
-header as-is.
-C++ code can use the header for declarations (see the doc comment in
-ccharts.h for details).
-
-Run the demo with `make test` — it compiles `main.c` **and runs the binary**,
-rendering `prices.txt` as a line chart and two candlestick variants.
-
-## Python usage
-
-```sh
-make test-py        # builds the extension and runs the test suite
-```
-
+### Python
 ```python
 from ccharts import Chart
 
-chart = Chart(open("prices.txt").read())
-print(chart.line(width=60, height=8, show_prices=True, show_times=True))
-print(chart.candle(width=60, height=8))
+# OHLC Chart
+chart = Chart.from_arrays(opens, highs, lows, closes, ts=epoch_seconds)
+print(chart.candle(width=60, height=8, show_prices=True))
+
+# Standalone Visuals
+print(Chart.pie(["Rent", "Food", "Tech"], [45, 30, 25], donut=True))
+print(Chart.histogram(samples, bin_count=10, show_bins=True))
+print(Chart.sparkline(samples, height=1))
 ```
 
-Pie and donut charts take slices (label + positive amount) directly — no OHLC
-data needed:
-
-```python
-print(Chart.pie(["Alpha", "Beta", "Gamma"], [40, 30, 30], show_pct=True))
-print(Chart.pie(["Alpha", "Beta", "Gamma"], [40, 30, 30], donut=True))
-```
-
-`Chart.pie` is a static method; `donut=True` hollows the center, `colors` can
-override the fixed deterministic palette with per-slice ANSI escapes, and any
-slice value `<= 0` (including NaN) makes the whole render return the empty
-string. Non-finite values raise `ValueError`.
-
-### DataFrames and raw columns
-
-A DataFrame does not have to be serialized to JSON first — the price columns
-are handed to C directly:
-
-```python
-import yfinance as yf
-from ccharts import Chart
-
-df = yf.download("THYAO.IS", period="3mo")     # Open/High/Low/Close columns
-print(Chart.from_dataframe(df).candle(width=80, height=12, show_times=True))
-```
-
-- Columns are matched case-insensitively (`Open`/`open`/`OPEN`); pass
-  `ohlc=("o", "h", "l", "c")` for anything else.
-- Timestamps come from a `DatetimeIndex`, or from `ts="column"`. Timezone-aware
-  values are converted to UTC, naive ones are treated as UTC.
-- Rows with NaN/inf in an OHLC column are dropped (indicator frames have NaN
-  warm-up rows); `dropna=False` raises instead.
-- Row order is used as-is — a descending frame renders right to left.
-
-The same path works without pandas, for lists, numpy arrays or `array.array`:
-
-```python
-Chart.from_arrays(opens, highs, lows, closes, ts=epoch_seconds)
-```
-
-To develop locally (builds the extension in place):
-
-```sh
-python3 -m pip install -e .      # or: make test-py
-```
-
-Building a wheel by hand also works and is a good local smoke test:
-
-```sh
-python3 -m pip wheel . --no-deps -w /tmp/ccharts_wheel
-```
-
-## C ABI and other languages
-
-`ccharts.h` exports nothing — `CC_INLINE` makes every function `static inline`,
-and `struct cc_ohlc` is private to the implementation block — so there is
-nothing for a foreign function interface to bind to. `abi/ccharts_abi.h`
-provides that layer: a flat, `extern "C"`, opaque-handle API with explicit
-status codes, built as a shared or static library.
-
-```sh
-cmake -S . -B build && cmake --build build
-ctest --test-dir build --output-on-failure
-```
-
-```c
-#include "ccharts_abi.h"
-
-ccharts_data* data = NULL;
-ccharts_from_arrays(open, high, low, close, ts, n, &data);
-
-ccharts_settings s = {0};
-s.rise_color = ccharts_color(CCHARTS_COLOR_BLUE);
-s.show_prices = 1;
-
-char* chart = NULL;
-size_t len = 0;
-if (ccharts_line(data, 60, 8, &s, &chart, &len) == CCHARTS_OK) {
-    printf("%s", chart);
-    ccharts_string_free(chart);
-}
-ccharts_data_free(data);
-```
-
-Pies need no dataset — slices go straight to the renderer:
-
-```c
-ccharts_pie_slice slices[] = {{"Alpha", 40}, {"Beta", 30}, {"Gamma", 30}};
-char* pie = NULL;
-size_t pie_len = 0;
-if (ccharts_pie_from_slices(slices, 3, 24, 10, 0 /*donut*/, NULL, 0,
-                            1 /*legend*/, 1 /*pct*/, &pie, &pie_len)
-    == CCHARTS_OK) {
-    printf("%s", pie);
-    ccharts_string_free(pie);
-}
-```
-
-Differences from the raw header, all in the direction of being bindable:
-invalid dimensions return `CCHARTS_ERR_DIMENSIONS` instead of an empty string,
-NaN and inf are rejected up front, and `ccharts_parse_csv` counts the rows it
-can parse so a dataset never carries trailing zero-filled candles.
-
-`conformance/cases.json` plus `conformance/golden/*.txt` are the cross-language
-contract: 25 cases covering both OHLC chart types, downsampling, labels,
-timezones, flat ranges and single-candle input, plus the pie cases (disk,
-donut, custom palette, all-zero, single slice). The goldens are generated from
-the ABI (`scripts/gen_golden.py`) and every binding — the Python one included,
-see `tests/test_conformance.py` — must reproduce them byte for byte.
-
-### Language bindings
-
-| Language | Location | Published as |
-| -------- | -------- | ------------ |
-| Python   | `ccharts/` | `ccharts` on PyPI |
-| Rust     | `bindings/rust/` | `ccharts` on crates.io |
-| Go       | `bindings/go/` | served from the repository (no registry) |
-| JavaScript (WASM) | `bindings/js/` | `@dethrandir/ccharts` on npm |
-| C# (.NET 8) | `bindings/dotnet/` | `Ccharts` on NuGet |
-| Java (JDK 22+) | `bindings/java/` | `io.github.dethrandir:ccharts` on Maven Central |
-
-Rust and Go compile the vendored C sources with their own toolchains (the `cc`
-crate and cgo), so neither needs a prebuilt library:
-
+### Rust
 ```rust
-let chart = Chart::from_arrays(&open, &high, &low, &close, Some(&ts))?;
+use ccharts::{Chart, Color, Settings, PieSlice, PieOptions};
+
+let chart = Chart::from_arrays(&opens, &highs, &lows, &closes, Some(&ts))?;
 println!("{}", chart.line(60, 8, &Settings::new().rise(Color::Blue))?);
+
+let slices = [PieSlice::new(Some("Rent"), 45.0), PieSlice::new(Some("Food"), 30.0)];
+println!("{}", Chart::pie(&slices, 24, 10, &PieOptions::new().donut(true))?);
 ```
 
+### Go
 ```go
-chart, _ := ccharts.FromArrays(open, high, low, close, ts)
+chart, _ := ccharts.FromArrays(opens, highs, lows, closes, ts)
 defer chart.Close()
 out, _ := chart.Candle(60, 8, &ccharts.Options{ShowPrices: true})
+fmt.Println(out)
 ```
 
-The JavaScript package is the library compiled to WebAssembly, with the module
-embedded in the JavaScript — one dependency-free package for Node, Deno, Bun
-and browsers alike, no prebuilt binaries and no bundler configuration:
-
-```js
+### JavaScript / WASM
+```javascript
 import { Chart, Color } from "@dethrandir/ccharts";
-const chart = Chart.fromArrays(open, high, low, close, ts);
+
+const chart = Chart.fromArrays(opens, highs, lows, closes);
 console.log(chart.candle({ width: 60, height: 8, showPrices: true }));
 chart.free();
 ```
 
-C# uses source-generated P/Invoke and Java the Foreign Function & Memory API
-(no JNI code at all). Both link the shared library rather than compiling the C,
-so both ship prebuilt natives — `runtimes/{rid}/native/` in the NuGet package,
-`native/{os}-{arch}/` in the jar:
-
+### .NET / C#
 ```csharp
-using var chart = Chart.FromArrays(open, high, low, close, ts);
+using var chart = Chart.FromArrays(opens, highs, lows, closes);
 Console.Write(chart.Line(new ChartOptions { RiseColor = Color.Blue, ShowPrices = true }));
 ```
 
+### Java (JDK 22+)
 ```java
-try (Chart chart = Chart.fromArrays(open, high, low, close, ts)) {
-    System.out.print(chart.line(ChartOptions.builder().rise(Color.BLUE).build()));
+try (Chart chart = Chart.fromArrays(opens, highs, lows, closes)) {
+    System.out.print(chart.candle(ChartOptions.builder().size(60, 8).showPrices(true).build()));
 }
 ```
 
-Each binding vendors its own copy of `ccharts.h` and the ABI — Go needs cgo
-sources inside the package directory and `cargo package` only ships crate-local
-files — so `scripts/sync_sources.py` refreshes them and CI fails if a copy
-drifts.
-
-## Settings
-
-| Field         | Meaning                                                    | Default         |
-| ------------- | ---------------------------------------------------------- | --------------- |
-| `rise_color`  | color for rising values / candles                          | green           |
-| `fall_color`  | color for falling values / candles                         | red             |
-| `bg_color`    | background of empty cells                                  | none            |
-| `area_color`  | fill below the line chart                                  | none            |
-| `single_color`| 1 = one line color; 0 = per-segment colors                  | 0               |
-| `show_prices` | print max/min price labels                                 | 0               |
-| `show_times`  | print first/last timestamp footer                          | 0               |
-
-Setting a color to the **empty string** (rather than leaving it unset) makes
-that element carry no escape sequence at all — no color, and no reset either.
-Set all four and the chart comes out as plain text. The bindings expose that as
-a single `plain` option:
-
-```python
-chart.line(width=60, height=8, plain=True)   # not one escape byte
+### Ruby
+```ruby
+chart = Ccharts::Chart.from_arrays(open: opens, high: highs, low: lows, close: closes)
+puts chart.line(60, 8, Ccharts::Settings::ChartSettings.new.show_prices(true))
 ```
 
-Any unset field falls back to its default, so only the fields you want to
-override need to be set (see `cc_settings_resolve`).
+### Lua
+```lua
+local chart = ccharts.from_arrays(opens, highs, lows, closes)
+print(chart:candle(60, 8, { show_prices = true }))
+```
 
-## Input constraints
+### Julia
+```julia
+chart = Chart.from_arrays(opens, highs, lows, closes)
+println(chart.candle(60, 8; show_prices=true))
+```
 
-- **Timestamps** — ISO8601 strings may carry a UTC offset (`+03:00`, `+0300`,
-  `+03`, `Z`; a missing offset is treated as UTC). The offset is applied, so
-  the stored epoch is the true instant: `2026-07-20T00:00:00+03:00` becomes
-  `2026-07-19T21:00:00` UTC. Plain epoch-seconds numbers (including
-  negative) are accepted as-is. Malformed timestamps parse to `0`.
-- **Dimensions** — `width`/`height` must be positive and are capped at
-  `CC_MAX_DIM` (100000) per side and `CC_MAX_CELLS` (1000000) total cells.
-  Invalid dimensions make the C chart functions return an empty string and
-  make the Python bindings raise `ValueError` — no unchecked giant
-  allocation, no stack overflow.
-- **CSV** — lines may be arbitrarily long and at most `size` lines are read.
-- **JSON** — must be an array of objects with `ts`, `open`, `high`, `low`,
-  `close` (plus optional ignored fields like `volume`). The parser is an
-  iterative mini-scanner: keys are matched exactly, so a substring like
-  `"open"` inside a string value can never cause a false match. Malformed or
-  empty documents make the parsers fail cleanly.
+---
 
-## Windows / MSVC
+## Settings & Colors
 
-The header is VLA-free and uses only portable C89 constructs, so it compiles
-with MSVC out of the box: `gmtime_r` is swapped for `gmtime_s` on `_WIN32`
-and all functions get internal linkage (`static`) through the `CC_INLINE`
-macro, sidestepping MSVC's lack of C11 inline semantics. No extra flags or
-libraries are required beyond the standard ones.
+| Field | Meaning | Default |
+| :--- | :--- | :--- |
+| `rise_color` | Color for rising segments / bars / boxes | Green (`\x1b[32m`) |
+| `fall_color` | Color for falling segments / candles | Red (`\x1b[31m`) |
+| `bg_color` | Background of empty cells | `None` (terminal default) |
+| `area_color` | Line fill color / Whiskers color | `None` |
+| `single_color`| 1 = one uniform line color; 0 = per-segment direction | 0 |
+| `show_prices` | Prepend 8-column price/count value axis | 0 |
+| `show_times` | Append first/last timestamp footer | 0 |
+| `plain` | Strip all ANSI escape sequences | 0 |
 
-## Releases
+Setting `plain=True` (or passing empty strings for color options) completely strips ANSI escape codes, rendering clean plain text ideal for file exports, commit comments, Discord code blocks, and logs.
 
-> Maintainers and their agents: the [RELEASING.md](RELEASING.md) playbook is
-> authoritative for bumping, secret management and publishing — it records the
-> empirically-earned details and every failure survivor of the multi-registry
-> release. Read it before bumping the version.
+---
 
-One tag releases everything. Pushing `v<version>` (e.g. `v0.2.0`) runs
-`.github/workflows/publish.yml`, which first refuses the build unless the tag
-and **every** manifest agree on the version (`scripts/check_versions.py`), then
-publishes each package. Each registry's credential (API token, username, GPG
-key) is expected as a GitHub repository secret and is documented in the
-workflow, not here:
+## Detailed Documentation
 
-| Registry | Package |
-| -------- | ------- |
-| PyPI | `ccharts` (sdist + cibuildwheel wheels) |
-| crates.io | `ccharts` |
-| npm | `@dethrandir/ccharts` (published with provenance) |
-| NuGet | `Ccharts` |
-| Maven Central | `io.github.dethrandir:ccharts` |
+Comprehensive guides are available in the [`docs/`](docs/) directory:
 
-The Go module has no registry — it is served from the repository — but a module
-in a subdirectory needs a tag carrying that prefix, so the workflow also pushes
-`bindings/go/v<version>`.
+- 🚀 [**Getting Started**](docs/getting-started.md) — Installation, building from source, and basic usage across all languages.
+- 📊 [**Chart Types Guide**](docs/chart-types.md) — In-depth parameters, sub-pixel rendering mechanics, and visual outputs for all 9 chart types.
+- 🔌 [**Language Bindings Guide**](docs/bindings.md) — Package managers, memory management (RAII/Cleaners/Finalizers), and cross-language API mappings.
+- 🛠️ [**C API & Flat ABI Reference**](docs/c-api.md) — Single-header macros, structs, functions, and ABI status code contracts.
+- 🏗️ [**Architecture & Engine Design**](docs/architecture.md) — Sub-pixel grid pipeline, downsampling math, 32-byte slot memory model, and determinism.
 
-The C# and Java packages are the only ones carrying binaries:
-`.github/workflows/natives.yml` builds the shared library for linux-x64,
-osx-arm64 and win-x64, and `scripts/pack_natives.py` arranges them
-into `runtimes/{rid}/native/` for NuGet and `native/{os}-{arch}/` for the jar.
-Both publish jobs then verify the packed artifact actually contains every
-platform before it leaves the runner — a package that quietly lost its natives
-would install fine and fail on the first call. (Linux aarch64 is not built, for
-the same reason the Python wheels skip it: QEMU emulation on GitHub-hosted
-runners is far too slow. It can be added once native ARM runners are
-available.)
+---
 
-`workflow_dispatch` runs every build job without uploading anything, so a
-release can be rehearsed in full.
+## Repository Structure
 
-Two notes on publishing: PyPI could drop its API token entirely by moving
-to [trusted publishing](https://docs.pypi.org/trusted-publishers/) — link the
-`pypi` GitHub environment and delete the `password` input. Maven Central
-requires a verified `io.github.dethrandir` namespace on the
-[Central Portal](https://central.sonatype.com) and a published GPG key before
-the first deploy will be accepted.
+- `ccharts.h` — Core single-header C library containing all rendering algorithms.
+- `abi/` — Flat C ABI (`ccharts_abi.h`/`.c`) exporting opaque handles and error codes for FFIs.
+- `bindings/` — Idiomatic bindings:
+  - `bindings/rust/` — Rust crate (`ccharts`).
+  - `bindings/go/` — Go module (`ccharts`).
+  - `bindings/js/` — Standalone WebAssembly npm package (`@dethrandir/ccharts`).
+  - `bindings/dotnet/` — .NET 8+ P/Invoke package (`Ccharts`).
+  - `bindings/java/` — Java 22+ FFM API library (`io.github.dethrandir:ccharts`).
+  - `bindings/ruby/` — Ruby gem (`ccharts`).
+  - `bindings/lua/` — LuaRocks package (`ccharts`).
+  - `bindings/julia/` — Julia package (`Ccharts`).
+- `ccharts/` — Python package (`ccharts`) wrapping C core + pandas integration.
+- `docs/` — Modular documentation guides.
+- `conformance/` — 70 cross-language test cases (`cases.json`) and byte-for-byte golden files (`golden/*.txt`).
+- `scripts/` — Version consistency checks, source sync tools, and golden generators.
 
-## Repository layout
+---
 
-- `ccharts.h` — the whole C library (single header, heavily documented).
-- `main.c` — C demo using `prices.txt`.
-- `prices.txt` — sample JSON OHLC data (THYAO).
-- `abi/` — flat C ABI (`ccharts_abi.h`/`.c`) for non-Python bindings.
-- `bindings/` — language bindings built on that ABI (`rust/`, `go/`, `js/`,
-  `dotnet/`, `java/`).
-- `conformance/` — cross-language case list, goldens and a C smoke test.
-- `scripts/` — golden generation, vendored-source sync, version consistency.
-- `ccharts/` — Python package: `__init__.py` (high-level `Chart`),
-  `wrapper.c` (CPython extension `ccharts._core`) and `_pandas.py` (optional
-  DataFrame conversion, imported lazily).
-- `tests/` — Python test suite (`test_python_api.py`, plus `test_pandas_api.py`
-  which skips when pandas is not installed).
+## License
+
+`ccharts` is released under the [MIT License](LICENSE).

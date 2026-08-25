@@ -704,8 +704,8 @@ static PyObject* py_create_hist(PyObject* self, PyObject* args) {
     const char* bg_color = NULL;
     int width, height;
     int bin_count = 0, show_bins = 0, show_prices = 0;
-    double min_value = 0.0 / 0.0;   /* NaN = auto sentinel */
-    double max_value = 0.0 / 0.0;   /* NaN = auto sentinel */
+    double min_value = CC_NAN;      /* NaN = auto sentinel */
+    double max_value = CC_NAN;      /* NaN = auto sentinel */
     Py_ssize_t n;
     double* vals = NULL;
     cc_hist_settings_t settings;
