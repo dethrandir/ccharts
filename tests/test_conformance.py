@@ -128,6 +128,18 @@ class TestConformance(unittest.TestCase):
                 show_prices=cfg.get("show_prices", False),
                 plain=cfg.get("plain", False),
             )
+        if case["chart"] == "stack":
+            return Chart.stacked_bar(
+                [(s["name"], s["values"]) for s in case["series"]],
+                width=case["width"], height=case["height"],
+                colors=[COLORS[c] for c in cfg["colors"]]
+                if cfg.get("colors") else None,
+                bg_color=COLORS.get(cfg["bg_color"]),
+                category_labels=cfg.get("cat_labels"),
+                show_labels=cfg.get("show_labels", False),
+                show_prices=cfg.get("show_prices", False),
+                plain=cfg.get("plain", False),
+            )
         draw = getattr(self._chart(case), case["chart"])
         return draw(
             width=case["width"], height=case["height"],

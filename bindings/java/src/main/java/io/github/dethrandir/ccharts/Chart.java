@@ -468,6 +468,125 @@ public final class Chart implements AutoCloseable {
     }
 
     /**
+     * Renders a stacked bar chart of the given series. Each series contributes
+     * one vertical segment per category, and a category's bar height is the SUM
+     * of its series' values. A stacked bar chart has no OHLC dataset, so this
+     * is a static method taking the series directly.
+     *
+     * @param names the series names, one per series
+     * @param values a 2-D matrix: one {@code double[]} row per series, each of
+     *     the same length (one entry per category)
+     * @param width chart width in cells
+     * @param height chart height in cells
+     * @param options stack options
+     * @return the chart as a printable string
+     * @throws CchartsException if the series are empty or of differing
+     *     lengths, hold NaN/infinity, or the dimensions are out of range
+     */
+    public static String stackedBar(String[] names, double[][] values, int width, int height,
+            StackOptions options) {
+        if (names == null || names.length == 0) {
+            throw new CchartsException(CchartsException.Status.INVALID_ARGUMENT,
+                    "need at least one series");
+        }
+        if (values == null || values.length != names.length) {
+            throw new CchartsException(CchartsException.Status.INVALID_ARGUMENT,
+                    "names and values must have the same length");
+        }
+        int cats = values[0].length;
+        for (double[] row : values) {
+            if (row == null || row.length != cats) {
+                throw new CchartsException(CchartsException.Status.INVALID_ARGUMENT,
+                        "all series must have the same number of values");
+            }
+        }
+
+        try (Arena arena = Arena.ofConfined()) {
+            // Each series is a {name, values} cell: a C-string segment and a
+            // pointer to its double[] row.
+            MemorySegment seriesSegment = arena.allocate(Native.STACK_SERIES, names.length);
+            for (int i = 0; i < names.length; i++) {
+                long offset = i * Native.STACK_SERIES.byteSize();
+                seriesSegment.set(ValueLayout.ADDRESS, offset, text(arena, names[i]));
+                seriesSegment.set(ValueLayout.ADDRESS, offset + 8,
+                        arena.allocateFrom(ValueLayout.JAVA_DOUBLE, values[i]));
+            }
+
+            // colors is a NULL-terminated per-series palette override. `plain`
+            // forces every entry to the empty C string (emit no escape);
+            // otherwise a null array selects the fixed default palette.
+            String[] colorEntries = options.plain() ? new String[names.length] : options.colors();
+            MemorySegment colorsSegment = MemorySegment.NULL;
+            if (colorEntries != null) {
+                colorsSegment = arena.allocate(ValueLayout.ADDRESS, colorEntries.length + 1);
+                for (int i = 0; i < colorEntries.length; i++) {
+                    String c = colorEntries[i];
+                    colorsSegment.set(ValueLayout.ADDRESS, i * 8,
+                            options.plain() ? text(arena, "")
+                                    : (c == null ? MemorySegment.NULL : text(arena, c)));
+                }
+                colorsSegment.set(ValueLayout.ADDRESS,
+                        (long) colorEntries.length * 8, MemorySegment.NULL);
+            }
+
+            MemorySegment labelsSegment = MemorySegment.NULL;
+            String[] labels = options.categoryLabels();
+            if (labels != null) {
+                labelsSegment = arena.allocate(ValueLayout.ADDRESS, labels.length + 1);
+                for (int i = 0; i < labels.length; i++) {
+                    labelsSegment.set(ValueLayout.ADDRESS, i * 8,
+                            text(arena, labels[i] == null ? "" : labels[i]));
+                }
+                labelsSegment.set(ValueLayout.ADDRESS,
+                        (long) labels.length * 8, MemorySegment.NULL);
+            }
+
+            MemorySegment settings = arena.allocate(Native.STACK_SETTINGS);
+            // An empty C string means "emit no escape at all", which is
+            // different from a null pointer (use the default color).
+            settings.set(ValueLayout.ADDRESS, 0, colorsSegment);
+            settings.set(ValueLayout.ADDRESS, 8, text(arena,
+                    options.plain() ? "" : options.backgroundColor()));
+            settings.set(ValueLayout.ADDRESS, 16, labelsSegment);
+            settings.set(ValueLayout.JAVA_INT, 24, options.series() > 0 ? options.series() : names.length);
+            settings.set(ValueLayout.JAVA_INT, 28, options.cats() > 0 ? options.cats() : cats);
+            settings.set(ValueLayout.JAVA_INT, 32, options.showLabels() ? 1 : 0);
+            settings.set(ValueLayout.JAVA_INT, 36, options.showPrices() ? 1 : 0);
+
+            MemorySegment out = arena.allocate(ValueLayout.ADDRESS);
+            MemorySegment lengthOut = arena.allocate(ValueLayout.JAVA_LONG);
+            int status = (int) Native.STACK.invokeExact(
+                    seriesSegment, names.length, width, height, settings, out, lengthOut);
+            CchartsException.throwIfError(status);
+
+            MemorySegment chart = out.get(ValueLayout.ADDRESS, 0);
+            long size = lengthOut.get(ValueLayout.JAVA_LONG, 0);
+            try {
+                byte[] bytes = chart.reinterpret(size).toArray(ValueLayout.JAVA_BYTE);
+                return new String(bytes, StandardCharsets.UTF_8);
+            } finally {
+                Native.STRING_FREE.invokeExact(chart);
+            }
+        } catch (Throwable t) {
+            throw Native.wrap(t);
+        }
+    }
+
+    /**
+     * Renders a stacked bar chart of the given series with the default options.
+     *
+     * @param names the series names, one per series
+     * @param values a 2-D matrix: one {@code double[]} row per series, each of
+     *     the same length (one entry per category)
+     * @param width chart width in cells
+     * @param height chart height in cells
+     * @return the chart as a printable string
+     */
+    public static String stackedBar(String[] names, double[][] values, int width, int height) {
+        return stackedBar(names, values, width, height, StackOptions.DEFAULTS);
+    }
+
+    /**
      * Number of candles in the dataset.
      *
      * @return the candle count

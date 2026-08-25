@@ -670,6 +670,92 @@ impl Default for BarOptions {
     }
 }
 
+/// Options for [`Chart::stacked_bar`]. Every field is optional; unset ones
+/// take the library defaults (the fixed deterministic per-series palette, no
+/// background, no category-label or value footer).
+#[derive(Debug, Clone)]
+pub struct StackOptions {
+    colors: Option<Vec<ColorSpec>>,
+    background: Option<ColorSpec>,
+    category_labels: Option<Vec<String>>,
+    show_labels: bool,
+    show_prices: bool,
+    plain: bool,
+}
+
+impl StackOptions {
+    /// Options with every field at its default.
+    pub fn new() -> Self {
+        Self {
+            colors: None,
+            background: None,
+            category_labels: None,
+            show_labels: false,
+            show_prices: false,
+            plain: false,
+        }
+    }
+
+    /// Per-series override colors from the named palette. Series `i` uses
+    /// `colors[i % colors.len()]`; `None` selects the fixed default palette.
+    pub fn colors(mut self, colors: &[Color]) -> Self {
+        self.colors = Some(colors.iter().map(|c| ColorSpec::Named(*c)).collect());
+        self
+    }
+
+    /// Like [`StackOptions::colors`], but with raw ANSI escape sequences
+    /// (256-color, truecolor, ...). An interior NUL makes the escape ignored.
+    pub fn colors_ansi(mut self, escapes: &[&str]) -> Self {
+        self.colors = Some(
+            escapes
+                .iter()
+                .filter_map(|s| CString::new(*s).ok().map(ColorSpec::Custom))
+                .collect(),
+        );
+        self
+    }
+
+    color_setter!(
+        background,
+        background_ansi,
+        background,
+        "Background color of empty cells above the tallest stack."
+    );
+
+    /// Category names printed, when [`StackOptions::show_labels`] is set, one
+    /// per output column in the footer. An interior NUL in any label is
+    /// rejected when rendering.
+    pub fn category_labels(mut self, labels: &[&str]) -> Self {
+        self.category_labels = Some(labels.iter().map(|s| s.to_string()).collect());
+        self
+    }
+
+    /// Print each column's category label in a footer row below the chart.
+    pub fn show_labels(mut self, yes: bool) -> Self {
+        self.show_labels = yes;
+        self
+    }
+
+    /// Print the tallest stack total and 0 (the baseline) in a left
+    /// value-axis margin.
+    pub fn show_prices(mut self, yes: bool) -> Self {
+        self.show_prices = yes;
+        self
+    }
+
+    /// Render with no ANSI escapes at all, overriding every color.
+    pub fn plain(mut self, yes: bool) -> Self {
+        self.plain = yes;
+        self
+    }
+}
+
+impl Default for StackOptions {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// A parsed OHLC dataset that can be rendered as a line or candle chart.
 pub struct Chart {
     handle: NonNull<ffi::ccharts_data>,
@@ -993,6 +1079,142 @@ impl Chart {
                 width,
                 height,
                 &raw_settings,
+                &mut out,
+                &mut len,
+            )
+        };
+        if status != 0 {
+            return Err(Error::from_status(status));
+        }
+        // Safety: `out` is a library-owned buffer released by take_string.
+        unsafe { Self::take_string(out, len) }
+    }
+
+    /// Renders a stacked bar chart of `(name, values)` series. Every series
+    /// carries one value per category; all series must share the same number
+    /// of values. Each category's bar is the vertical SUM of its series'
+    /// values, drawn as stacked segments.
+    ///
+    /// A stacked bar has no OHLC data, so (like [`Chart::bar`]) this is an
+    /// associated function: it takes the series directly. `options.colors`
+    /// override the per-series palette, `options.category_labels` names each
+    /// output column in the footer when `options.show_labels` is set, and
+    /// `options.show_prices` prints a value axis. Negative values are clamped
+    /// to zero by the renderer, while NaN or infinite values are rejected
+    /// with [`Error::NonFinite`].
+    pub fn stacked_bar(
+        series: &[(&str, &[f64])],
+        width: u32,
+        height: u32,
+        options: &StackOptions,
+    ) -> Result<String> {
+        if series.is_empty() {
+            return Err(Error::InvalidArgument("need at least one series"));
+        }
+        let cats = series[0].1.len();
+        if cats == 0 {
+            return Err(Error::InvalidArgument("series values must not be empty"));
+        }
+        if series.iter().any(|(_, v)| v.len() != cats) {
+            return Err(Error::InvalidArgument(
+                "all series must have the same number of values",
+            ));
+        }
+        let series_count = i32::try_from(series.len())
+            .map_err(|_| Error::InvalidArgument("too many series"))?;
+        let cat_count = i32::try_from(cats)
+            .map_err(|_| Error::InvalidArgument("too many categories"))?;
+        let (width, height) = match (i32::try_from(width), i32::try_from(height)) {
+            (Ok(w), Ok(h)) => (w, h),
+            _ => return Err(Error::Dimensions),
+        };
+
+        // The series names (CStrings) and the values slices (through the
+        // pointer in each raw series) must outlive the call: the C layer
+        // copies the series structs immediately but reads most of them
+        // through the pointers.
+        let mut names: Vec<CString> = Vec::with_capacity(series.len());
+        let mut raw: Vec<ffi::ccharts_stack_series> = Vec::with_capacity(series.len());
+        for (name, values) in series {
+            let cstr = CString::new(*name).map_err(|_| Error::InteriorNul)?;
+            raw.push(ffi::ccharts_stack_series {
+                name: cstr.as_ptr(),
+                values: values.as_ptr(),
+            });
+            names.push(cstr);
+        }
+
+        // Colors: a NULL-terminated per-series palette. `plain` substitutes
+        // one empty escape per series so the render has no ANSI codes at all.
+        const EMPTY: &[u8] = b"\0";
+        let empty = EMPTY.as_ptr() as *const c_char;
+        let mut color_ptrs: Vec<*const c_char> = Vec::new();
+        if options.plain {
+            for _ in 0..series.len() {
+                color_ptrs.push(empty);
+            }
+        } else if let Some(specs) = &options.colors {
+            color_ptrs.extend(specs.iter().map(ColorSpec::as_ptr));
+        }
+        color_ptrs.push(std::ptr::null());
+        let colors_ptr = if color_ptrs.len() > 1 {
+            color_ptrs.as_ptr()
+        } else {
+            std::ptr::null()
+        };
+
+        let bg_color = if options.plain {
+            empty
+        } else {
+            options
+                .background
+                .as_ref()
+                .map_or(std::ptr::null(), ColorSpec::as_ptr)
+        };
+
+        // Category labels: a `cats`-length array (or NULL when absent).
+        // Converted here so an interior NUL can be rejected.
+        let cat_cstrs: Vec<CString> = options
+            .category_labels
+            .as_deref()
+            .map(|labels| {
+                labels
+                    .iter()
+                    .map(|l| CString::new(l.as_str()).map_err(|_| Error::InteriorNul))
+                    .collect::<Result<Vec<_>>>()
+            })
+            .transpose()?
+            .unwrap_or_default();
+        let cat_ptrs: Vec<*const c_char> = cat_cstrs.iter().map(|c| c.as_ptr()).collect();
+        let cat_labels_ptr = if cat_ptrs.is_empty() {
+            std::ptr::null()
+        } else {
+            cat_ptrs.as_ptr()
+        };
+
+        let settings = ffi::ccharts_stack_settings {
+            colors: colors_ptr,
+            bg_color,
+            cat_labels: cat_labels_ptr,
+            series: series_count,
+            cats: cat_count,
+            show_labels: options.show_labels as i32,
+            show_prices: options.show_prices as i32,
+        };
+
+        let mut out: *mut c_char = std::ptr::null_mut();
+        let mut len: usize = 0;
+        // Safety: every pointer in `raw`, `color_ptrs`, `cat_ptrs` and the
+        // settings live across the call, the C layer copies the series
+        // structs immediately, and `out` receives an owned string we release
+        // below.
+        let status = unsafe {
+            ffi::ccharts_stack(
+                raw.as_ptr(),
+                series_count,
+                width,
+                height,
+                &settings,
                 &mut out,
                 &mut len,
             )

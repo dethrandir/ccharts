@@ -466,6 +466,173 @@ public sealed class Chart : IDisposable
         }
     }
 
+    /// <summary>
+    /// Renders a stacked bar chart of the given series. Each series contributes
+    /// one vertical segment per category, and a category's bar height is the SUM
+    /// of its series' values. A stacked bar chart has no OHLC dataset, so this
+    /// is a static method taking the series directly.
+    /// </summary>
+    /// <param name="series">
+    /// The series, each carrying the same number of values (one per category).
+    /// </param>
+    /// <param name="width">Chart width in cells.</param>
+    /// <param name="height">Chart height in cells.</param>
+    /// <param name="options">Stack options, or <c>null</c> for the defaults.</param>
+    /// <returns>The chart as a printable string.</returns>
+    /// <exception cref="CchartsException">
+    /// The series were empty or of differing lengths, held NaN/infinity, or the
+    /// dimensions were out of range.
+    /// </exception>
+    public static string StackedBar(
+        IReadOnlyList<(string Name, IReadOnlyList<double> Values)> series,
+        int width, int height, StackOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(series);
+        NativeLibraryResolver.EnsureInstalled();
+
+        options ??= new StackOptions();
+        if (series.Count == 0)
+        {
+            throw new CchartsException(CchartsStatus.InvalidArgument,
+                "need at least one series");
+        }
+        var cats = series[0].Values.Count;
+        foreach (var s in series)
+        {
+            if (s.Values.Count != cats)
+            {
+                throw new CchartsException(CchartsStatus.InvalidArgument,
+                    "all series must have the same number of values");
+            }
+        }
+
+        var native = new NativeStackSeries[series.Count];
+        var namePtrs = new IntPtr[series.Count];
+        var valuesHandles = new GCHandle[series.Count];
+        var colorPtrs = new List<IntPtr>();
+        var background = IntPtr.Zero;
+        GCHandle colorsHandle = default;
+        GCHandle labelsHandle = default;
+        try
+        {
+            for (var i = 0; i < series.Count; i++)
+            {
+                namePtrs[i] = Marshal.StringToCoTaskMemUTF8(series[i].Name);
+                var values = series[i].Values.ToArray();
+                valuesHandles[i] = GCHandle.Alloc(values, GCHandleType.Pinned);
+                native[i] = new NativeStackSeries
+                {
+                    Name = namePtrs[i],
+                    Values = valuesHandles[i].AddrOfPinnedObject(),
+                };
+            }
+
+            // An empty C string means "emit no escape at all", which is
+            // different from a null pointer (use the default color).
+            background = options.Plain ? Empty() : Utf8(options.BackgroundColor);
+
+            IntPtr colorsPtr = IntPtr.Zero;
+            var plainColors = options.Plain;
+            if (plainColors || options.Colors is { Count: > 0 })
+            {
+                var count = plainColors ? series.Count : options.Colors!.Count;
+                var colorArr = new IntPtr[count + 1];
+                for (var i = 0; i < count; i++)
+                {
+                    IntPtr ptr;
+                    if (plainColors)
+                    {
+                        ptr = Empty();
+                    }
+                    else
+                    {
+                        var c = options.Colors![i];
+                        ptr = string.IsNullOrEmpty(c) ? IntPtr.Zero : Utf8(c);
+                    }
+                    colorArr[i] = ptr;
+                    if (ptr != IntPtr.Zero)
+                    {
+                        colorPtrs.Add(ptr);
+                    }
+                }
+                colorArr[count] = IntPtr.Zero;
+                colorsHandle = GCHandle.Alloc(colorArr, GCHandleType.Pinned);
+                colorsPtr = colorsHandle.AddrOfPinnedObject();
+            }
+
+            IntPtr labelsPtr = IntPtr.Zero;
+            if (options.CategoryLabels is { Length: > 0 })
+            {
+                var n = options.CategoryLabels.Length;
+                var labelArr = new IntPtr[n + 1];
+                for (var i = 0; i < n; i++)
+                {
+                    labelArr[i] = Marshal.StringToCoTaskMemUTF8(options.CategoryLabels[i] ?? "");
+                }
+                labelArr[n] = IntPtr.Zero;
+                labelsHandle = GCHandle.Alloc(labelArr, GCHandleType.Pinned);
+                labelsPtr = labelsHandle.AddrOfPinnedObject();
+            }
+
+            var settings = new NativeStackSettings
+            {
+                Colors = colorsPtr,
+                BackgroundColor = background,
+                CatLabels = labelsPtr,
+                Series = options.Series ?? series.Count,
+                Cats = options.Cats ?? cats,
+                ShowLabels = options.ShowLabels ? 1 : 0,
+                ShowPrices = options.ShowPrices ? 1 : 0,
+            };
+
+            var status = NativeMethods.Stack(native, series.Count, width, height,
+                in settings, out var chart, out var length);
+            CchartsException.ThrowIfError(status);
+
+            try
+            {
+                return Marshal.PtrToStringUTF8(chart, checked((int)length)) ?? string.Empty;
+            }
+            finally
+            {
+                NativeMethods.StringFree(chart);
+            }
+        }
+        finally
+        {
+            if (colorsHandle.IsAllocated)
+            {
+                colorsHandle.Free();
+            }
+            if (labelsHandle.IsAllocated)
+            {
+                labelsHandle.Free();
+            }
+            foreach (var handle in valuesHandles)
+            {
+                if (handle.IsAllocated)
+                {
+                    handle.Free();
+                }
+            }
+            if (background != IntPtr.Zero)
+            {
+                Marshal.FreeCoTaskMem(background);
+            }
+            foreach (var colorPtr in colorPtrs)
+            {
+                Marshal.FreeCoTaskMem(colorPtr);
+            }
+            foreach (var namePtr in namePtrs)
+            {
+                if (namePtr != IntPtr.Zero)
+                {
+                    Marshal.FreeCoTaskMem(namePtr);
+                }
+            }
+        }
+    }
+
     /// <summary>Version of the underlying C library.</summary>
     public static string Version
     {

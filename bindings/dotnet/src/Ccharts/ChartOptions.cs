@@ -279,3 +279,46 @@ public sealed record BarOptions
     /// </summary>
     public bool Plain { get; init; }
 }
+
+/// <summary>
+/// How a stacked bar chart is drawn. The default instance uses the fixed
+/// per-series palette, no background, no category-label or value footer.
+/// </summary>
+public sealed record StackOptions
+{
+    /// <summary>
+    /// Per-series ANSI escapes; series <c>i</c> uses <c>Colors[i % Colors.Length]</c>.
+    /// A <c>null</c> entry means the default palette color for that index;
+    /// <c>null</c> for the whole list selects the fixed default palette.
+    /// </summary>
+    public IReadOnlyList<string?>? Colors { get; init; }
+
+    /// <summary>ANSI escape filling empty cells. Default: the terminal background.</summary>
+    public string? BackgroundColor { get; init; }
+
+    /// <summary>Category names for the label footer, one per category. Default: none.</summary>
+    public string[]? CategoryLabels { get; init; }
+
+    /// <summary>Number of series. Usually left unset; defaults to the series count.</summary>
+    public int? Series { get; init; }
+
+    /// <summary>Number of categories. Usually left unset; defaults to the values length.</summary>
+    public int? Cats { get; init; }
+
+    /// <summary>
+    /// Print each column's category label in a footer row below the chart.
+    /// </summary>
+    public bool ShowLabels { get; init; }
+
+    /// <summary>
+    /// Print the tallest stack total and 0 (the baseline) in a left value-axis margin.
+    /// </summary>
+    public bool ShowPrices { get; init; }
+
+    /// <summary>
+    /// Render with no ANSI escapes at all, overriding every color. Use it when
+    /// the chart is going somewhere that does not interpret escapes — a log
+    /// file, an HTML block, a commit message.
+    /// </summary>
+    public bool Plain { get; init; }
+}

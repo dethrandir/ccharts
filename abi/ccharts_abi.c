@@ -429,6 +429,65 @@ int32_t ccharts_bar(const ccharts_bar_slice* items, int32_t count,
     return CCHARTS_OK;
 }
 
+/* ---------------------------- Stacked bar chart -------------------------- */
+
+int32_t ccharts_stack(const ccharts_stack_series* series, int32_t series_count,
+                      int32_t width, int32_t height,
+                      const ccharts_stack_settings* settings,
+                      char** out, size_t* out_len) {
+    cc_stack_settings_t ss;
+    char* chart;
+    int32_t cats, s, c;
+
+    if (out == NULL) return CCHARTS_ERR_INVALID_ARG;
+    *out = NULL;
+    if (out_len != NULL) *out_len = 0;
+    /* settings is required here: the values lengths are carried only by
+     * settings->cats, so a NULL settings is a marshalling error, not a
+     * "use defaults" signal. */
+    if (series == NULL || series_count <= 0 || settings == NULL ||
+        settings->cats <= 0) {
+        return CCHARTS_ERR_INVALID_ARG;
+    }
+    if (!cc_dim_ok((int)width, (int)height)) return CCHARTS_ERR_DIMENSIONS;
+
+    cats = (int32_t)settings->cats;
+    /* The settings->series count, when supplied, must agree with the
+     * argument (a 2-D marshalling sanity check for the bindings). */
+    if (settings->series > 0 && settings->series != series_count) {
+        return CCHARTS_ERR_INVALID_ARG;
+    }
+
+    /* NaN/inf stack values would poison the column-total / pixel math, so
+     * reject them at the boundary like every other price path. Negative
+     * values are clamped to zero by the renderer, not rejected. */
+    for (s = 0; s < series_count; s++) {
+        if (series[s].values == NULL) return CCHARTS_ERR_INVALID_ARG;
+        for (c = 0; c < cats; c++) {
+            if (!isfinite(series[s].values[c])) return CCHARTS_ERR_NON_FINITE;
+        }
+    }
+
+    memset(&ss, 0, sizeof(ss));
+    ss.colors = settings->colors;
+    ss.bg_color = settings->bg_color;
+    ss.cat_labels = settings->cat_labels;
+    ss.series = (int)settings->series;
+    ss.cats = (int)cats;
+    ss.show_labels = (int)settings->show_labels;
+    ss.show_prices = (int)settings->show_prices;
+
+    /* ccharts_stack_series and cc_stack_series_t have identical {name,
+     * values} layout; a cast (rather than a copy hand) is all the FFI needs. */
+    chart = cc_stack_create((const cc_stack_series_t*)series, (int)series_count,
+                            (int)width, (int)height, &ss);
+    if (chart == NULL) return CCHARTS_ERR_NOMEM;
+
+    *out = chart;
+    if (out_len != NULL) *out_len = strlen(chart);
+    return CCHARTS_OK;
+}
+
 /* ---------------------------- Introspection ---------------------------- */
 
 const char* ccharts_color(int32_t index) {

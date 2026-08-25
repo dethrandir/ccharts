@@ -65,7 +65,7 @@ public class ConformanceTests
             File.ReadAllBytes(Path.Combine(suiteDir!, "cases.json")));
         var datasets = document.RootElement.GetProperty("datasets");
         var cases = document.RootElement.GetProperty("cases").EnumerateArray().ToList();
-        Assert.True(cases.Count >= 52, "conformance suite looks truncated");
+        Assert.True(cases.Count >= 58, "conformance suite looks truncated");
 
         foreach (var testCase in cases)
         {
@@ -130,6 +130,49 @@ public class ConformanceTests
                     {
                         Color = ColorFor(settings, "rise_color"),
                         BackgroundColor = ColorFor(settings, "bg_color"),
+                        ShowLabels = settings.TryGetProperty("show_labels", out var labelsFlag)
+                            && labelsFlag.GetBoolean(),
+                        ShowPrices = settings.TryGetProperty("show_prices", out var prices)
+                            && prices.GetBoolean(),
+                        Plain = settings.TryGetProperty("plain", out var plain)
+                            && plain.GetBoolean(),
+                    });
+            }
+            else if (chartName == "stack")
+            {
+                var series = testCase.GetProperty("series").EnumerateArray()
+                    .Select(s => (
+                        s.GetProperty("name").GetString() ?? "",
+                        (IReadOnlyList<double>)s.GetProperty("values").EnumerateArray()
+                            .Select(v => v.GetDouble()).ToArray()))
+                    .ToList();
+
+                IReadOnlyList<string?>? colors = null;
+                if (settings.TryGetProperty("colors", out var colorsElement)
+                    && colorsElement.ValueKind == JsonValueKind.Array)
+                {
+                    colors = colorsElement.EnumerateArray()
+                        .Select(c => c.ValueKind == JsonValueKind.Null
+                            ? null : NamedColors[c.GetString()!])
+                        .ToList();
+                }
+
+                string[]? catLabels = null;
+                if (settings.TryGetProperty("cat_labels", out var labelsElement)
+                    && labelsElement.ValueKind == JsonValueKind.Array)
+                {
+                    catLabels = labelsElement.EnumerateArray()
+                        .Select(l => l.GetString() ?? "").ToArray();
+                }
+
+                rendered = Chart.StackedBar(series,
+                    testCase.GetProperty("width").GetInt32(),
+                    testCase.GetProperty("height").GetInt32(),
+                    new StackOptions
+                    {
+                        Colors = colors,
+                        BackgroundColor = ColorFor(settings, "bg_color"),
+                        CategoryLabels = catLabels,
                         ShowLabels = settings.TryGetProperty("show_labels", out var labelsFlag)
                             && labelsFlag.GetBoolean(),
                         ShowPrices = settings.TryGetProperty("show_prices", out var prices)

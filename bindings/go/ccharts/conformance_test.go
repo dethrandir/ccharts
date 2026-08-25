@@ -38,8 +38,14 @@ type suite struct {
 			Label string  `json:"label"`
 			Value float64 `json:"value"`
 		} `json:"items"`
+		// Series carries the 2-D stacked-bar matrix: each series has a name
+		// and a values array (one entry per category).
+		Series []struct {
+			Name   string    `json:"name"`
+			Values []float64 `json:"values"`
+		} `json:"series"`
 		// Samples carries the scalar histogram input (no OHLC dataset).
-		Samples []float64 `json:"samples"`
+		Samples  []float64 `json:"samples"`
 		Settings struct {
 			RiseColor        *string  `json:"rise_color"`
 			FallColor        *string  `json:"fall_color"`
@@ -66,6 +72,7 @@ type suite struct {
 			MinAbove         int      `json:"min_above"`
 			MinBelow         int      `json:"min_below"`
 			ShowLabels       bool     `json:"show_labels"`
+			CatLabels        []string `json:"cat_labels"`
 		} `json:"settings"`
 	} `json:"cases"`
 }
@@ -135,7 +142,7 @@ func TestConformance(t *testing.T) {
 	if err := json.Unmarshal(raw, &s); err != nil {
 		t.Fatalf("cases.json: %v", err)
 	}
-	if len(s.Cases) < 52 {
+	if len(s.Cases) < 58 {
 		t.Fatalf("conformance suite looks truncated: %d cases", len(s.Cases))
 	}
 
@@ -174,11 +181,11 @@ func TestConformance(t *testing.T) {
 				}
 				got, err = ccharts.Bar(labels, values, tc.Width, tc.Height,
 					&ccharts.BarOptions{
-						RiseColor:         color(t, tc.Settings.RiseColor),
-						BackgroundColor:   color(t, tc.Settings.BgColor),
-						ShowLabels:        tc.Settings.ShowLabels,
-						ShowPrices:        tc.Settings.ShowPrices,
-						Plain:             tc.Settings.Plain,
+						RiseColor:       color(t, tc.Settings.RiseColor),
+						BackgroundColor: color(t, tc.Settings.BgColor),
+						ShowLabels:      tc.Settings.ShowLabels,
+						ShowPrices:      tc.Settings.ShowPrices,
+						Plain:           tc.Settings.Plain,
 					})
 			} else if tc.Chart == "pie" {
 				slices := make([]ccharts.Slice, len(tc.Slices))
@@ -205,6 +212,28 @@ func TestConformance(t *testing.T) {
 						StartAngle:       tc.Settings.StartAngle,
 						CounterClockwise: derefB(tc.Settings.CounterClockwise),
 						CenterText:       derefS(tc.Settings.CenterText),
+					})
+			} else if tc.Chart == "stack" {
+				series := make([]ccharts.StackSeries, len(tc.Series))
+				for i, s := range tc.Series {
+					series[i] = ccharts.StackSeries{Name: s.Name, Values: s.Values}
+				}
+				colors := make([]ccharts.Color, len(tc.Settings.Colors))
+				for i, name := range tc.Settings.Colors {
+					c, ok := namedColors[name]
+					if !ok {
+						t.Fatalf("unknown color in cases.json: %q", name)
+					}
+					colors[i] = c
+				}
+				got, err = ccharts.StackedBar(series, tc.Width, tc.Height,
+					&ccharts.StackOptions{
+						Colors:          colors,
+						BackgroundColor: color(t, tc.Settings.BgColor),
+						CategoryLabels:  tc.Settings.CatLabels,
+						ShowLabels:      tc.Settings.ShowLabels,
+						ShowPrices:      tc.Settings.ShowPrices,
+						Plain:           tc.Settings.Plain,
 					})
 			} else {
 				data, ok := s.Datasets[tc.Dataset]

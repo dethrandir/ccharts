@@ -77,6 +77,23 @@ final class Native {
             ValueLayout.JAVA_INT.withName("show_labels"),
             ValueLayout.JAVA_INT.withName("show_prices"));
 
+    /** Layout of {@code ccharts_stack_series}: a name pointer then a values
+     * pointer. Two 8-byte addresses on x64: 16 bytes, no padding. */
+    static final StructLayout STACK_SERIES = MemoryLayout.structLayout(
+            ValueLayout.ADDRESS.withName("name"),
+            ValueLayout.ADDRESS.withName("values"));
+
+    /** Layout of {@code ccharts_stack_settings}: three pointers then four ints.
+     * 8*3 + 4*4 = 40 bytes; ints do not precede a double, so no padding. */
+    static final StructLayout STACK_SETTINGS = MemoryLayout.structLayout(
+            ValueLayout.ADDRESS.withName("colors"),
+            ValueLayout.ADDRESS.withName("bg_color"),
+            ValueLayout.ADDRESS.withName("cat_labels"),
+            ValueLayout.JAVA_INT.withName("series"),
+            ValueLayout.JAVA_INT.withName("cats"),
+            ValueLayout.JAVA_INT.withName("show_labels"),
+            ValueLayout.JAVA_INT.withName("show_prices"));
+
     private static final Linker LINKER = Linker.nativeLinker();
 
     /** Lives as long as the process: the library must not be unloaded. */
@@ -119,6 +136,9 @@ final class Native {
             FunctionDescriptor.of(INT, PTR, INT, INT, INT, PTR,
                     PTR, PTR));
     static final MethodHandle BAR = downcall("ccharts_bar",
+            FunctionDescriptor.of(INT, PTR, INT, INT, INT, PTR,
+                    PTR, PTR));
+    static final MethodHandle STACK = downcall("ccharts_stack",
             FunctionDescriptor.of(INT, PTR, INT, INT, INT, PTR,
                     PTR, PTR));
     static final MethodHandle COLOR = downcall("ccharts_color",

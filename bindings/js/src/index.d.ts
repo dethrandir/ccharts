@@ -176,7 +176,46 @@ export interface BarOptions {
   plain?: boolean;
 }
 
-/** An error reported by the chart library. */
+/** One series of a stacked bar chart: a name and one value per category. */
+export interface StackSeries {
+  /** Series name (for documentation; the per-series color comes from the palette). */
+  name?: string;
+  /** One value per category; every series must share the same length. */
+  values: ArrayLike<number>;
+}
+
+/** Options accepted by {@link Chart.stackedBar}. */
+export interface StackOptions {
+  /** Chart width in cells. Default 60. */
+  width?: number;
+  /** Chart height in cells. Default 8. */
+  height?: number;
+  /**
+   * Per-series ANSI escapes; series `i` uses `colors[i % colors.length]`.
+   * null/undefined entries mean the default palette color for that index.
+   * Omitted entirely selects the fixed default palette.
+   */
+  colors?: Array<string | null>;
+  /** ANSI escape filling empty cells. Default: the terminal background. */
+  backgroundColor?: string;
+  /** Category names for the label footer, one per category. Default: none. */
+  categoryLabels?: string[];
+  /**
+   * Print each column's category label in a footer row below the chart.
+   * Default false.
+   */
+  showLabels?: boolean;
+  /**
+   * Print the tallest stack total and 0 (the baseline) in a left value-axis
+   * margin. Default false.
+   */
+  showPrices?: boolean;
+  /**
+   * Render with no ANSI escapes at all, overriding every color (each series
+   * color becomes an empty escape). Default false.
+   */
+  plain?: boolean;
+}
 export class CchartsError extends Error {
   /** The ccharts_status code: 1 invalid argument, 2 parse, 3 out of memory, 4 non-finite, 5 dimensions. */
   readonly code: number;
@@ -270,6 +309,16 @@ export class Chart {
     values: ArrayLike<number>,
     options?: BarOptions,
   ): string;
+
+  /**
+   * Renders a stacked bar chart of the given series. Each series contributes
+   * one vertical segment per category, and a category's bar height is the SUM
+   * of its series' values. A stacked bar chart has no OHLC dataset, so this
+   * is a static method taking the series directly.
+   * @throws {CchartsError} on empty or unequal-length input, non-finite
+   * values or bad dimensions.
+   */
+  static stackedBar(series: StackSeries[], options?: StackOptions): string;
 
   /** Releases the dataset. Safe to call more than once. */
   free(): void;

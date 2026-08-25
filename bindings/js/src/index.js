@@ -187,6 +187,10 @@ const SPARK_SETTINGS_BYTES = 16;
 // (The bar items reuse PIE_SLICE_BYTES: a 32-bit label pointer, 4 bytes
 // padding, then a double value at offset 8.)
 const BAR_SETTINGS_BYTES = 16;
+// ccharts_stack_series: two 32-bit pointers. 4+4 = 8.
+const STACK_SERIES_BYTES = 8;
+// ccharts_stack_settings: three 32-bit pointers then four int32. 4*3+4*4 = 28.
+const STACK_SETTINGS_BYTES = 28;
 const PTR_BYTES = 4;
 
 /**
@@ -620,6 +624,124 @@ export class Chart {
   /** Number of candles in the dataset. */
   get length() {
     return this.#length;
+  }
+
+  /**
+   * Renders a stacked bar chart of the given series. Each series contributes
+   * one vertical segment per category, and a category's bar height is the SUM
+   * of its series' values. A stacked bar chart has no OHLC dataset, so this
+   * is a static method taking the series directly.
+   *
+   * @param {Array<{name?: string, values: ArrayLike<number>}>} series each
+   *   series must carry the same number of values (one per category)
+   * @param {StackOptions} [options]
+   * @returns {string}
+   */
+  static stackedBar(series, options = {}) {
+    const {
+      width = 60, height = 8,
+      colors, backgroundColor, categoryLabels,
+      showLabels = false, showPrices = false, plain = false,
+    } = options;
+
+    if (!Array.isArray(series) || series.length === 0) {
+      throw new CchartsError(STATUS.INVALID_ARGUMENT, "need at least one series");
+    }
+    const cats = series[0].values.length;
+    for (const s of series) {
+      if (!s.values || s.values.length !== cats) {
+        throw new CchartsError(STATUS.INVALID_ARGUMENT,
+          "all series must have the same number of values");
+      }
+    }
+    if (!Number.isInteger(width) || !Number.isInteger(height)) {
+      throw new CchartsError(STATUS.DIMENSIONS, "width and height must be integers");
+    }
+
+    const owned = [];
+    let seriesPtr = 0;
+    let colorsPtr = 0;
+    let catLabelsPtr = 0;
+    let settings = 0;
+    let outPtr = 0;
+    let lenPtr = 0;
+    try {
+      seriesPtr = malloc(series.length * STACK_SERIES_BYTES);
+      owned.push(seriesPtr);
+      const dv = view();
+      for (let i = 0; i < series.length; i++) {
+        const name = writeCString(String(series[i].name ?? ""));
+        owned.push(name);
+        dv.setUint32(seriesPtr + i * STACK_SERIES_BYTES, name, true);
+
+        const values = series[i].values;
+        const vp = malloc(values.length * 8);
+        owned.push(vp);
+        new Float64Array(exports.memory.buffer, vp, values.length).set(
+          values instanceof Float64Array ? values : Float64Array.from(values, Number));
+        dv.setUint32(seriesPtr + i * STACK_SERIES_BYTES + 4, vp, true);
+      }
+
+      // colors is a NULL-terminated per-series palette override. `plain`
+      // forces every entry to the empty C string (emit no escape); otherwise
+      // a null/undefined entry means "use the default palette color", and a
+      // null array selects the fixed default palette entirely.
+      const colorCount = plain ? series.length : (colors ? colors.length : 0);
+      if (colorCount > 0) {
+        colorsPtr = malloc((colorCount + 1) * PTR_BYTES);
+        owned.push(colorsPtr);
+        for (let i = 0; i < colorCount; i++) {
+          const ptr = plain ? writeCString("")
+            : (colors[i] === undefined || colors[i] === null || colors[i] === ""
+              ? 0 : writeCString(String(colors[i])));
+          if (ptr) owned.push(ptr);
+          dv.setUint32(colorsPtr + i * PTR_BYTES, ptr, true);
+        }
+        dv.setUint32(colorsPtr + colorCount * PTR_BYTES, 0, true); // terminator
+      }
+
+      if (categoryLabels && categoryLabels.length > 0) {
+        catLabelsPtr = malloc((categoryLabels.length + 1) * PTR_BYTES);
+        owned.push(catLabelsPtr);
+        for (let i = 0; i < categoryLabels.length; i++) {
+          const ptr = writeCString(String(categoryLabels[i]));
+          owned.push(ptr);
+          dv.setUint32(catLabelsPtr + i * PTR_BYTES, ptr, true);
+        }
+        dv.setUint32(catLabelsPtr + categoryLabels.length * PTR_BYTES, 0, true);
+      }
+
+      const background = colorPtr(owned, plain, backgroundColor);
+
+      settings = malloc(STACK_SETTINGS_BYTES);
+      owned.push(settings);
+      dv.setUint32(settings, colorsPtr, true);
+      dv.setUint32(settings + 4, background, true);
+      dv.setUint32(settings + 8, catLabelsPtr, true);
+      dv.setInt32(settings + 12, series.length, true);
+      dv.setInt32(settings + 16, cats, true);
+      dv.setInt32(settings + 20, showLabels ? 1 : 0, true);
+      dv.setInt32(settings + 24, showPrices ? 1 : 0, true);
+
+      outPtr = malloc(4);
+      lenPtr = malloc(4);
+      const status = exports.ccharts_stack(
+        seriesPtr, series.length, width, height, settings, outPtr, lenPtr);
+      if (status !== STATUS.OK) throw fail(status);
+
+      const dv2 = view();
+      const chartPtr = dv2.getUint32(outPtr, true);
+      const length = dv2.getUint32(lenPtr, true);
+      try {
+        return decoder.decode(u8().subarray(chartPtr, chartPtr + length));
+      } finally {
+        exports.ccharts_string_free(chartPtr);
+      }
+    } finally {
+      for (const ptr of owned) exports.free(ptr);
+      if (outPtr) exports.free(outPtr);
+      if (lenPtr) exports.free(lenPtr);
+    }
   }
 
   /**

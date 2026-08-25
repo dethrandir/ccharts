@@ -97,7 +97,7 @@ class ConformanceTest {
                 Files.readAllBytes(suite.resolve("cases.json")));
         JsonNode datasets = document.get("datasets");
         JsonNode cases = document.get("cases");
-        assertTrue(cases.size() >= 52, "conformance suite looks truncated");
+        assertTrue(cases.size() >= 58, "conformance suite looks truncated");
 
         for (JsonNode testCase : cases) {
             String name = testCase.get("name").asText();
@@ -205,6 +205,58 @@ class ConformanceTest {
                         .build();
                 rendered = Chart.bar(labels, values, testCase.get("width").asInt(),
                         testCase.get("height").asInt(), options);
+            } else if (testCase.get("chart").asText().equals("stack")) {
+                JsonNode seriesNode = testCase.get("series");
+                int n = seriesNode.size();
+                String[] names = new String[n];
+                double[][] matrix = new double[n][];
+                for (int i = 0; i < n; i++) {
+                    JsonNode s = seriesNode.get(i);
+                    JsonNode nameNode = s.get("name");
+                    names[i] = nameNode == null || nameNode.isNull() ? "" : nameNode.asText();
+                    JsonNode arr = s.get("values");
+                    double[] row = new double[arr.size()];
+                    for (int j = 0; j < row.length; j++) {
+                        row[j] = arr.get(j).asDouble();
+                    }
+                    matrix[i] = row;
+                }
+
+                JsonNode colorsNode = settings.get("colors");
+                String[] colors = null;
+                if (colorsNode != null && colorsNode.isArray()) {
+                    colors = new String[colorsNode.size()];
+                    for (int i = 0; i < colors.length; i++) {
+                        JsonNode c = colorsNode.get(i);
+                        if (c == null || c.isNull()) {
+                            colors[i] = null;
+                        } else {
+                            Color color = NAMED_COLORS.get(c.asText());
+                            assertNotNull(color, "unknown color in cases.json: " + c.asText());
+                            colors[i] = color.escape();
+                        }
+                    }
+                }
+
+                JsonNode labelsNode = settings.get("cat_labels");
+                String[] catLabels = null;
+                if (labelsNode != null && labelsNode.isArray()) {
+                    catLabels = new String[labelsNode.size()];
+                    for (int i = 0; i < catLabels.length; i++) {
+                        catLabels[i] = labelsNode.get(i).asText();
+                    }
+                }
+
+                StackOptions options = StackOptions.builder()
+                        .colorsAnsi(colors)
+                        .backgroundColor(color(settings, "bg_color"))
+                        .categoryLabels(catLabels)
+                        .showLabels(settings.path("show_labels").asBoolean(false))
+                        .showPrices(settings.path("show_prices").asBoolean(false))
+                        .plain(settings.path("plain").asBoolean(false))
+                        .build();
+                rendered = Chart.stackedBar(names, matrix,
+                        testCase.get("width").asInt(), testCase.get("height").asInt(), options);
             } else {
                 JsonNode dataset = datasets.get(testCase.get("dataset").asText());
 

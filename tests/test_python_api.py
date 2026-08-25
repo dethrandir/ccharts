@@ -703,5 +703,125 @@ class TestBar(unittest.TestCase):
         self.assertNotIn("\x1b", out)
 
 
+class TestStackedBar(unittest.TestCase):
+    """Stacked bar rendering (Chart.stacked_bar) — per-series segments that
+    sum into per-category totals, unlike the plain ``bar`` where each value is
+    its own full height."""
+
+    SERIES = [("Alpha", [1, 4, 2, 5, 3]), ("Beta", [3, 2, 5, 1, 4])]
+
+    def test_stack_returns_string(self):
+        out = Chart.stacked_bar(self.SERIES)
+        self.assertIsInstance(out, str)
+        self.assertGreater(len(out), 0)
+        self.assertIn("\n", out)
+
+    def test_stack_uses_block_bars(self):
+        out = Chart.stacked_bar(self.SERIES)
+        self.assertIn("█", out, "stacked bar should use full-block cells")
+
+    def test_stack_is_deterministic(self):
+        self.assertEqual(Chart.stacked_bar(self.SERIES),
+                         Chart.stacked_bar(self.SERIES))
+
+    def test_stack_heights_reflect_totals(self):
+        # The broadest category (Alpha 5 + Beta 4 = 9) must render a full
+        # column while a shorter one (e.g. Alpha 1 + Beta 3 = 4) has empty
+        # cells above it, proving values stack rather than sit side by side.
+        out = Chart.stacked_bar(self.SERIES, width=5, height=3, plain=True)
+        rows = out.strip("\n").split("\n")
+        self.assertEqual(len(rows), 3)
+        # The tallest stack touches the very top row, the shortest does not.
+        self.assertIn("█", rows[0])
+
+    def test_stack_accepts_dict_series(self):
+        as_dicts = [{"name": n, "values": v} for n, v in self.SERIES]
+        self.assertEqual(Chart.stacked_bar(as_dicts),
+                         Chart.stacked_bar(self.SERIES))
+
+    def test_stack_show_labels_adds_footer(self):
+        cats = ["Jan", "Feb", "Mar", "Apr", "May"]
+        plain = Chart.stacked_bar(self.SERIES, width=5, height=3,
+                                  plain=True)
+        lab = Chart.stacked_bar(self.SERIES, width=5, height=3,
+                                plain=True, category_labels=cats,
+                                show_labels=True)
+        # show_labels appends a footer row of per-column category labels
+        # (truncated to the column width: width=5 over 5 cats = 1 cell each).
+        self.assertEqual(len(plain.strip("\n").split("\n")), 3)
+        self.assertEqual(len(lab.strip("\n").split("\n")), 4)
+        footer = lab.strip("\n").split("\n")[-1]
+        self.assertIn("J", footer)  # Jan truncated to its first letter
+        self.assertEqual(footer, "JFMAM")
+
+    def test_stack_show_prices_adds_margin(self):
+        plain = Chart.stacked_bar(self.SERIES, plain=True)
+        priced = Chart.stacked_bar(self.SERIES, plain=True,
+                                   show_prices=True)
+        self.assertNotEqual(plain, priced)
+        self.assertIn("0", priced.strip("\n").split("\n")[-1].strip())
+
+    def test_stack_wide_more_columns_than_categories(self):
+        out = Chart.stacked_bar(self.SERIES, width=20, height=3)
+        self.assertGreater(len(out), 0)
+        stripped = re.sub(r"\x1b\[[0-9;]*m", "",
+                          out.strip("\n").split("\n")[0])
+        self.assertEqual(len(stripped), 20)
+
+    def test_stack_narrow_fewer_columns_than_categories(self):
+        # width=3 folds 5 categories into 3 columns (aggregating by sum).
+        out = Chart.stacked_bar(self.SERIES, width=3, height=3)
+        self.assertGreater(len(out), 0)
+        stripped = re.sub(r"\x1b\[[0-9;]*m", "",
+                          out.strip("\n").split("\n")[0])
+        self.assertEqual(len(stripped), 3)
+
+    def test_stack_custom_colors(self):
+        plain = Chart.stacked_bar(self.SERIES, plain=True)
+        colored = Chart.stacked_bar(
+            self.SERIES, colors=["\x1b[31m", "\x1b[32m"])
+        self.assertNotEqual(plain, colored)
+        self.assertIn("\x1b[31m", colored)
+        self.assertIn("\x1b[32m", colored)
+
+    def test_stack_single_series(self):
+        out = Chart.stacked_bar([("Only", [1, 2, 3])], width=5, height=3)
+        self.assertGreater(len(out), 0)
+        self.assertIn("█", out)
+
+    def test_stack_negative_clamped_to_zero(self):
+        # A negative series value draws at zero height rather than raising.
+        out = Chart.stacked_bar([("Neg", [-3]), ("Ok", [5])],
+                                width=1, height=2)
+        self.assertGreater(len(out), 0)
+        self.assertIn("█", out)
+
+    def test_stack_non_finite_raises(self):
+        for bad in (float("nan"), float("inf"), float("-inf")):
+            with self.assertRaises(ValueError):
+                Chart.stacked_bar([("A", [1, bad]), ("B", [2, 3])])
+
+    def test_stack_series_length_mismatch_raises(self):
+        # Every series must share the same number of categories.
+        with self.assertRaises(ValueError):
+            Chart.stacked_bar([("A", [1, 2, 3]), ("B", [1, 2])])
+
+    def test_stack_empty_series_raises(self):
+        with self.assertRaises(ValueError):
+            Chart.stacked_bar([])
+
+    def test_stack_dimension_validation(self):
+        with self.assertRaises(ValueError):
+            Chart.stacked_bar(self.SERIES, width=0)
+        with self.assertRaises(ValueError):
+            Chart.stacked_bar(self.SERIES, height=-1)
+        with self.assertRaises(TypeError):
+            Chart.stacked_bar(self.SERIES, width=2.5)
+
+    def test_stack_plain_has_no_escapes(self):
+        out = Chart.stacked_bar(self.SERIES, plain=True)
+        self.assertNotIn("\x1b", out)
+
+
 if __name__ == "__main__":
     unittest.main()

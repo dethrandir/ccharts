@@ -64,6 +64,27 @@ internal struct NativeBarSettings
     public int ShowPrices;
 }
 
+/// <summary>Layout of ccharts_stack_series from abi/ccharts_abi.h.</summary>
+[StructLayout(LayoutKind.Sequential)]
+internal struct NativeStackSeries
+{
+    public IntPtr Name;
+    public IntPtr Values;
+}
+
+/// <summary>Layout of ccharts_stack_settings from abi/ccharts_abi.h.</summary>
+[StructLayout(LayoutKind.Sequential)]
+internal struct NativeStackSettings
+{
+    public IntPtr Colors;
+    public IntPtr BackgroundColor;
+    public IntPtr CatLabels;
+    public int Series;
+    public int Cats;
+    public int ShowLabels;
+    public int ShowPrices;
+}
+
 /// <summary>
 /// P/Invoke declarations for the ccharts C ABI. Strings are handled as raw
 /// pointers on both directions: the library owns what it returns, and
@@ -125,6 +146,11 @@ internal static partial class NativeMethods
     internal static partial int Bar(
         [In] NativeBarSlice[] items, int count, int width, int height,
         in NativeBarSettings settings, out IntPtr chart, out nuint length);
+
+    [LibraryImport(Library, EntryPoint = "ccharts_stack")]
+    internal static partial int Stack(
+        [In] NativeStackSeries[] series, int seriesCount, int width, int height,
+        in NativeStackSettings settings, out IntPtr chart, out nuint length);
 
     [LibraryImport(Library, EntryPoint = "ccharts_color")]
     internal static partial IntPtr ColorAt(int index);

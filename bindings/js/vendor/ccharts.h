@@ -460,6 +460,77 @@ CC_INLINE char* cc_bar_create(const cc_bar_item_t* items, int count,
                               int width, int height,
                               const cc_bar_settings_t* settings);
 
+/* ============================ Stacked bar chart ===========================
+ * A stacked bar chart divides each category's total bar into vertical
+ * segments, one per series: every category has the same set of series, and
+ * its bar height is the SUM of the series' values for that category (a
+ * part-of-whole view), unlike the plain bar where each item is its own full
+ * height. All series share the same category count. Draws with 8 sub-pixel
+ * rows (cc_lower_eighth tops) exactly like the bar chart; each cell is
+ * colored by the series that sits on the stack's surface at that cell. */
+
+/* One stacked-bar series: a name (may be NULL/empty — used only for
+ * documentation; the per-series color comes from the palette) and a `values`
+ * array with one entry per category. All series must share the same category
+ * count (supplied by settings->cats). Values are clamped to zero for the
+ * render (negative entries draw at zero height rather than below the axis);
+ * non-finite values are rejected upstream (the wrapper and ABI), which keeps
+ * this header free of C99-only `isfinite`. */
+typedef struct cc_stack_series {
+    const char*      name;
+    const double*    values;
+} cc_stack_series_t;
+
+/* Stacked bar rendering options. Unspecified fields fall back to defaults:
+ *   - colors    : a NULL-terminated array of ANSI color strings used as the
+ *                 per-series palette, or NULL for the fixed default palette
+ *   - bg_color  : background of empty cells above the tallest stack (default:
+ *                 none)
+ *   - cat_labels: optional array of `cats` category labels printed, when
+ *                 show_labels is set, one per output column in the footer
+ *                 (NULL = no category names)
+ *   - series    : number of series (mirrors the `series_count` argument)
+ *   - cats      : number of categories — the length of every series' values
+ *                 array; REQUIRED (a NULL settings or cats <= 0 yields an
+ *                 empty chart, since the values lengths cannot be derived
+ *                 from the pointers alone)
+ *   - show_labels: 1 = append a footer row under the plot with each column's
+ *                  category label (from cat_labels), truncated to the column
+ *                  width
+ *   - show_prices: 1 = prepend an 8-column left value axis with the tallest
+ *                  stack total at the top and 0 (the baseline) at the bottom
+ * All fields are pointers or plain ints, so a partial {0} brace initializer
+ * gets exactly the same defaults as NULL (no double sentinels, so there is
+ * no brace-init ambiguity — unlike the histogram's NaN window fields). */
+typedef struct cc_stack_settings {
+    const char* const* colors;
+    const char*        bg_color;
+    const char* const* cat_labels;
+    int   series;
+    int   cats;
+    int   show_labels;
+    int   show_prices;
+} cc_stack_settings_t;
+
+/* Renders a stacked bar chart of `series_count` series, each with `cats`
+ * values (settings->cats), into a `width` x `height` grid (cells) and returns
+ * a malloc'd string (caller frees). Within every category the series' values
+ * are summed into that category's total; each bar (category) is a vertical
+ * stack of segments drawn bottom-to-top, one per series, proportional to each
+ * series' value / the tallest stack total, and colored by the series via a
+ * deterministic palette (or the settings->colors override). When width >=
+ * cats each category maps to one or more columns; when width < cats the
+ * categories are folded into the columns deterministically (long-arithmetic
+ * index mapping, mirroring the bar chart) and each column aggregates its
+ * categories by SUM (stacked bars are about totals). A footer of drop and
+ * value-axis margin are assembled exactly like the bar chart. Returns a
+ * malloc'd string (caller frees); NULL series, series_count <= 0, settings
+ * NULL or cats <= 0, or invalid dimensions yield an empty string. Scratch
+ * buffers are heap-allocated (no VLAs) and freed on every path. */
+CC_INLINE char* cc_stack_create(const cc_stack_series_t* series, int series_count,
+                                int width, int height,
+                                const cc_stack_settings_t* settings);
+
 #ifdef __cplusplus
 }
 #endif
@@ -2184,6 +2255,224 @@ CC_INLINE char* cc_bar_create(const cc_bar_item_t* items, int count,
     char* chart = cc_bar_assemble(width, height, columns, items, count, &s,
                                   max_value, first_idx, span_len);
     free(colv); free(first_idx); free(span_len); free(columns);
+    return chart;
+}
+
+/* --------------------------- Stacked bar renderer -------------------------
+ * A stacked bar is a vertical stack of segments (one per series) per
+ * category; the category's bar height is the SUM of its series' values. All
+ * series share one category count (settings->cats). Within a column the
+ * segments are stacked bottom-to-top, proportional to each series'
+ * value / the tallest stack total, drawn with 8 sub-pixel rows exactly like
+ * the bar chart: every cell is colored by the series that sits on the stack's
+ * surface at that cell, and the stack's top partial cell uses cc_lower_eighth
+ * (so the final, tallest series' cell carries the top edge). Falls back to
+ * the pie default palette or a per-series override. All scratch buffers are
+ * heap-allocated (no VLAs) and freed on every path. */
+
+CC_INLINE const char* cc_stack_palette_color(const cc_stack_settings_t* s,
+                                             int series_idx) {
+    if (s->colors != NULL) {
+        int n = 0;
+        while (s->colors[n] != NULL) n++;
+        if (n > 0) return s->colors[series_idx % n];
+    }
+    return CC_PIE_DEFAULT_PALETTE[series_idx % CC_PIE_DEFAULT_PALETTE_COUNT];
+}
+
+/* Assembles the plot columns plus optional value-axis margin and category
+ * label footer into the returned malloc'd string (caller frees). `max_total`
+ * is the tallest stack total for the value axis; `cat_labels` (may be NULL)
+ * supplies each column's footer label from the first category in that
+ * column's span, truncated to the column width like the bar footer. Allocates
+ * with a pointer cursor; caller frees. */
+CC_INLINE char* cc_stack_assemble(int width, int height, char* columns,
+                                  const cc_stack_settings_t* s,
+                                  double max_total,
+                                  const char* const* cat_labels,
+                                  const int* first_idx, const int* span_len) {
+    int margin = s->show_prices ? 8 : 0;
+    char max_label[16] = "";
+    char min_label[16] = "";
+    if (margin > 0) {
+        snprintf(max_label, sizeof(max_label), "%8.4g", max_total);
+        snprintf(min_label, sizeof(min_label), "%8.0f", 0.0);
+    }
+
+    int footer = s->show_labels ? 1 : 0;
+    const int line_len = width + margin;
+    const int rows = height + footer;
+    /* Bounded by CC_MAX_CELLS: width*height <= 1e6, so this is <= ~32 MB. */
+    size_t total_size = (size_t)line_len * (size_t)rows * 32 + (size_t)rows + 1;
+    char* chart = (char*)calloc(total_size, 1);
+    if (chart == NULL) return NULL;
+
+    char* w = chart;
+    for (int y = height - 1; y >= 0; y--) {
+        if (margin > 0) {
+            char mlabel[16] = "";
+            if (y == height - 1) snprintf(mlabel, sizeof(mlabel), "%8s", max_label);
+            else if (y == 0)     snprintf(mlabel, sizeof(mlabel), "%8s", min_label);
+            else { memset(mlabel, ' ', 8); mlabel[8] = '\0'; }
+            size_t ml = strlen(mlabel);
+            memcpy(w, mlabel, ml);
+            w += ml;
+        }
+        for (int x = 0; x < width; x++) {
+            const char* cell = columns + ((size_t)x * height + (size_t)y) * 32;
+            size_t cl = strlen(cell);
+            memcpy(w, cell, cl);
+            w += cl;
+        }
+        *w++ = '\n';
+    }
+
+    if (footer) {
+        if (margin > 0) {
+            memset(w, ' ', (size_t)margin);
+            w += margin;
+        }
+        for (int x = 0; x < width; x++) {
+            int span = span_len[x];
+            if (span < 1) span = 1;
+            const char* label = (cat_labels != NULL) ? cat_labels[first_idx[x]] : NULL;
+            const char* L = (label != NULL) ? label : "";
+            size_t n = strlen(L);
+            if (n > (size_t)span) n = (size_t)span;
+            if (n > 0) { memcpy(w, L, n); w += n; }
+            if ((size_t)span > n) {
+                memset(w, ' ', (size_t)span - n);
+                w += (size_t)span - n;
+            }
+        }
+        *w++ = '\n';
+    }
+    *w = '\0';
+    return chart;
+}
+
+CC_INLINE char* cc_stack_create(const cc_stack_series_t* series, int series_count,
+                                int width, int height,
+                                const cc_stack_settings_t* settings) {
+    /* The values lengths come only from settings->cats, so a NULL settings
+     * (or cats <= 0) is a parsing failure, not a "use defaults" signal. */
+    if (series == NULL || series_count <= 0 || !cc_dim_ok(width, height) ||
+        settings == NULL || settings->cats <= 0) {
+        return (char*)calloc(1, sizeof(char));
+    }
+
+    int cats = settings->cats;
+
+    cc_stack_settings_t s;
+    /* All pointer/int fields: a partial {0} brace initializer matches NULL,
+     * so there is no sentinel ambiguity (unlike the histogram's doubles). */
+    s.colors      = settings->colors;
+    s.bg_color    = settings->bg_color;
+    s.cat_labels  = settings->cat_labels;
+    s.series      = settings->series;
+    s.cats        = cats;
+    s.show_labels = (settings->show_labels < 0) ? 0 : settings->show_labels;
+    s.show_prices = (settings->show_prices < 0) ? 0 : settings->show_prices;
+
+    double* segs = (double*)malloc((size_t)series_count * sizeof(double));
+    double* cum = (double*)malloc(((size_t)series_count + 1) * sizeof(double));
+    int* pix = (int*)malloc(((size_t)series_count + 1) * sizeof(int));
+    double* coltot = (double*)malloc((size_t)width * sizeof(double));
+    int* first_idx = (int*)malloc((size_t)width * sizeof(int));
+    int* span_len = (int*)malloc((size_t)width * sizeof(int));
+    char* columns = (char*)malloc((size_t)width * (size_t)height * 32);
+    if (segs == NULL || cum == NULL || pix == NULL || coltot == NULL ||
+        first_idx == NULL || span_len == NULL || columns == NULL) {
+        free(segs); free(cum); free(pix); free(coltot);
+        free(first_idx); free(span_len); free(columns);
+        return NULL;
+    }
+
+    /* Fold the categories into `width` columns. The same long-arithmetic
+     * mapping covers both decompositions: width >= cats spreads each category
+     * over several columns (repeating its totals), width < cats aggregates
+     * several categories per column whose segment sums are ADDED (stacked
+     * bars are about totals). */
+    double max_total = 0.0;
+    for (int w = 0; w < width; w++) {
+        int is = (int)(((long long)w * cats) / width);
+        int ie = (int)(((((long long)w + 1) * cats) / width));
+        if (ie <= is) ie = is + 1;
+        if (ie > cats) ie = cats;
+        first_idx[w] = is;
+        span_len[w] = ie - is;
+
+        double ct = 0.0;   /* zero baseline; negative values clamp to 0 */
+        for (int s_i = 0; s_i < series_count; s_i++) {
+            const double* vv = series[s_i].values;
+            double seg = 0.0;
+            for (int c = is; c < ie; c++) {
+                double val = vv[c];
+                if (val < 0.0) val = 0.0;
+                seg += val;
+            }
+            segs[s_i] = seg;
+            ct += seg;
+        }
+        coltot[w] = ct;
+        if (ct > max_total) max_total = ct;
+    }
+
+    int pixel_height = height * 8;
+    double scale = (max_total > 0.0) ? (double)pixel_height / max_total : 0.0;
+
+    for (int w = 0; w < width; w++) {
+        /* Running top pixel after each series (cum[s+1]) — the boundary
+         * between stacked segment s and s+1 in render pixels. */
+        cum[0] = 0.0;
+        for (int s_i = 0; s_i < series_count; s_i++) cum[s_i + 1] = cum[s_i] + segs[s_i];
+        cum[series_count] = coltot[w];   /* exact, not a rounding drift */
+        for (int s_i = 0; s_i <= series_count; s_i++) {
+            pix[s_i] = (int)(cum[s_i] * scale);
+            if (pix[s_i] < 0) pix[s_i] = 0;
+            if (pix[s_i] > pixel_height) pix[s_i] = pixel_height;
+        }
+        int stack_top = pix[series_count];
+
+        char* col = columns + (size_t)w * height * 32;
+        for (int r = 0; r < height; r++) {
+            char* cell = col + (size_t)r * 32;
+            int cell_lo = r * 8;
+            if (stack_top <= cell_lo) {
+                if (s.bg_color != NULL) {
+                    snprintf(cell, 32, "%s %s", s.bg_color,
+                             cc_reset_for(s.bg_color, NULL));
+                } else {
+                    snprintf(cell, 32, " ");
+                }
+                continue;
+            }
+            /* The surface series: the segment that owns the topmost filled
+             * pixel in this cell. pix is the running top after each series,
+             * so the owning segment s satisfies pix[s] <= top_pixel <
+             * pix[s+1]; zero-height (collapsed) series are skipped by the
+             * loop naturally. */
+            int cell_hi = r * 8 + 8;
+            int top_pixel = (stack_top < cell_hi) ? (stack_top - 1) : (cell_hi - 1);
+            int top_s = 0;
+            while (top_s < series_count && pix[top_s + 1] <= top_pixel) top_s++;
+            const char* color = cc_stack_palette_color(&s, top_s);
+            int filled = stack_top - cell_lo;
+            if (filled >= 8) {
+                snprintf(cell, 32, "%s%s%s", CC_S(color), CC_BLOCK_FULL,
+                         cc_reset_for(color, NULL));
+            } else {
+                /* 1..7: the stack's top partial cell, in the surface series. */
+                snprintf(cell, 32, "%s%s%s", CC_S(color), cc_lower_eighth(filled),
+                         cc_reset_for(color, NULL));
+            }
+        }
+    }
+
+    char* chart = cc_stack_assemble(width, height, columns, &s, max_total,
+                                    s.cat_labels, first_idx, span_len);
+    free(segs); free(cum); free(pix); free(coltot);
+    free(first_idx); free(span_len); free(columns);
     return chart;
 }
 

@@ -1012,6 +1012,259 @@ static PyObject* py_create_bar(PyObject* self, PyObject* args) {
     return result;
 }
 
+/* Converts a Python sequence of str/None into a NULL-terminated array of
+ * UTF-8 const char* (the pointers borrow from the Python strings and stay
+ * valid while the GIL is held). Returns NULL with an exception set on error;
+ * the caller frees the returned array (not the borrowed strings). */
+static char** py_seq_to_cstrings(PyObject* o, Py_ssize_t* out_n) {
+    PyObject* fast;
+    Py_ssize_t n, i;
+    char** out;
+
+    fast = PySequence_Fast(o, "expected a sequence of strings or None");
+    if (fast == NULL) return NULL;
+    n = PySequence_Fast_GET_SIZE(fast);
+    out = (char**)calloc((size_t)n + 1, sizeof(char*));   /* +1 for NULL terminator */
+    if (out == NULL) {
+        Py_DECREF(fast);
+        PyErr_NoMemory();
+        return NULL;
+    }
+    for (i = 0; i < n; i++) {
+        PyObject* item = PySequence_Fast_GET_ITEM(fast, i);
+        if (item == Py_None) {
+            out[i] = NULL;
+            continue;
+        }
+        if (!PyUnicode_Check(item)) {
+            free(out);
+            Py_DECREF(fast);
+            PyErr_SetString(PyExc_TypeError, "expected strings or None");
+            return NULL;
+        }
+        out[i] = (char*)PyUnicode_AsUTF8(item);
+        if (out[i] == NULL) {
+            free(out);
+            Py_DECREF(fast);
+            return NULL;
+        }
+    }
+    Py_DECREF(fast);
+    *out_n = n;
+    return out;
+}
+
+/* Builds the cc_stack_series_t array (and its flat values buffer) from
+ * parallel `series_names` (list of str/None) and `series_values` (list of
+ * lists, one values sequence per series that must each be the same length =
+ * the category count). Non-finite values are rejected. Returns the series
+ * array (caller frees BOTH it and the *out_flat buffer), or NULL with an
+ * exception set. The `name` pointers borrow from the Python strings and stay
+ * valid while the GIL is held. */
+static cc_stack_series_t* build_stack_series(PyObject* o_names, PyObject* o_matrix,
+                                             double** out_flat, int* out_cats,
+                                             Py_ssize_t* out_count) {
+    PyObject* fast_names;
+    PyObject* fast_matrix;
+    Py_ssize_t n, cats, i;
+    cc_stack_series_t* series;
+    double* flat;
+
+    fast_names = PySequence_Fast(o_names, "series names must be a sequence");
+    if (fast_names == NULL) return NULL;
+    fast_matrix = PySequence_Fast(o_matrix, "series values must be a sequence");
+    if (fast_matrix == NULL) {
+        Py_DECREF(fast_names);
+        return NULL;
+    }
+    n = PySequence_Fast_GET_SIZE(fast_names);
+    if (PySequence_Fast_GET_SIZE(fast_matrix) != n) {
+        Py_DECREF(fast_names);
+        Py_DECREF(fast_matrix);
+        PyErr_SetString(PyExc_ValueError,
+                        "series names and values must have the same length");
+        return NULL;
+    }
+    if (n <= 0) {
+        Py_DECREF(fast_names);
+        Py_DECREF(fast_matrix);
+        PyErr_SetString(PyExc_ValueError, "need at least one series");
+        return NULL;
+    }
+
+    /* The category count is the first series' length; all must match. */
+    {
+        PyObject* first = PySequence_Fast_GET_ITEM(fast_matrix, 0);
+        PyObject* fast_first = PySequence_Fast(first,
+                                               "each series values must be a sequence");
+        if (fast_first == NULL) {
+            Py_DECREF(fast_names);
+            Py_DECREF(fast_matrix);
+            return NULL;
+        }
+        cats = PySequence_Fast_GET_SIZE(fast_first);
+        Py_DECREF(fast_first);
+    }
+    if (cats <= 0) {
+        Py_DECREF(fast_names);
+        Py_DECREF(fast_matrix);
+        PyErr_SetString(PyExc_ValueError, "need at least one value per series");
+        return NULL;
+    }
+
+    series = (cc_stack_series_t*)calloc((size_t)n, sizeof(cc_stack_series_t));
+    flat = (double*)calloc((size_t)n * (size_t)cats, sizeof(double));
+    if (series == NULL || flat == NULL) {
+        free(series);
+        free(flat);
+        Py_DECREF(fast_names);
+        Py_DECREF(fast_matrix);
+        PyErr_NoMemory();
+        return NULL;
+    }
+
+    for (i = 0; i < n; i++) {
+        PyObject* name = PySequence_Fast_GET_ITEM(fast_names, i);
+        PyObject* vals = PySequence_Fast_GET_ITEM(fast_matrix, i);
+        PyObject* fast_vals;
+        Py_ssize_t vlen, j;
+
+        series[i].values = flat + (size_t)i * (size_t)cats;
+
+        if (name == Py_None) {
+            series[i].name = NULL;
+        } else if (PyUnicode_Check(name)) {
+            series[i].name = PyUnicode_AsUTF8(name);
+            if (series[i].name == NULL) goto error;
+        } else {
+            PyErr_SetString(PyExc_TypeError, "series names must be strings or None");
+            goto error;
+        }
+
+        fast_vals = PySequence_Fast(vals, "each series values must be a sequence");
+        if (fast_vals == NULL) goto error;
+        vlen = PySequence_Fast_GET_SIZE(fast_vals);
+        if (vlen != cats) {
+            Py_DECREF(fast_vals);
+            PyErr_SetString(PyExc_ValueError,
+                            "all series must have the same number of values");
+            goto error;
+        }
+        for (j = 0; j < vlen; j++) {
+            PyObject* o = PySequence_Fast_GET_ITEM(fast_vals, j);
+            double v = PyFloat_AsDouble(o);
+            if (v == -1.0 && PyErr_Occurred()) {
+                Py_DECREF(fast_vals);
+                goto error;
+            }
+            if (!isfinite(v)) {
+                Py_DECREF(fast_vals);
+                PyErr_SetString(PyExc_ValueError,
+                                "stacked bar values must be finite (no NaN or inf)");
+                goto error;
+            }
+            flat[(size_t)i * (size_t)cats + j] = v;
+        }
+        Py_DECREF(fast_vals);
+    }
+
+    Py_DECREF(fast_names);
+    Py_DECREF(fast_matrix);
+    *out_flat = flat;
+    *out_cats = (int)cats;
+    *out_count = n;
+    return series;
+
+error:
+    free(series);
+    free(flat);
+    Py_DECREF(fast_names);
+    Py_DECREF(fast_matrix);
+    return NULL;
+}
+
+/* Renders a stacked bar chart from parallel series names and a values
+ * matrix. */
+static PyObject* py_create_stack(PyObject* self, PyObject* args) {
+    PyObject* o_names;
+    PyObject* o_matrix;
+    const char* bg_color = NULL;
+    PyObject* o_colors = NULL;
+    PyObject* o_cat_labels = NULL;
+    int width, height;
+    int show_labels = 0, show_prices = 0;
+    cc_stack_series_t* series;
+    double* flat;
+    char** colors = NULL;
+    char** cat_labels = NULL;
+    int cats;
+    Py_ssize_t count;
+    cc_stack_settings_t settings;
+    char* chart;
+    PyObject* result;
+
+    /* "OOii|zOOii": names, matrix, width, height, then optional bg color,
+     * colors list, category labels list, and the show_labels/show_prices
+     * flags. */
+    if (!PyArg_ParseTuple(args, "OOii|zOOii", &o_names, &o_matrix,
+                          &width, &height, &bg_color, &o_colors,
+                          &o_cat_labels, &show_labels, &show_prices)) {
+        return NULL;
+    }
+    if (!check_dimensions(width, height)) {
+        PyErr_SetString(PyExc_ValueError,
+                        "width and height must be positive integers within "
+                        "CC_MAX_DIM and CC_MAX_CELLS limits");
+        return NULL;
+    }
+
+    series = build_stack_series(o_names, o_matrix, &flat, &cats, &count);
+    if (series == NULL) return NULL;
+
+    if (o_colors != NULL && o_colors != Py_None) {
+        Py_ssize_t nc;
+        colors = py_seq_to_cstrings(o_colors, &nc);
+        if (colors == NULL) {
+            free(series);
+            free(flat);
+            return NULL;
+        }
+    }
+    if (o_cat_labels != NULL && o_cat_labels != Py_None) {
+        Py_ssize_t ncl;
+        cat_labels = py_seq_to_cstrings(o_cat_labels, &ncl);
+        if (cat_labels == NULL) {
+            free(series);
+            free(flat);
+            free(colors);
+            return NULL;
+        }
+    }
+
+    memset(&settings, 0, sizeof(settings));
+    settings.bg_color = bg_color;
+    settings.colors = (const char* const*)colors;
+    settings.cat_labels = (const char* const*)cat_labels;
+    settings.series = (int)count;
+    settings.cats = cats;
+    settings.show_labels = show_labels;
+    settings.show_prices = show_prices;
+
+    chart = cc_stack_create(series, (int)count, width, height, &settings);
+    free(series);
+    free(flat);
+    free(colors);
+    free(cat_labels);
+    if (chart == NULL) {
+        PyErr_SetString(PyExc_RuntimeError, "failed to create chart");
+        return NULL;
+    }
+
+    result = PyUnicode_FromString(chart);
+    free(chart);
+    return result;
+}
+
 /* Module method table + module definition. */
 static PyMethodDef CChartsMethods[] = {
     {"parse_json", py_parse_json, METH_VARARGS, "convert JSON data into OHLC format"},
@@ -1022,6 +1275,7 @@ static PyMethodDef CChartsMethods[] = {
     {"create_hist", py_create_hist, METH_VARARGS, "create a histogram chart"},
     {"create_spark", py_create_spark, METH_VARARGS, "create a sparkline chart"},
     {"create_bar", py_create_bar, METH_VARARGS, "create a bar chart"},
+    {"create_stack", py_create_stack, METH_VARARGS, "create a stacked bar chart"},
     {NULL, NULL, 0, NULL}
 };
 

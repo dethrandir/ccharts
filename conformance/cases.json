@@ -1173,6 +1173,115 @@
         "show_prices": true,
         "plain": false
       }
+    },
+    {
+      "name": "stack_default",
+      "chart": "stack",
+      "width": 60,
+      "height": 8,
+      "series": [
+        { "name": "Alpha", "values": [1, 4, 2, 5, 3] },
+        { "name": "Beta", "values": [3, 2, 5, 1, 4] }
+      ],
+      "settings": {
+        "colors": null,
+        "bg_color": null,
+        "cat_labels": null,
+        "show_labels": false,
+        "show_prices": false,
+        "plain": false
+      }
+    },
+    {
+      "name": "stack_labels",
+      "chart": "stack",
+      "width": 60,
+      "height": 8,
+      "series": [
+        { "name": "Alpha", "values": [1, 4, 2, 5, 3] },
+        { "name": "Beta", "values": [3, 2, 5, 1, 4] }
+      ],
+      "settings": {
+        "colors": null,
+        "bg_color": null,
+        "cat_labels": ["Jan", "Feb", "Mar", "Apr", "May"],
+        "show_labels": true,
+        "show_prices": false,
+        "plain": false
+      }
+    },
+    {
+      "name": "stack_prices",
+      "chart": "stack",
+      "width": 40,
+      "height": 6,
+      "series": [
+        { "name": "Alpha", "values": [1, 4, 2, 5, 3] },
+        { "name": "Beta", "values": [3, 2, 5, 1, 4] }
+      ],
+      "settings": {
+        "colors": null,
+        "bg_color": "bright_black",
+        "cat_labels": null,
+        "show_labels": false,
+        "show_prices": true,
+        "plain": false
+      }
+    },
+    {
+      "name": "stack_wide",
+      "chart": "stack",
+      "width": 12,
+      "height": 6,
+      "series": [
+        { "name": "S1", "values": [2, 5, 3] },
+        { "name": "S2", "values": [1, 2, 4] },
+        { "name": "S3", "values": [3, 1, 2] }
+      ],
+      "settings": {
+        "colors": null,
+        "bg_color": null,
+        "cat_labels": ["Mon", "Tue", "Wed"],
+        "show_labels": true,
+        "show_prices": false,
+        "plain": true
+      }
+    },
+    {
+      "name": "stack_narrow",
+      "chart": "stack",
+      "width": 3,
+      "height": 5,
+      "series": [
+        { "name": "a", "values": [1, 4, 2, 5, 3, 6, 2, 7] },
+        { "name": "b", "values": [3, 2, 5, 1, 4, 2, 6, 3] }
+      ],
+      "settings": {
+        "colors": null,
+        "bg_color": null,
+        "cat_labels": ["a", "b", "c", "d", "e", "f", "g", "h"],
+        "show_labels": true,
+        "show_prices": true,
+        "plain": false
+      }
+    },
+    {
+      "name": "stack_colors",
+      "chart": "stack",
+      "width": 20,
+      "height": 8,
+      "series": [
+        { "name": "R", "values": [25, 10, 15, 20] },
+        { "name": "G", "values": [5, 15, 10, 25] }
+      ],
+      "settings": {
+        "colors": ["red", "green"],
+        "bg_color": null,
+        "cat_labels": null,
+        "show_labels": false,
+        "show_prices": false,
+        "plain": false
+      }
     }
   ]
 }

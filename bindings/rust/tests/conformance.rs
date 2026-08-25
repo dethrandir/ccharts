@@ -6,7 +6,10 @@
 
 use std::path::{Path, PathBuf};
 
-use ccharts::{BarOptions, Chart, Color, HistogramOptions, PieOptions, PieSlice, Settings, SparklineOptions};
+use ccharts::{
+    BarOptions, Chart, Color, HistogramOptions, PieOptions, PieSlice, Settings, SparklineOptions,
+    StackOptions,
+};
 use serde_json::Value;
 
 fn suite_dir() -> Option<PathBuf> {
@@ -64,7 +67,7 @@ fn matches_the_shared_goldens() {
     let doc: Value =
         serde_json::from_slice(&std::fs::read(dir.join("cases.json")).unwrap()).unwrap();
     let cases = doc["cases"].as_array().expect("cases");
-    assert!(cases.len() >= 52, "conformance suite looks truncated");
+    assert!(cases.len() >= 58, "conformance suite looks truncated");
 
     let mut failures = Vec::new();
     for case in cases {
@@ -173,6 +176,44 @@ fn matches_the_shared_goldens() {
                 options = options.colors(&named);
             }
             Chart::pie(&slices, width, height, &options)
+        } else if case["chart"].as_str().unwrap() == "stack" {
+            let series_arr = case["series"].as_array().expect("stack series");
+            let series: Vec<(&str, Vec<f64>)> = series_arr
+                .iter()
+                .map(|s| {
+                    let name = s["name"].as_str().unwrap_or("");
+                    let values: Vec<f64> = s["values"]
+                        .as_array()
+                        .expect("stack values")
+                        .iter()
+                        .map(|v| v.as_f64().expect("stack value"))
+                        .collect();
+                    (name, values)
+                })
+                .collect();
+            let refs: Vec<(&str, &[f64])> = series
+                .iter()
+                .map(|(name, values)| (*name, values.as_slice()))
+                .collect();
+            let mut options = StackOptions::new()
+                .show_labels(cfg["show_labels"].as_bool().unwrap_or(false))
+                .show_prices(cfg["show_prices"].as_bool().unwrap_or(false))
+                .plain(cfg["plain"].as_bool().unwrap_or(false));
+            if let Some(colors) = cfg["colors"].as_array() {
+                let named: Vec<Color> = colors
+                    .iter()
+                    .map(|c| color(c).expect("named stack color"))
+                    .collect();
+                options = options.colors(&named);
+            }
+            if let Some(c) = color(&cfg["bg_color"]) {
+                options = options.background(c);
+            }
+            if let Some(labels) = cfg["cat_labels"].as_array() {
+                let names: Vec<&str> = labels.iter().map(|l| l.as_str().unwrap_or("")).collect();
+                options = options.category_labels(&names);
+            }
+            Chart::stacked_bar(&refs, width, height, &options)
         } else {
             let dataset = &doc["datasets"][case["dataset"].as_str().unwrap()];
             let chart = if case["source"] == "json" {

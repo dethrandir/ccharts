@@ -1,7 +1,10 @@
 //! Behavioral tests for the safe wrapper. The rendering itself is checked
 //! against the shared goldens in conformance.rs.
 
-use ccharts::{BarOptions, Chart, Color, Error, HistogramOptions, PieOptions, PieSlice, Settings, SparklineOptions};
+use ccharts::{
+    BarOptions, Chart, Color, Error, HistogramOptions, PieOptions, PieSlice, Settings,
+    SparklineOptions, StackOptions,
+};
 
 fn sample() -> Chart {
     Chart::from_arrays(
@@ -336,4 +339,62 @@ fn bar_renders_and_wires_options() {
         Chart::bar(&["a\0b"], &[1.0], 12, 6, &BarOptions::new()).unwrap_err(),
         Error::InteriorNul
     );
+}
+
+#[test]
+fn stacked_bar_renders_and_wires_options() {
+    let series = [
+        ("Alpha", &[1.0f64, 4.0, 2.0, 5.0, 3.0][..]),
+        ("Beta", &[3.0, 2.0, 5.0, 1.0, 4.0][..]),
+    ];
+    let base = Chart::stacked_bar(&series, 20, 8, &StackOptions::new()).unwrap();
+    assert!(base.contains('█'), "stack glyphs present");
+    assert_eq!(base.lines().count(), 8);
+
+    // A category-label footer changes the render.
+    let labeled = Chart::stacked_bar(&series, 20, 8, &StackOptions::new().show_labels(true)).unwrap();
+    assert_ne!(base, labeled, "show_labels must take effect");
+
+    // Category names flow through the footer.
+    let named = Chart::stacked_bar(
+        &series,
+        20,
+        8,
+        &StackOptions::new()
+            .show_labels(true)
+            .category_labels(&["Jan", "Feb", "Mar", "Apr", "May"]),
+    )
+    .unwrap();
+    assert_ne!(named, labeled, "category labels must reach the render");
+
+    // A value axis changes the render.
+    let margined =
+        Chart::stacked_bar(&series, 20, 8, &StackOptions::new().show_prices(true)).unwrap();
+    assert_ne!(base, margined, "show_prices must take effect");
+
+    // Plain output has no escapes.
+    let plain = Chart::stacked_bar(&series, 20, 8, &StackOptions::new().plain(true)).unwrap();
+    assert!(!plain.contains('\u{1b}'), "plain must override every color");
+
+    // NaN/inf values are rejected with Error::NonFinite.
+    for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        let bad_series = [("A", &[bad][..]), ("B", &[1.0][..])];
+        assert_eq!(
+            Chart::stacked_bar(&bad_series, 20, 8, &StackOptions::new()).unwrap_err(),
+            Error::NonFinite
+        );
+    }
+
+    // Unequal series lengths are rejected.
+    let unequal = [("A", &[1.0, 2.0][..]), ("B", &[1.0][..])];
+    assert!(matches!(
+        Chart::stacked_bar(&unequal, 20, 8, &StackOptions::new()).unwrap_err(),
+        Error::InvalidArgument(_)
+    ));
+
+    // Colors flow through.
+    let colored =
+        Chart::stacked_bar(&series, 20, 8, &StackOptions::new().colors(&[Color::Red, Color::Green]))
+            .unwrap();
+    assert!(colored.contains("\u{1b}[31m"));
 }

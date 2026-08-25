@@ -252,3 +252,80 @@ func TestPie(t *testing.T) {
 		t.Error("NaN slice accepted")
 	}
 }
+
+func TestStackedBar(t *testing.T) {
+	series := []ccharts.StackSeries{
+		{Name: "Alpha", Values: []float64{1, 4, 2, 5, 3}},
+		{Name: "Beta", Values: []float64{3, 2, 5, 1, 4}},
+	}
+	base, err := ccharts.StackedBar(series, 20, 8, nil)
+	if err != nil {
+		t.Fatalf("StackedBar: %v", err)
+	}
+	if !strings.Contains(base, "█") {
+		t.Errorf("stack glyphs missing: %q", base)
+	}
+	if strings.Count(strings.TrimRight(base, "\n"), "\n")+1 != 8 {
+		t.Errorf("stack height = %d, want 8", strings.Count(strings.TrimRight(base, "\n"), "\n")+1)
+	}
+
+	// A category-label footer changes the render.
+	labeled, err := ccharts.StackedBar(series, 20, 8,
+		&ccharts.StackOptions{ShowLabels: true})
+	if err != nil {
+		t.Fatalf("StackedBar(labels): %v", err)
+	}
+	if labeled == base {
+		t.Error("show_labels must take effect")
+	}
+
+	// A value axis changes the render.
+	margined, err := ccharts.StackedBar(series, 20, 8,
+		&ccharts.StackOptions{ShowPrices: true})
+	if err != nil {
+		t.Fatalf("StackedBar(prices): %v", err)
+	}
+	if margined == base {
+		t.Error("show_prices must take effect")
+	}
+
+	// Plain output has no escapes.
+	plain, err := ccharts.StackedBar(series, 20, 8,
+		&ccharts.StackOptions{Plain: true})
+	if err != nil {
+		t.Fatalf("StackedBar(plain): %v", err)
+	}
+	if strings.Contains(plain, "\x1b") {
+		t.Error("plain must override every color")
+	}
+
+	// Colors flow through.
+	colored, err := ccharts.StackedBar(series, 20, 8,
+		&ccharts.StackOptions{Colors: []ccharts.Color{ccharts.ColorRed}})
+	if err != nil {
+		t.Fatalf("StackedBar(colors): %v", err)
+	}
+	if !strings.Contains(colored, "\x1b[31m") {
+		t.Error("colors must reach the render")
+	}
+
+	// NaN and inf are rejected with ErrNonFinite.
+	for _, bad := range []float64{math.NaN(), math.Inf(1), math.Inf(-1)} {
+		badSeries := []ccharts.StackSeries{
+			{Name: "A", Values: []float64{bad}},
+			{Name: "B", Values: []float64{1}},
+		}
+		if _, err := ccharts.StackedBar(badSeries, 20, 8, nil); err != ccharts.ErrNonFinite {
+			t.Errorf("NaN/inf value: got %v, want ErrNonFinite", err)
+		}
+	}
+
+	// Unequal series lengths are rejected.
+	unequal := []ccharts.StackSeries{
+		{Name: "A", Values: []float64{1, 2}},
+		{Name: "B", Values: []float64{1}},
+	}
+	if _, err := ccharts.StackedBar(unequal, 20, 8, nil); err != ccharts.ErrInvalidArgument {
+		t.Errorf("unequal lengths: got %v, want ErrInvalidArgument", err)
+	}
+}

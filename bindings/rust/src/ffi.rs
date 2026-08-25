@@ -60,6 +60,23 @@ pub struct ccharts_bar_settings {
     pub show_prices: i32,
 }
 
+#[repr(C)]
+pub struct ccharts_stack_series {
+    pub name: *const c_char,
+    pub values: *const f64,
+}
+
+#[repr(C)]
+pub struct ccharts_stack_settings {
+    pub colors: *const *const c_char,
+    pub bg_color: *const c_char,
+    pub cat_labels: *const *const c_char,
+    pub series: i32,
+    pub cats: i32,
+    pub show_labels: i32,
+    pub show_prices: i32,
+}
+
 extern "C" {
     pub fn ccharts_from_arrays(
         open: *const f64,
@@ -124,6 +141,16 @@ extern "C" {
         width: i32,
         height: i32,
         settings: *const ccharts_bar_settings,
+        out: *mut *mut c_char,
+        out_len: *mut usize,
+    ) -> i32;
+
+    pub fn ccharts_stack(
+        series: *const ccharts_stack_series,
+        series_count: i32,
+        width: i32,
+        height: i32,
+        settings: *const ccharts_stack_settings,
         out: *mut *mut c_char,
         out_len: *mut usize,
     ) -> i32;

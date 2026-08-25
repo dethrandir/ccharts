@@ -37,7 +37,8 @@ width/height at 100000 cells per side and 1000000 total cells
 """
 
 from ._core import (parse_json, parse_arrays, create_line, create_candle,
-                    create_pie, create_hist, create_spark, create_bar)
+                    create_pie, create_hist, create_spark, create_bar,
+                    create_stack)
 
 
 def _check_dimensions(width, height):
@@ -346,5 +347,65 @@ class Chart:
         return create_bar(
             labels, values, width, height,
             color, bg_color,
+            int(show_labels), int(show_prices),
+        )
+
+    @staticmethod
+    def stacked_bar(series, *, width=60, height=8, colors=None, bg_color=None,
+                    category_labels=None, show_labels=False, show_prices=False,
+                    plain=False):
+        """Draw a stacked bar chart and return it as a string.
+
+        A stacked bar chart is not OHLC data, so this is a static method. It
+        takes a ``series`` list in which every element is either a ``(name,
+        values)`` tuple or a dict ``{"name": ..., "values": [...]}`` — pick one
+        shape and use it consistently. Each series contributes one vertical
+        segment per category, and a category's bar height is the SUM of its
+        series' values (a part-of-whole view), unlike the plain ``bar`` where
+        each value is its own full height. All series must share the same
+        number of values (the category count).
+
+        Args:
+            series: list of ``(name, values)`` tuples or of dicts
+                ``{"name": ..., "values": [...]}``. ``name`` may be ``None``
+                (used only as documentation; each series' color comes from the
+                palette). ``values`` is one non-negative number per category.
+                Negative values are clamped to zero (drawn at zero height);
+                NaN/inf raise ``ValueError``.
+            width, height: chart size in cells (positive integers).
+            colors: ANSI escape string per series (None = the fixed default
+                palette). 
+            bg_color: ANSI escape string for the empty cells above the tallest
+                stack (None = terminal background).
+            category_labels: optional list of one label per category, printed
+                in the footer row when ``show_labels`` is set.
+            show_labels: append a footer row under the plot with each column's
+                category label (from ``category_labels``), truncated to the
+                column width.
+            show_prices: prepend an 8-column value axis with the tallest stack
+                total at the top and 0 (the baseline) at the bottom.
+            plain: return text with no ANSI escapes at all, overriding every
+                color.
+
+        Raises ``ValueError`` for non-finite values (NaN/inf would corrupt the
+        pixel mapping), series of unequal length, an empty ``series`` list,
+        and invalid dimensions.
+        """
+        _check_dimensions(width, height)
+        names, matrix = [], []
+        for item in series:
+            if isinstance(item, dict):
+                name = item.get("name")
+                matrix.append(item["values"])
+            else:
+                name, values = item
+                matrix.append(values)
+            names.append(name)
+        if plain:
+            colors = [""] * len(matrix) if colors is None else [""] * len(matrix)
+            bg_color = ""
+        return create_stack(
+            names, matrix, width, height,
+            bg_color, colors, category_labels,
             int(show_labels), int(show_prices),
         )

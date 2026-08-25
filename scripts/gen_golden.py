@@ -94,6 +94,27 @@ class BarSettings(ctypes.Structure):
     ]
 
 
+# Mirrors ccharts_stack_series in abi/ccharts_abi.h.
+class StackSeries(ctypes.Structure):
+    _fields_ = [
+        ("name", ctypes.c_char_p),
+        ("values", ctypes.POINTER(ctypes.c_double)),
+    ]
+
+
+# Mirrors ccharts_stack_settings in abi/ccharts_abi.h.
+class StackSettings(ctypes.Structure):
+    _fields_ = [
+        ("colors", ctypes.POINTER(ctypes.c_char_p)),
+        ("bg_color", ctypes.c_char_p),
+        ("cat_labels", ctypes.POINTER(ctypes.c_char_p)),
+        ("series", ctypes.c_int32),
+        ("cats", ctypes.c_int32),
+        ("show_labels", ctypes.c_int32),
+        ("show_prices", ctypes.c_int32),
+    ]
+
+
 def find_library(explicit=None):
     if explicit:
         return explicit
@@ -165,6 +186,11 @@ def load(path):
     lib.ccharts_bar.argtypes = [
         ctypes.POINTER(BarItem), ctypes.c_int32,
         ctypes.c_int32, ctypes.c_int32, ctypes.POINTER(BarSettings),
+        ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_size_t)]
+    lib.ccharts_stack.restype = ctypes.c_int32
+    lib.ccharts_stack.argtypes = [
+        ctypes.POINTER(StackSeries), ctypes.c_int32,
+        ctypes.c_int32, ctypes.c_int32, ctypes.POINTER(StackSettings),
         ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_size_t)]
     return lib
 
@@ -326,6 +352,66 @@ def render_bar(lib, case):
         lib.ccharts_string_free(out)
 
 
+def render_stack(lib, case):
+    """Renders a stacked bar chart case through ccharts_stack."""
+    cfg = case["settings"]
+    n = len(case["series"])
+    vals = case["series"][0]["values"]
+    cats = len(vals)
+    series = (StackSeries * n)()
+    values_bufs = []
+    for i, s in enumerate(case["series"]):
+        v = (ctypes.c_double * len(s["values"]))(*s["values"])
+        values_bufs.append(v)
+        series[i].name = s["name"].encode("utf-8") if s.get("name") else None
+        series[i].values = v
+
+    # The stack ABI has no `plain` flag of its own: plain rendering is forced
+    # by handing the renderer a palette override where every entry is an empty
+    # escape string (and an empty bg_color), exactly like the Python wrapper
+    # does with plain=True. So a plain case must always get a palette override,
+    # whether or not it specified colors.
+    plain = cfg.get("plain")
+    colors = None
+    if plain:
+        arr = (ctypes.c_char_p * (n + 1))(*([b""] * n))
+        colors = ctypes.cast(arr, ctypes.POINTER(ctypes.c_char_p))
+    elif cfg.get("colors"):
+        names = cfg["colors"]
+        arr = (ctypes.c_char_p * (len(names) + 1))(
+            *[color(lib, name) for name in names])
+        colors = ctypes.cast(arr, ctypes.POINTER(ctypes.c_char_p))
+    bg_color = (b"" if plain else color(lib, cfg["bg_color"]))
+
+    cat_labels = None
+    if cfg.get("cat_labels"):
+        arr = (ctypes.c_char_p * cats)(
+            *[label.encode("utf-8") for label in cfg["cat_labels"]])
+        cat_labels = ctypes.cast(arr, ctypes.POINTER(ctypes.c_char_p))
+
+    settings = StackSettings(
+        colors=colors,
+        bg_color=bg_color,
+        cat_labels=cat_labels,
+        series=n,
+        cats=cats,
+        show_labels=int(cfg.get("show_labels", False)),
+        show_prices=int(cfg.get("show_prices", False)),
+    )
+    out = ctypes.c_void_p()
+    length = ctypes.c_size_t()
+    status = lib.ccharts_stack(series, n, case["width"], case["height"],
+                               ctypes.byref(settings), ctypes.byref(out),
+                               ctypes.byref(length))
+    if status != CCHARTS_OK:
+        raise SystemExit("%s: %s" % (case["name"],
+                                     lib.ccharts_error_message(status).decode()))
+    try:
+        return ctypes.string_at(out, length.value)
+    finally:
+        lib.ccharts_string_free(out)
+
+
 def render(lib, case, datasets):
     if case["chart"] == "pie":
         return render_pie(lib, case)
@@ -335,6 +421,8 @@ def render(lib, case, datasets):
         return render_spark(lib, case)
     if case["chart"] == "bar":
         return render_bar(lib, case)
+    if case["chart"] == "stack":
+        return render_stack(lib, case)
     handle = build_data(lib, datasets[case["dataset"]], case["source"])
     try:
         cfg = case["settings"]

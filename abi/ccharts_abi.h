@@ -323,6 +323,59 @@ CCHARTS_API int32_t ccharts_bar(const ccharts_bar_slice* items, int32_t count,
                                 const ccharts_bar_settings* settings,
                                 char** out, size_t* out_len);
 
+/* ---------------------------- Stacked bar chart -------------------------- */
+
+/* One stacked-bar series: a name (may be NULL/empty; the per-series color
+ * comes from the palette) and a `values` array with one entry per category.
+ * All series must share the same category count (settings->cats). Values are
+ * clamped to zero by the renderer (a negative entry draws at zero height
+ * rather than below the axis), so only non-finite values are an error.
+ * Mirrors cc_stack_series_t in ccharts.h (the two structs stay separate: the
+ * header channels are internally linked, this one is the FFI surface, and
+ * layout is documented here rather than shared). */
+typedef struct ccharts_stack_series {
+    const char* name;
+    const double* values;
+} ccharts_stack_series;
+
+/* Stacked bar rendering options. Mirrors cc_stack_settings_t in ccharts.h.
+ * `colors` is a NULL-terminated per-series palette override (or NULL for the
+ * fixed default palette); `cat_labels` is an optional array of `cats` category
+ * names used for the label footer; `series` repeats series_count and `cats` is
+ * the number of categories (the length of every series' values array) and is
+ * REQUIRED. `show_labels` appends a footer row with each column's category
+ * label (truncated to the column width); `show_prices` prepends an 8-column
+ * value axis with the tallest stack total at the top and 0 (the baseline) at
+ * the bottom. All fields are pointers or plain ints, so a partial {0}
+ * initializer means the same as NULL (no sentinel ambiguity). */
+typedef struct ccharts_stack_settings {
+    const char* const* colors;
+    const char* bg_color;
+    const char* const* cat_labels;
+    int32_t series;
+    int32_t cats;
+    int32_t show_labels;
+    int32_t show_prices;
+} ccharts_stack_settings;
+
+/* Renders a stacked bar chart of `series_count` series (the 2-D matrix: each
+ * series carries its own `values` array of settings->cats entries) into a
+ * `width` x `height` grid. Each category's bar is the vertical SUM of its
+ * series' values, drawn as stacked segments (one per series) with 8 sub-pixel
+ * rows, colored via a deterministic palette or the settings override. Same
+ * contract as ccharts_line: CCHARTS_OK with *out (NUL-terminated UTF-8,
+ * release with ccharts_string_free) on success, CCHARTS_ERR_INVALID_ARG for
+ * NULL series / series_count <= 0 / NULL settings / NULL out,
+ * CCHARTS_ERR_NON_FINITE for NaN/inf values, CCHARTS_ERR_DIMENSIONS for
+ * width/height outside cc_dim_ok, CCHARTS_ERR_NOMEM on allocation failure.
+ * Negative values are clamped to zero (not an error). On error *out is set to
+ * NULL. */
+CCHARTS_API int32_t ccharts_stack(const ccharts_stack_series* series,
+                                  int32_t series_count,
+                                  int32_t width, int32_t height,
+                                  const ccharts_stack_settings* settings,
+                                  char** out, size_t* out_len);
+
 /* ---------------------------- Introspection ---------------------------- */
 
 /* ANSI escape for a ccharts_color_index, or NULL when out of range. */

@@ -222,6 +222,68 @@ int main(void) {
         }
     }
 
+    /* Stacked bar chart: 2-D series matrix (name + values[] per series). */
+    {
+        static const double sv0[] = {1, 4, 2, 5, 3};
+        static const double sv1[] = {3, 2, 4, 1, 2};
+        static const char* catlabs[] = {"Mon", "Tue", "Wed", "Thu", "Fri"};
+        ccharts_stack_series series[] = {
+            {"S0", sv0}, {"S1", sv1}
+        };
+        ccharts_stack_settings ss;
+        memset(&ss, 0, sizeof(ss));
+        ss.series = 2;
+        ss.cats = 5;
+        check(ccharts_stack(series, 2, 40, 5, &ss, &chart, &len) == CCHARTS_OK,
+              "stacked bar");
+        check(chart != NULL && len > 0, "stacked bar output");
+        ccharts_string_free(chart);
+
+        ss.cat_labels = catlabs;
+        ss.show_labels = 1;
+        ss.show_prices = 1;
+        check(ccharts_stack(series, 2, 40, 5, &ss, &chart, &len) == CCHARTS_OK,
+              "stacked bar with settings");
+        check(chart != NULL && len > 0, "stacked bar settings output");
+        ccharts_string_free(chart);
+
+        check(ccharts_stack(NULL, 2, 40, 5, &ss, &chart, &len)
+              == CCHARTS_ERR_INVALID_ARG, "NULL stacked-bar series rejected");
+        check(ccharts_stack(series, 2, 40, 5, NULL, &chart, &len)
+              == CCHARTS_ERR_INVALID_ARG, "NULL stacked-bar settings rejected");
+        check(ccharts_stack(series, 2, 40, 5, &ss, &chart, &len)
+              == CCHARTS_OK, "stacked bar after NULL settings error");
+        ccharts_string_free(chart);
+        memset(&ss, 0, sizeof(ss));
+        ss.series = 2;
+        ss.cats = 5;
+        check(ccharts_stack(series, 2, 0, 5, &ss, &chart, &len)
+              == CCHARTS_ERR_DIMENSIONS, "zero width stacked bar rejected");
+
+        /* NaN/inf must be rejected; the series-count/values-length mismatch
+         * and a NULL values array are marshalling errors. */
+        {
+            static const double one = 1.0;
+            double badv[5] = {1.0, 1.0, 1.0, 1.0, 1.0};
+            double nanv[5] = {1.0, 1.0, 1.0, 1.0, 1.0};
+            ccharts_stack_series bads[2] = {{"A", badv}, {"B", sv1}};
+            ccharts_stack_series nans[2] = {{"A", nanv}, {"B", sv1}};
+            ccharts_stack_series nullvals[2] = {{"A", NULL}, {"B", sv1}};
+            badv[0] = one / 0.0;                   /* +inf without <math.h> */
+            nanv[0] = one / 0.0 - one / 0.0;       /* NaN */
+            check(ccharts_stack(bads, 2, 40, 5, &ss, &chart, &len)
+                  == CCHARTS_ERR_NON_FINITE, "inf stacked-bar value rejected");
+            check(ccharts_stack(nans, 2, 40, 5, &ss, &chart, &len)
+                  == CCHARTS_ERR_NON_FINITE, "NaN stacked-bar value rejected");
+            check(chart == NULL, "no string on stacked-bar error");
+            check(ccharts_stack(nullvals, 2, 40, 5, &ss, &chart, &len)
+                  == CCHARTS_ERR_INVALID_ARG, "NULL values array rejected");
+            ss.series = 3;                         /* disagrees with series_count */
+            check(ccharts_stack(series, 2, 40, 5, &ss, &chart, &len)
+                  == CCHARTS_ERR_INVALID_ARG, "series-count mismatch rejected");
+        }
+    }
+
     /* Invalid dimensions must be reported, not answered with "". */
     check(ccharts_line(data, 0, 5, NULL, &chart, &len) == CCHARTS_ERR_DIMENSIONS,
           "zero width rejected");

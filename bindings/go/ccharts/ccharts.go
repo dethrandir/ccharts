@@ -677,6 +677,184 @@ func Bar(labels []string, values []float64, width, height int, opts *BarOptions)
 	defer C.ccharts_string_free(out)
 	return C.GoStringN(out, C.int(length)), nil
 }
+
+// StackSeries is one series of a stacked bar chart: a name (used for
+// documentation; the per-series color comes from the palette) and one value
+// per category.
+type StackSeries struct {
+	// Name identifies the series.
+	Name string
+	// Values holds one entry per category.
+	Values []float64
+}
+
+// StackOptions controls how a stacked bar chart is drawn. A nil
+// *StackOptions behaves like &StackOptions{}: the fixed deterministic
+// per-series palette, no background, no category-label or value footer.
+type StackOptions struct {
+	// Colors overrides the per-series palette, one ANSI escape per series
+	// (series i uses Colors[i%len(Colors)]); nil selects the fixed default
+	// palette.
+	Colors []Color
+	// BackgroundColor fills empty cells above the tallest stack (default:
+	// the terminal background).
+	BackgroundColor Color
+	// CategoryLabels names each output column in the footer when ShowLabels
+	// is set (nil = no category names).
+	CategoryLabels []string
+	// ShowLabels appends a footer row with each column's category label.
+	ShowLabels bool
+	// ShowPrices prints the tallest stack total and 0 (the baseline) in a
+	// left value-axis margin.
+	ShowPrices bool
+	// Plain renders with no ANSI escapes at all, overriding every color.
+	Plain bool
+}
+
+// StackedBar renders a stacked bar chart of the given series. Every series
+// must carry the same number of values (one per category); each category's
+// bar is the vertical SUM of its series' values, drawn as stacked segments.
+// A stacked bar has no OHLC dataset, so this is a package function rather
+// than a Chart method.
+//
+// opts may be nil. Negative values are clamped to zero by the renderer; NaN
+// and inf are rejected with ErrNonFinite.
+func StackedBar(series []StackSeries, width, height int, opts *StackOptions) (string, error) {
+	if len(series) == 0 {
+		return "", ErrInvalidArgument
+	}
+	cats := len(series[0].Values)
+	if cats == 0 {
+		return "", ErrInvalidArgument
+	}
+	for _, s := range series {
+		if len(s.Values) != cats {
+			return "", ErrInvalidArgument
+		}
+	}
+	if width <= 0 || height <= 0 || width > int(C.ccharts_max_dim()) ||
+		height > int(C.ccharts_max_dim()) {
+		return "", ErrDimensions
+	}
+
+	var allocated []*C.char
+	defer func() {
+		for _, cs := range allocated {
+			C.free(unsafe.Pointer(cs))
+		}
+	}()
+	strPtr := func(s string) *C.char {
+		cs := C.CString(s)
+		allocated = append(allocated, cs)
+		return cs
+	}
+
+	n := len(series)
+	cSeries := make([]C.ccharts_stack_series, n)
+	// Each series' values must be in C memory: cgo rejects Go-heap pointers
+	// nested inside a struct handed to a C call, and the library reads the
+	// values through the per-series pointer.
+	var cValues []unsafe.Pointer
+	defer func() {
+		for _, p := range cValues {
+			C.free(p)
+		}
+	}()
+	for i := range series {
+		cSeries[i].name = strPtr(series[i].Name)
+		buf := C.malloc(C.size_t(cats) * C.size_t(unsafe.Sizeof(float64(0))))
+		if buf == nil {
+			return "", ErrOutOfMemory
+		}
+		cValues = append(cValues, buf)
+		dest := unsafe.Slice((*C.double)(buf), cats)
+		for j := 0; j < cats; j++ {
+			dest[j] = C.double(series[i].Values[j])
+		}
+		cSeries[i].values = &dest[0]
+	}
+
+	var settings C.ccharts_stack_settings
+	set := func(dst **C.char, color Color) {
+		if opts == nil {
+			return
+		}
+		if opts.Plain {
+			*dst = strPtr("")
+			return
+		}
+		if color == "" {
+			return
+		}
+		*dst = strPtr(string(color))
+	}
+	if opts != nil {
+		set(&settings.bg_color, opts.BackgroundColor)
+	}
+
+	// Copy C strings into a freshly allocated, C-owned array of pointers
+	// (NULL-terminated). The settings struct holds the array pointer, so it
+	// must be C memory — cgo rejects Go-heap pointers nested inside a struct
+	// handed to a C call.
+	allocPtrs := func(ptrs []*C.char) **C.char {
+		if len(ptrs) == 0 {
+			return nil
+		}
+		buf := C.malloc(C.size_t(len(ptrs)+1) * C.size_t(unsafe.Sizeof((*C.char)(nil))))
+		if buf == nil {
+			return nil
+		}
+		cValues = append(cValues, buf)
+		arr := unsafe.Slice((**C.char)(buf), len(ptrs)+1)
+		for i, p := range ptrs {
+			arr[i] = p
+		}
+		arr[len(ptrs)] = nil
+		return &arr[0]
+	}
+
+	// A NULL-terminated per-series palette; `plain` injects one empty escape
+	// per series so the render emits no ANSI codes at all.
+	var palette []*C.char
+	if opts != nil && opts.Plain {
+		for i := 0; i < n; i++ {
+			palette = append(palette, strPtr(""))
+		}
+	} else if opts != nil {
+		for _, c := range opts.Colors {
+			palette = append(palette, strPtr(string(c)))
+		}
+	}
+	if len(palette) > 0 {
+		settings.colors = allocPtrs(palette)
+	}
+
+	if opts != nil && len(opts.CategoryLabels) > 0 {
+		labels := make([]*C.char, len(opts.CategoryLabels))
+		for i, l := range opts.CategoryLabels {
+			labels[i] = strPtr(l)
+		}
+		settings.cat_labels = allocPtrs(labels)
+	}
+	settings.series = C.int32_t(n)
+	settings.cats = C.int32_t(cats)
+	if opts != nil {
+		settings.show_labels = boolToC(opts.ShowLabels)
+		settings.show_prices = boolToC(opts.ShowPrices)
+	}
+
+	var out *C.char
+	var length C.size_t
+	status := C.ccharts_stack(
+		&cSeries[0], C.int32_t(n), C.int32_t(width), C.int32_t(height),
+		&settings, &out, &length)
+	if err := statusError(status); err != nil {
+		return "", err
+	}
+	defer C.ccharts_string_free(out)
+	return C.GoStringN(out, C.int(length)), nil
+}
+
 func setColors(settings *C.ccharts_settings, opts *Options) func() {
 	if opts == nil {
 		return func() {}
