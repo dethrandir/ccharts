@@ -65,6 +65,18 @@ final class Native {
             ValueLayout.JAVA_INT.withName("min_above"),
             ValueLayout.JAVA_INT.withName("min_below"));
 
+    /** Layout of {@code ccharts_bar_slice}: a label pointer then a double. */
+    static final StructLayout BAR_ITEM = MemoryLayout.structLayout(
+            ValueLayout.ADDRESS.withName("label"),
+            ValueLayout.JAVA_DOUBLE.withName("value"));
+
+    /** Layout of {@code ccharts_bar_settings}: two pointers then two ints. */
+    static final StructLayout BAR_SETTINGS = MemoryLayout.structLayout(
+            ValueLayout.ADDRESS.withName("rise_color"),
+            ValueLayout.ADDRESS.withName("bg_color"),
+            ValueLayout.JAVA_INT.withName("show_labels"),
+            ValueLayout.JAVA_INT.withName("show_prices"));
+
     private static final Linker LINKER = Linker.nativeLinker();
 
     /** Lives as long as the process: the library must not be unloaded. */
@@ -104,6 +116,9 @@ final class Native {
             FunctionDescriptor.of(INT, PTR, INT, INT, INT, PTR,
                     PTR, PTR));
     static final MethodHandle SPARK = downcall("ccharts_spark",
+            FunctionDescriptor.of(INT, PTR, INT, INT, INT, PTR,
+                    PTR, PTR));
+    static final MethodHandle BAR = downcall("ccharts_bar",
             FunctionDescriptor.of(INT, PTR, INT, INT, INT, PTR,
                     PTR, PTR));
     static final MethodHandle COLOR = downcall("ccharts_color",

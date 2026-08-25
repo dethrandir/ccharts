@@ -280,6 +280,49 @@ CCHARTS_API int32_t ccharts_spark(const double* samples, int32_t count,
                                   const ccharts_spark_settings* settings,
                                   char** out, size_t* out_len);
 
+/* ------------------------------ Bar chart ------------------------------ */
+
+/* One bar: a categorical label (may be NULL or empty) and a non-negative
+ * height. Values are clamped to zero by the renderer (a negative value draws
+ * that bar at zero height rather than below the axis), so only non-finite
+ * values are an error. Mirrors cc_bar_item_t in ccharts.h (the two structs
+ * stay separate: the header channels are internally linked, this one is the
+ * FFI surface, and layout is documented here rather than shared). */
+typedef struct ccharts_bar_slice {
+    const char* label;
+    double value;
+} ccharts_bar_slice;
+
+/* Bar chart rendering options. Mirrors cc_bar_settings_t in ccharts.h (the
+ * two structs stay separate: the header channels are internally linked, this
+ * one is the FFI surface). Every color is a NUL-terminated ANSI escape string
+ * or NULL for the library default; pass NULL for the whole struct to take
+ * every default. `show_labels` appends a footer row with each column's label
+ * (truncated to the column width); `show_prices` prepends an 8-column value
+ * axis with the max bar value at the top and 0 (the baseline) at the bottom.
+ * All fields are pointers or plain ints, so a partial {0} initializer means
+ * the same as NULL (no sentinel ambiguity). */
+typedef struct ccharts_bar_settings {
+    const char* rise_color;
+    const char* bg_color;
+    int32_t show_labels;
+    int32_t show_prices;
+} ccharts_bar_settings;
+
+/* Renders a categorical bar chart of `count` (label, value) pairs into a
+ * `width` x `height` grid. Each bar grows up from a zero baseline scaled to
+ * the largest value, drawn with 8 sub-pixel rows (cc_lower_eighth tops). Same
+ * contract as ccharts_line: CCHARTS_OK with *out (NUL-terminated UTF-8,
+ * release with ccharts_string_free) on success, CCHARTS_ERR_INVALID_ARG for
+ * NULL items / count <= 0 / NULL out, CCHARTS_ERR_NON_FINITE for NaN/inf
+ * values, CCHARTS_ERR_DIMENSIONS for width/height outside cc_dim_ok,
+ * CCHARTS_ERR_NOMEM on allocation failure. Negative values are clamped to
+ * zero (not an error). On error *out is set to NULL. */
+CCHARTS_API int32_t ccharts_bar(const ccharts_bar_slice* items, int32_t count,
+                                int32_t width, int32_t height,
+                                const ccharts_bar_settings* settings,
+                                char** out, size_t* out_len);
+
 /* ---------------------------- Introspection ---------------------------- */
 
 /* ANSI escape for a ccharts_color_index, or NULL when out of range. */

@@ -97,7 +97,7 @@ class ConformanceTest {
                 Files.readAllBytes(suite.resolve("cases.json")));
         JsonNode datasets = document.get("datasets");
         JsonNode cases = document.get("cases");
-        assertTrue(cases.size() >= 46, "conformance suite looks truncated");
+        assertTrue(cases.size() >= 52, "conformance suite looks truncated");
 
         for (JsonNode testCase : cases) {
             String name = testCase.get("name").asText();
@@ -185,6 +185,25 @@ class ConformanceTest {
                         .plain(settings.path("plain").asBoolean(false))
                         .build();
                 rendered = Chart.sparkline(samples, testCase.get("width").asInt(),
+                        testCase.get("height").asInt(), options);
+            } else if (testCase.get("chart").asText().equals("bar")) {
+                JsonNode itemsNode = testCase.get("items");
+                String[] labels = new String[itemsNode.size()];
+                double[] values = new double[itemsNode.size()];
+                for (int i = 0; i < itemsNode.size(); i++) {
+                    JsonNode label = itemsNode.get(i).get("label");
+                    labels[i] = label == null || label.isNull() ? "" : label.asText();
+                    values[i] = itemsNode.get(i).get("value").asDouble();
+                }
+
+                BarOptions options = BarOptions.builder()
+                        .rise(color(settings, "rise_color"))
+                        .backgroundColor(color(settings, "bg_color"))
+                        .showLabels(settings.path("show_labels").asBoolean(false))
+                        .showPrices(settings.path("show_prices").asBoolean(false))
+                        .plain(settings.path("plain").asBoolean(false))
+                        .build();
+                rendered = Chart.bar(labels, values, testCase.get("width").asInt(),
                         testCase.get("height").asInt(), options);
             } else {
                 JsonNode dataset = datasets.get(testCase.get("dataset").asText());

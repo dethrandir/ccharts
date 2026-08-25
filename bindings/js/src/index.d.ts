@@ -151,6 +151,31 @@ export interface SparklineOptions {
   plain?: boolean;
 }
 
+/** Options accepted by {@link Chart.bar}. */
+export interface BarOptions {
+  /** Chart width in cells. Default 60. */
+  width?: number;
+  /** Chart height in cells. Default 8. */
+  height?: number;
+  /** ANSI escape for the bars. Default green. */
+  riseColor?: string;
+  /** ANSI escape filling empty cells. Default: the terminal background. */
+  backgroundColor?: string;
+  /**
+   * Print each column's label in a footer row below the chart. Default false.
+   */
+  showLabels?: boolean;
+  /**
+   * Print the max bar value and 0 (the baseline) in a left value-axis margin.
+   * Default false.
+   */
+  showPrices?: boolean;
+  /**
+   * Render with no ANSI escapes at all, overriding every color. Default false.
+   */
+  plain?: boolean;
+}
+
 /** An error reported by the chart library. */
 export class CchartsError extends Error {
   /** The ccharts_status code: 1 invalid argument, 2 parse, 3 out of memory, 4 non-finite, 5 dimensions. */
@@ -231,6 +256,20 @@ export class Chart {
    * @throws {CchartsError} on empty input, non-finite samples or bad dimensions.
    */
   static sparkline(samples: ArrayLike<number>, options?: SparklineOptions): string;
+
+  /**
+   * Renders a categorical bar chart of the `(label, value)` pairs formed by
+   * the parallel `labels` and `values` arrays. A bar chart has no OHLC
+   * dataset, so this is a static method taking the labels and values
+   * directly.
+   * @throws {CchartsError} on empty or mismatched input, non-finite values
+   * or bad dimensions.
+   */
+  static bar(
+    labels: string[],
+    values: ArrayLike<number>,
+    options?: BarOptions,
+  ): string;
 
   /** Releases the dataset. Safe to call more than once. */
   free(): void;

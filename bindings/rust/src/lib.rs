@@ -583,6 +583,93 @@ impl Default for SparklineOptions {
     }
 }
 
+/// One bar: a categorical label and a non-negative height.
+///
+/// The value is a bar height, not a normalized fraction. Negative values are
+/// clamped to zero by the renderer rather than drawn below the axis.
+#[derive(Debug, Clone, Copy)]
+pub struct BarItem<'a> {
+    /// Categorical label shown below the column when `show_labels` is set.
+    pub label: &'a str,
+    /// Bar height; negative values draw at zero height.
+    pub value: f64,
+}
+
+/// Options for [`Chart::bar`]. Every field is optional; unset ones take the
+/// library defaults (green bars, no background, no label or value footer).
+#[derive(Debug, Clone)]
+pub struct BarOptions {
+    rise: Option<ColorSpec>,
+    background: Option<ColorSpec>,
+    show_labels: bool,
+    show_prices: bool,
+    plain: bool,
+}
+
+impl BarOptions {
+    /// Options with every field at its default.
+    pub fn new() -> Self {
+        Self {
+            rise: None,
+            background: None,
+            show_labels: false,
+            show_prices: false,
+            plain: false,
+        }
+    }
+
+    color_setter!(rise, rise_ansi, rise, "Bar fill color.");
+    color_setter!(
+        background,
+        background_ansi,
+        background,
+        "Background color of empty cells."
+    );
+
+    /// Print each column's label in a footer row below the chart.
+    pub fn show_labels(mut self, yes: bool) -> Self {
+        self.show_labels = yes;
+        self
+    }
+
+    /// Print the max bar value and 0 (the baseline) in a left value-axis
+    /// margin.
+    pub fn show_prices(mut self, yes: bool) -> Self {
+        self.show_prices = yes;
+        self
+    }
+
+    /// Render with no ANSI escapes at all, overriding every color.
+    pub fn plain(mut self, yes: bool) -> Self {
+        self.plain = yes;
+        self
+    }
+
+    fn to_raw(&self) -> ffi::ccharts_bar_settings {
+        const EMPTY: &[u8] = b"\0";
+        let plain = EMPTY.as_ptr() as *const c_char;
+        let ptr = |spec: &Option<ColorSpec>| -> *const c_char {
+            if self.plain {
+                plain
+            } else {
+                spec.as_ref().map_or(std::ptr::null(), ColorSpec::as_ptr)
+            }
+        };
+        ffi::ccharts_bar_settings {
+            rise_color: ptr(&self.rise),
+            bg_color: ptr(&self.background),
+            show_labels: self.show_labels as i32,
+            show_prices: self.show_prices as i32,
+        }
+    }
+}
+
+impl Default for BarOptions {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// A parsed OHLC dataset that can be rendered as a line or candle chart.
 pub struct Chart {
     handle: NonNull<ffi::ccharts_data>,
@@ -837,6 +924,75 @@ impl Chart {
                 width,
                 height,
                 &raw,
+                &mut out,
+                &mut len,
+            )
+        };
+        if status != 0 {
+            return Err(Error::from_status(status));
+        }
+        // Safety: `out` is a library-owned buffer released by take_string.
+        unsafe { Self::take_string(out, len) }
+    }
+
+    /// Renders a categorical bar chart of the `(label, value)` pairs formed
+    /// by the parallel `labels` and `values` arrays.
+    ///
+    /// A bar chart has no OHLC data, so (like [`Chart::pie`]) this is an
+    /// associated function: it takes the labels and values directly. The two
+    /// arrays must have the same length. `options.rise`/`options.background`
+    /// override the bar and background colors, `options.show_labels` prints a
+    /// label footer, and `options.show_prices` prints a value axis. Negative
+    /// values are clamped to zero by the renderer, while NaN or infinite
+    /// values are rejected with [`Error::NonFinite`].
+    pub fn bar(
+        labels: &[&str],
+        values: &[f64],
+        width: u32,
+        height: u32,
+        options: &BarOptions,
+    ) -> Result<String> {
+        if labels.is_empty() {
+            return Err(Error::InvalidArgument("need at least one bar"));
+        }
+        if labels.len() != values.len() {
+            return Err(Error::InvalidArgument(
+                "labels and values must have the same length",
+            ));
+        }
+        let count = i32::try_from(labels.len())
+            .map_err(|_| Error::InvalidArgument("too many bars"))?;
+        let (width, height) = match (i32::try_from(width), i32::try_from(height)) {
+            (Ok(w), Ok(h)) => (w, h),
+            _ => return Err(Error::Dimensions),
+        };
+
+        // The labels must outlive the call, so the CStrings are kept in a
+        // parallel vector alongside the raw item array.
+        let mut cstr_labels: Vec<CString> = Vec::with_capacity(labels.len());
+        let mut raw: Vec<ffi::ccharts_bar_slice> = Vec::with_capacity(labels.len());
+        for (label, value) in labels.iter().zip(values.iter()) {
+            let cstr = CString::new(*label).map_err(|_| Error::InteriorNul)?;
+            raw.push(ffi::ccharts_bar_slice {
+                label: cstr.as_ptr(),
+                value: *value,
+            });
+            cstr_labels.push(cstr);
+        }
+
+        let raw_settings = options.to_raw();
+        let mut out: *mut c_char = std::ptr::null_mut();
+        let mut len: usize = 0;
+        // Safety: every pointer in `raw` and the settings live across the
+        // call, the C layer copies the items immediately, and `out` receives
+        // an owned string we release below.
+        let status = unsafe {
+            ffi::ccharts_bar(
+                raw.as_ptr(),
+                count,
+                width,
+                height,
+                &raw_settings,
                 &mut out,
                 &mut len,
             )

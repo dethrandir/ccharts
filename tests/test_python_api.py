@@ -603,5 +603,105 @@ class TestSparkline(unittest.TestCase):
         self.assertNotIn("\x1b", out)
 
 
+class TestBar(unittest.TestCase):
+    """Categorical bar rendering (Chart.bar) — a static method, (label, value)."""
+
+    LABELS = ["A", "B", "C", "D", "E"]
+    VALUES = [1, 4, 2, 5, 3]
+
+    def test_bar_returns_string(self):
+        out = Chart.bar(self.LABELS, self.VALUES)
+        self.assertIsInstance(out, str)
+        self.assertGreater(len(out), 0)
+        self.assertIn("\n", out)
+
+    def test_bar_uses_block_bars(self):
+        out = Chart.bar(self.LABELS, self.VALUES)
+        self.assertIn("█", out, "bar chart should use full-block bar cells")
+
+    def test_bar_is_deterministic(self):
+        self.assertEqual(Chart.bar(self.LABELS, self.VALUES),
+                         Chart.bar(self.LABELS, self.VALUES))
+
+    def test_bar_heights_vary(self):
+        # With distinct values, the bars must differ in height: the tallest
+        # ("E" = 5) column has full block cells, the shortest ("A" = 1) fewer.
+        out = Chart.bar(self.LABELS, self.VALUES, width=5, height=3)
+        rows = out.strip("\n").split("\n")
+        self.assertEqual(len(rows), 3)
+
+    def test_bar_show_labels_adds_footer(self):
+        plain = Chart.bar(self.LABELS, self.VALUES, width=5, height=3,
+                          plain=True)
+        lab = Chart.bar(self.LABELS, self.VALUES, width=5, height=3,
+                        plain=True, show_labels=True)
+        # show_labels adds a footer row.
+        self.assertEqual(len(plain.strip("\n").split("\n")), 3)
+        self.assertEqual(len(lab.strip("\n").split("\n")), 4)
+        self.assertIn("E", lab.strip("\n").split("\n")[-1])
+
+    def test_bar_show_prices_adds_margin(self):
+        plain = Chart.bar(self.LABELS, self.VALUES, plain=True)
+        priced = Chart.bar(self.LABELS, self.VALUES, plain=True,
+                           show_prices=True)
+        self.assertNotEqual(plain, priced)
+        self.assertIn("0", priced.strip("\n").split("\n")[-1].strip())
+
+    def test_bar_wide_more_columns_than_items(self):
+        out = Chart.bar(self.LABELS, self.VALUES, width=20, height=3)
+        # Each item maps to several columns: 20 visible columns on a row.
+        stripped = re.sub(r"\x1b\[[0-9;]*m", "", out.strip("\n").split("\n")[0])
+        self.assertEqual(len(stripped), 20)
+
+    def test_bar_narrow_fewer_columns_than_items(self):
+        with8 = Chart.bar(self.LABELS, self.VALUES, width=8, height=3)
+        with3 = Chart.bar(self.LABELS, self.VALUES, width=3, height=3)
+        self.assertGreater(len(with8), 0)
+        self.assertGreater(len(with3), 0)
+        # width=3 aggregates 5 items into 3 columns.
+        stripped = re.sub(r"\x1b\[[0-9;]*m", "", with3.strip("\n").split("\n")[0])
+        self.assertEqual(len(stripped), 3)
+
+    def test_bar_single_item(self):
+        out = Chart.bar(["Only"], [7], width=8, height=3)
+        self.assertGreater(len(out), 0)
+        self.assertIn("█", out)
+
+    def test_bar_negative_clamped_to_zero(self):
+        # Negative values draw at the baseline rather than raising.
+        out = Chart.bar(["Neg", "Ok"], [-3, 5], width=2, height=2)
+        self.assertGreater(len(out), 0)
+        self.assertIn("█", out)
+
+    def test_bar_non_finite_raises(self):
+        for bad in (float("nan"), float("inf"), float("-inf")):
+            with self.assertRaises(ValueError):
+                Chart.bar(self.LABELS, [1, 2, 3, bad, 5])
+
+    def test_bar_empty_raises(self):
+        with self.assertRaises(ValueError):
+            Chart.bar([], [])
+
+    def test_bar_length_mismatch_raises(self):
+        with self.assertRaises(ValueError):
+            Chart.bar(["A", "B"], [1, 2, 3])
+
+    def test_bar_non_string_label_raises(self):
+        with self.assertRaises(TypeError):
+            Chart.bar([1, 2], [1, 2])
+
+    def test_bar_dimension_validation(self):
+        with self.assertRaises(ValueError):
+            Chart.bar(self.LABELS, self.VALUES, width=0)
+        with self.assertRaises(ValueError):
+            Chart.bar(self.LABELS, self.VALUES, height=-1)
+        with self.assertRaises(TypeError):
+            Chart.bar(self.LABELS, self.VALUES, width=2.5)
+
+    def test_bar_plain_has_no_escapes(self):
+        out = Chart.bar(self.LABELS, self.VALUES, plain=True)
+        self.assertNotIn("\x1b", out)
+
+
 if __name__ == "__main__":
     unittest.main()

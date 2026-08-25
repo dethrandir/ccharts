@@ -117,6 +117,17 @@ class TestConformance(unittest.TestCase):
                 min_below=cfg.get("min_below", 0),
                 plain=cfg.get("plain", False),
             )
+        if case["chart"] == "bar":
+            return Chart.bar(
+                [it["label"] for it in case["items"]],
+                [it["value"] for it in case["items"]],
+                width=case["width"], height=case["height"],
+                color=COLORS.get(cfg["rise_color"]),
+                bg_color=COLORS.get(cfg["bg_color"]),
+                show_labels=cfg.get("show_labels", False),
+                show_prices=cfg.get("show_prices", False),
+                plain=cfg.get("plain", False),
+            )
         draw = getattr(self._chart(case), case["chart"])
         return draw(
             width=case["width"], height=case["height"],

@@ -1,7 +1,7 @@
 //! Behavioral tests for the safe wrapper. The rendering itself is checked
 //! against the shared goldens in conformance.rs.
 
-use ccharts::{Chart, Color, Error, HistogramOptions, PieOptions, PieSlice, Settings, SparklineOptions};
+use ccharts::{BarOptions, Chart, Color, Error, HistogramOptions, PieOptions, PieSlice, Settings, SparklineOptions};
 
 fn sample() -> Chart {
     Chart::from_arrays(
@@ -291,4 +291,49 @@ fn sparkline_renders_and_wires_options() {
     let colored = Chart::sparkline(&samples, 24, 1, &SparklineOptions::new().rise(Color::Blue))
         .unwrap();
     assert!(colored.contains("\u{1b}[34m"));
+}
+
+#[test]
+fn bar_renders_and_wires_options() {
+    let labels = ["Mon", "Tue", "Wed"];
+    let values = [2.0, 5.0, 3.0];
+    let base = Chart::bar(&labels, &values, 12, 6, &BarOptions::new()).unwrap();
+    assert!(base.contains('█'), "bar glyphs present");
+    assert_eq!(base.lines().count(), 6);
+
+    // A label footer changes the render.
+    let labeled = Chart::bar(&labels, &values, 12, 6, &BarOptions::new().show_labels(true)).unwrap();
+    assert_ne!(base, labeled, "show_labels must take effect");
+
+    // A value axis changes the render.
+    let margined = Chart::bar(&labels, &values, 12, 6, &BarOptions::new().show_prices(true)).unwrap();
+    assert_ne!(base, margined, "show_prices must take effect");
+
+    // Plain output has no escapes.
+    let plain = Chart::bar(&labels, &values, 12, 6, &BarOptions::new().plain(true)).unwrap();
+    assert!(!plain.contains('\u{1b}'), "plain must override every color");
+
+    // NaN/inf values are rejected with Error::NonFinite.
+    for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        assert_eq!(
+            Chart::bar(&["A"], &[bad], 12, 6, &BarOptions::new()).unwrap_err(),
+            Error::NonFinite
+        );
+    }
+
+    // Mismatched label/value lengths are rejected.
+    assert!(matches!(
+        Chart::bar(&["A", "B"], &[1.0], 12, 6, &BarOptions::new()).unwrap_err(),
+        Error::InvalidArgument(_)
+    ));
+
+    // Colors flow through.
+    let colored = Chart::bar(&labels, &values, 12, 6, &BarOptions::new().rise(Color::Blue)).unwrap();
+    assert!(colored.contains("\u{1b}[34m"));
+
+    // An interior NUL in a label is rejected.
+    assert_eq!(
+        Chart::bar(&["a\0b"], &[1.0], 12, 6, &BarOptions::new()).unwrap_err(),
+        Error::InteriorNul
+    );
 }

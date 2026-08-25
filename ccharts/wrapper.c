@@ -866,6 +866,152 @@ static PyObject* py_create_spark(PyObject* self, PyObject* args) {
     return result;
 }
 
+/* =============================== Bar ================================
+ * A bar chart renders an ordered list of (label, value) pairs into vertical
+ * bars from a zero baseline (not OHLC columns, so no capsule). Labels and
+ * values are read from parallel sequences exactly like the pie, NaN/inf is
+ * rejected with a bar-appropriate message (negative values are clamped to
+ * zero by the renderer), and the rows are handed to cc_bar_create, which owns
+ * every piece of the render.
+ * ===================================================================== */
+
+/* Fills `items` (caller-freed) from parallel label/value sequences. The
+ * label pointers are borrowed from the Python str objects and only need to
+ * live for the synchronous cc_bar_create call. Returns NULL with an
+ * exception set on any mismatch, non-numeric value, or non-finite value. */
+static cc_bar_item_t* build_bar_items(PyObject* o_labels, PyObject* o_values,
+                                      Py_ssize_t* out_count) {
+    PyObject* fast_labels;
+    PyObject* fast_values;
+    Py_ssize_t n, i;
+    cc_bar_item_t* items;
+
+    fast_labels = PySequence_Fast(o_labels, "labels must be a sequence");
+    if (fast_labels == NULL) return NULL;
+    fast_values = PySequence_Fast(o_values, "values must be a sequence");
+    if (fast_values == NULL) {
+        Py_DECREF(fast_labels);
+        return NULL;
+    }
+    n = PySequence_Fast_GET_SIZE(fast_labels);
+    if (PySequence_Fast_GET_SIZE(fast_values) != n) {
+        Py_DECREF(fast_labels);
+        Py_DECREF(fast_values);
+        PyErr_SetString(PyExc_ValueError,
+                        "labels and values must have the same length");
+        return NULL;
+    }
+    if (n <= 0) {
+        Py_DECREF(fast_labels);
+        Py_DECREF(fast_values);
+        PyErr_SetString(PyExc_ValueError, "need at least one bar");
+        return NULL;
+    }
+
+    items = (cc_bar_item_t*)calloc((size_t)n, sizeof(cc_bar_item_t));
+    if (items == NULL) {
+        Py_DECREF(fast_labels);
+        Py_DECREF(fast_values);
+        PyErr_NoMemory();
+        return NULL;
+    }
+
+    for (i = 0; i < n; i++) {
+        PyObject* label = PySequence_Fast_GET_ITEM(fast_labels, i);
+        PyObject* value = PySequence_Fast_GET_ITEM(fast_values, i);
+        double v;
+
+        if (label == Py_None) {
+            items[i].label = NULL;
+        } else if (PyUnicode_Check(label)) {
+            items[i].label = PyUnicode_AsUTF8(label);
+            if (items[i].label == NULL) {
+                free(items);
+                Py_DECREF(fast_labels);
+                Py_DECREF(fast_values);
+                return NULL;
+            }
+        } else {
+            free(items);
+            Py_DECREF(fast_labels);
+            Py_DECREF(fast_values);
+            PyErr_SetString(PyExc_TypeError, "labels must be strings or None");
+            return NULL;
+        }
+
+        v = PyFloat_AsDouble(value);
+        if (v == -1.0 && PyErr_Occurred()) {
+            free(items);
+            Py_DECREF(fast_labels);
+            Py_DECREF(fast_values);
+            return NULL;
+        }
+        if (!isfinite(v)) {
+            free(items);
+            Py_DECREF(fast_labels);
+            Py_DECREF(fast_values);
+            PyErr_SetString(PyExc_ValueError,
+                            "bar values must be finite (no NaN or inf)");
+            return NULL;
+        }
+        items[i].value = v;
+    }
+
+    Py_DECREF(fast_labels);
+    Py_DECREF(fast_values);
+    *out_count = n;
+    return items;
+}
+
+/* Renders a bar chart from parallel label/value sequences. */
+static PyObject* py_create_bar(PyObject* self, PyObject* args) {
+    PyObject* o_labels;
+    PyObject* o_values;
+    const char* rise_color = NULL;
+    const char* bg_color = NULL;
+    int width, height;
+    int show_labels = 0, show_prices = 0;
+    cc_bar_item_t* items;
+    cc_bar_settings_t settings;
+    Py_ssize_t count;
+    char* chart;
+    PyObject* result;
+
+    /* "OOii|zzii": labels, values, width, height, then optional rise/bg
+     * colors and the show_labels/show_prices flags. */
+    if (!PyArg_ParseTuple(args, "OOii|zzii", &o_labels, &o_values,
+                          &width, &height, &rise_color, &bg_color,
+                          &show_labels, &show_prices)) {
+        return NULL;
+    }
+    if (!check_dimensions(width, height)) {
+        PyErr_SetString(PyExc_ValueError,
+                        "width and height must be positive integers within "
+                        "CC_MAX_DIM and CC_MAX_CELLS limits");
+        return NULL;
+    }
+
+    items = build_bar_items(o_labels, o_values, &count);
+    if (items == NULL) return NULL;
+
+    memset(&settings, 0, sizeof(settings));
+    settings.rise_color = rise_color;
+    settings.bg_color = bg_color;
+    settings.show_labels = show_labels;
+    settings.show_prices = show_prices;
+
+    chart = cc_bar_create(items, (int)count, width, height, &settings);
+    free(items);
+    if (chart == NULL) {
+        PyErr_SetString(PyExc_RuntimeError, "failed to create chart");
+        return NULL;
+    }
+
+    result = PyUnicode_FromString(chart);
+    free(chart);
+    return result;
+}
+
 /* Module method table + module definition. */
 static PyMethodDef CChartsMethods[] = {
     {"parse_json", py_parse_json, METH_VARARGS, "convert JSON data into OHLC format"},
@@ -875,6 +1021,7 @@ static PyMethodDef CChartsMethods[] = {
     {"create_pie", py_create_pie, METH_VARARGS, "create a pie or donut chart"},
     {"create_hist", py_create_hist, METH_VARARGS, "create a histogram chart"},
     {"create_spark", py_create_spark, METH_VARARGS, "create a sparkline chart"},
+    {"create_bar", py_create_bar, METH_VARARGS, "create a bar chart"},
     {NULL, NULL, 0, NULL}
 };
 

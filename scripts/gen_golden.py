@@ -76,6 +76,24 @@ class SparkSettings(ctypes.Structure):
     ]
 
 
+# Mirrors ccharts_bar_slice in abi/ccharts_abi.h.
+class BarItem(ctypes.Structure):
+    _fields_ = [
+        ("label", ctypes.c_char_p),
+        ("value", ctypes.c_double),
+    ]
+
+
+# Mirrors ccharts_bar_settings in abi/ccharts_abi.h.
+class BarSettings(ctypes.Structure):
+    _fields_ = [
+        ("rise_color", ctypes.c_char_p),
+        ("bg_color", ctypes.c_char_p),
+        ("show_labels", ctypes.c_int32),
+        ("show_prices", ctypes.c_int32),
+    ]
+
+
 def find_library(explicit=None):
     if explicit:
         return explicit
@@ -142,6 +160,11 @@ def load(path):
     lib.ccharts_spark.argtypes = [
         ctypes.POINTER(ctypes.c_double), ctypes.c_int32,
         ctypes.c_int32, ctypes.c_int32, ctypes.POINTER(SparkSettings),
+        ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_size_t)]
+    lib.ccharts_bar.restype = ctypes.c_int32
+    lib.ccharts_bar.argtypes = [
+        ctypes.POINTER(BarItem), ctypes.c_int32,
+        ctypes.c_int32, ctypes.c_int32, ctypes.POINTER(BarSettings),
         ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_size_t)]
     return lib
 
@@ -274,6 +297,35 @@ def render_spark(lib, case):
         lib.ccharts_string_free(out)
 
 
+def render_bar(lib, case):
+    """Renders a bar chart case through ccharts_bar."""
+    cfg = case["settings"]
+    n = len(case["items"])
+    items = (BarItem * n)()
+    for i, it in enumerate(case["items"]):
+        items[i].label = it["label"].encode("utf-8") if it.get("label") else None
+        items[i].value = it["value"]
+    plain = b"" if cfg.get("plain") else None
+    settings = BarSettings(
+        rise_color=plain if plain is not None else color(lib, cfg["rise_color"]),
+        bg_color=plain if plain is not None else color(lib, cfg["bg_color"]),
+        show_labels=int(cfg.get("show_labels", False)),
+        show_prices=int(cfg.get("show_prices", False)),
+    )
+    out = ctypes.c_void_p()
+    length = ctypes.c_size_t()
+    status = lib.ccharts_bar(items, n, case["width"], case["height"],
+                             ctypes.byref(settings), ctypes.byref(out),
+                             ctypes.byref(length))
+    if status != CCHARTS_OK:
+        raise SystemExit("%s: %s" % (case["name"],
+                                     lib.ccharts_error_message(status).decode()))
+    try:
+        return ctypes.string_at(out, length.value)
+    finally:
+        lib.ccharts_string_free(out)
+
+
 def render(lib, case, datasets):
     if case["chart"] == "pie":
         return render_pie(lib, case)
@@ -281,6 +333,8 @@ def render(lib, case, datasets):
         return render_hist(lib, case)
     if case["chart"] == "spark":
         return render_spark(lib, case)
+    if case["chart"] == "bar":
+        return render_bar(lib, case)
     handle = build_data(lib, datasets[case["dataset"]], case["source"])
     try:
         cfg = case["settings"]

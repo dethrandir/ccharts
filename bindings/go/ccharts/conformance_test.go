@@ -33,6 +33,11 @@ type suite struct {
 			Label string  `json:"label"`
 			Value float64 `json:"value"`
 		} `json:"slices"`
+		// Items carries the categorical (label, value) pairs for a bar chart.
+		Items []struct {
+			Label string  `json:"label"`
+			Value float64 `json:"value"`
+		} `json:"items"`
 		// Samples carries the scalar histogram input (no OHLC dataset).
 		Samples []float64 `json:"samples"`
 		Settings struct {
@@ -60,6 +65,7 @@ type suite struct {
 			ShowBins         bool     `json:"show_bins"`
 			MinAbove         int      `json:"min_above"`
 			MinBelow         int      `json:"min_below"`
+			ShowLabels       bool     `json:"show_labels"`
 		} `json:"settings"`
 	} `json:"cases"`
 }
@@ -129,7 +135,7 @@ func TestConformance(t *testing.T) {
 	if err := json.Unmarshal(raw, &s); err != nil {
 		t.Fatalf("cases.json: %v", err)
 	}
-	if len(s.Cases) < 46 {
+	if len(s.Cases) < 52 {
 		t.Fatalf("conformance suite looks truncated: %d cases", len(s.Cases))
 	}
 
@@ -158,6 +164,21 @@ func TestConformance(t *testing.T) {
 						MinAbove:  tc.Settings.MinAbove,
 						MinBelow:  tc.Settings.MinBelow,
 						Plain:     tc.Settings.Plain,
+					})
+			} else if tc.Chart == "bar" {
+				labels := make([]string, len(tc.Items))
+				values := make([]float64, len(tc.Items))
+				for i, item := range tc.Items {
+					labels[i] = item.Label
+					values[i] = item.Value
+				}
+				got, err = ccharts.Bar(labels, values, tc.Width, tc.Height,
+					&ccharts.BarOptions{
+						RiseColor:         color(t, tc.Settings.RiseColor),
+						BackgroundColor:   color(t, tc.Settings.BgColor),
+						ShowLabels:        tc.Settings.ShowLabels,
+						ShowPrices:        tc.Settings.ShowPrices,
+						Plain:             tc.Settings.Plain,
 					})
 			} else if tc.Chart == "pie" {
 				slices := make([]ccharts.Slice, len(tc.Slices))

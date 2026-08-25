@@ -65,7 +65,7 @@ public class ConformanceTests
             File.ReadAllBytes(Path.Combine(suiteDir!, "cases.json")));
         var datasets = document.RootElement.GetProperty("datasets");
         var cases = document.RootElement.GetProperty("cases").EnumerateArray().ToList();
-        Assert.True(cases.Count >= 46, "conformance suite looks truncated");
+        Assert.True(cases.Count >= 52, "conformance suite looks truncated");
 
         foreach (var testCase in cases)
         {
@@ -116,6 +116,27 @@ public class ConformanceTests
                         ? below.GetInt32() : 0,
                     Plain = settings.TryGetProperty("plain", out var plain) && plain.GetBoolean(),
                 });
+            }
+            else if (chartName == "bar")
+            {
+                var items = testCase.GetProperty("items").EnumerateArray().ToList();
+                var labels = items.Select(i => i.GetProperty("label").GetString() ?? "").ToList();
+                var values = items.Select(i => i.GetProperty("value").GetDouble()).ToArray();
+
+                rendered = Chart.Bar(labels, values,
+                    testCase.GetProperty("width").GetInt32(),
+                    testCase.GetProperty("height").GetInt32(),
+                    new BarOptions
+                    {
+                        Color = ColorFor(settings, "rise_color"),
+                        BackgroundColor = ColorFor(settings, "bg_color"),
+                        ShowLabels = settings.TryGetProperty("show_labels", out var labelsFlag)
+                            && labelsFlag.GetBoolean(),
+                        ShowPrices = settings.TryGetProperty("show_prices", out var prices)
+                            && prices.GetBoolean(),
+                        Plain = settings.TryGetProperty("plain", out var plain)
+                            && plain.GetBoolean(),
+                    });
             }
             else if (chartName == "pie")
             {

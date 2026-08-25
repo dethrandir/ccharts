@@ -369,6 +369,103 @@ public sealed class Chart : IDisposable
         }
     }
 
+    /// <summary>
+    /// Renders a categorical bar chart of the <c>(label, value)</c> pairs
+    /// formed by the parallel <paramref name="labels"/> and
+    /// <paramref name="values"/> lists. A bar chart has no OHLC dataset, so
+    /// this is a static method taking the labels and values directly.
+    /// </summary>
+    /// <param name="labels">The categorical label of each bar.</param>
+    /// <param name="values">The height of each bar.</param>
+    /// <param name="width">Chart width in cells.</param>
+    /// <param name="height">Chart height in cells.</param>
+    /// <param name="options">Bar options, or <c>null</c> for the defaults.</param>
+    /// <returns>The chart as a printable string.</returns>
+    /// <exception cref="CchartsException">
+    /// The lists were empty or of differing lengths, held NaN/infinity, or the
+    /// dimensions were out of range.
+    /// </exception>
+    public static string Bar(IReadOnlyList<string> labels, IReadOnlyList<double> values,
+        int width, int height, BarOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(labels);
+        ArgumentNullException.ThrowIfNull(values);
+        NativeLibraryResolver.EnsureInstalled();
+
+        options ??= new BarOptions();
+        if (labels.Count == 0)
+        {
+            throw new CchartsException(CchartsStatus.InvalidArgument,
+                "need at least one bar");
+        }
+        if (labels.Count != values.Count)
+        {
+            throw new CchartsException(CchartsStatus.InvalidArgument,
+                "labels and values must have the same length");
+        }
+
+        var native = new NativeBarSlice[labels.Count];
+        var labelPtrs = new IntPtr[labels.Count];
+        try
+        {
+            for (var i = 0; i < labels.Count; i++)
+            {
+                labelPtrs[i] = Marshal.StringToCoTaskMemUTF8(labels[i]);
+                native[i] = new NativeBarSlice { Label = labelPtrs[i], Value = values[i] };
+            }
+
+            var colors = new IntPtr[2];
+            try
+            {
+                // An empty C string means "emit no escape at all", which is
+                // different from a null pointer (use the default color).
+                colors[0] = options.Plain ? Empty() : Utf8(options.Color);
+                colors[1] = options.Plain ? Empty() : Utf8(options.BackgroundColor);
+
+                var settings = new NativeBarSettings
+                {
+                    RiseColor = colors[0],
+                    BackgroundColor = colors[1],
+                    ShowLabels = options.ShowLabels ? 1 : 0,
+                    ShowPrices = options.ShowPrices ? 1 : 0,
+                };
+
+                var status = NativeMethods.Bar(native, labels.Count, width, height,
+                    in settings, out var chart, out var length);
+                CchartsException.ThrowIfError(status);
+
+                try
+                {
+                    return Marshal.PtrToStringUTF8(chart, checked((int)length)) ?? string.Empty;
+                }
+                finally
+                {
+                    NativeMethods.StringFree(chart);
+                }
+            }
+            finally
+            {
+                foreach (var color in colors)
+                {
+                    if (color != IntPtr.Zero)
+                    {
+                        Marshal.FreeCoTaskMem(color);
+                    }
+                }
+            }
+        }
+        finally
+        {
+            foreach (var label in labelPtrs)
+            {
+                if (label != IntPtr.Zero)
+                {
+                    Marshal.FreeCoTaskMem(label);
+                }
+            }
+        }
+    }
+
     /// <summary>Version of the underlying C library.</summary>
     public static string Version
     {

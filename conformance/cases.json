@@ -1056,6 +1056,123 @@
         "min_below": 0,
         "plain": false
       }
+    },
+    {
+      "name": "bar_default",
+      "chart": "bar",
+      "width": 60,
+      "height": 8,
+      "items": [
+        { "label": "A", "value": 1 },
+        { "label": "B", "value": 4 },
+        { "label": "C", "value": 2 },
+        { "label": "D", "value": 5 },
+        { "label": "E", "value": 3 }
+      ],
+      "settings": {
+        "rise_color": null,
+        "bg_color": null,
+        "show_labels": false,
+        "show_prices": false,
+        "plain": false
+      }
+    },
+    {
+      "name": "bar_labels",
+      "chart": "bar",
+      "width": 60,
+      "height": 8,
+      "items": [
+        { "label": "A", "value": 1 },
+        { "label": "B", "value": 4 },
+        { "label": "C", "value": 2 },
+        { "label": "D", "value": 5 },
+        { "label": "E", "value": 3 }
+      ],
+      "settings": {
+        "rise_color": null,
+        "bg_color": null,
+        "show_labels": true,
+        "show_prices": false,
+        "plain": false
+      }
+    },
+    {
+      "name": "bar_prices",
+      "chart": "bar",
+      "width": 40,
+      "height": 6,
+      "items": [
+        { "label": "A", "value": 1 },
+        { "label": "B", "value": 4 },
+        { "label": "C", "value": 2 },
+        { "label": "D", "value": 5 },
+        { "label": "E", "value": 3 }
+      ],
+      "settings": {
+        "rise_color": "blue",
+        "bg_color": "bright_black",
+        "show_labels": false,
+        "show_prices": true,
+        "plain": false
+      }
+    },
+    {
+      "name": "bar_wide",
+      "chart": "bar",
+      "width": 12,
+      "height": 6,
+      "items": [
+        { "label": "Mon", "value": 2 },
+        { "label": "Tue", "value": 5 },
+        { "label": "Wed", "value": 3 }
+      ],
+      "settings": {
+        "rise_color": null,
+        "bg_color": null,
+        "show_labels": true,
+        "show_prices": false,
+        "plain": true
+      }
+    },
+    {
+      "name": "bar_narrow",
+      "chart": "bar",
+      "width": 3,
+      "height": 5,
+      "items": [
+        { "label": "a", "value": 1 },
+        { "label": "b", "value": 4 },
+        { "label": "c", "value": 2 },
+        { "label": "d", "value": 5 },
+        { "label": "e", "value": 3 },
+        { "label": "f", "value": 6 },
+        { "label": "g", "value": 2 },
+        { "label": "h", "value": 7 }
+      ],
+      "settings": {
+        "rise_color": null,
+        "bg_color": null,
+        "show_labels": true,
+        "show_prices": true,
+        "plain": false
+      }
+    },
+    {
+      "name": "bar_single",
+      "chart": "bar",
+      "width": 6,
+      "height": 3,
+      "items": [
+        { "label": "Solo", "value": 9 }
+      ],
+      "settings": {
+        "rise_color": null,
+        "bg_color": null,
+        "show_labels": true,
+        "show_prices": true,
+        "plain": false
+      }
     }
   ]
 }

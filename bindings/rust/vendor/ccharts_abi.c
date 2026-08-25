@@ -388,6 +388,49 @@ int32_t ccharts_spark(const double* samples, int32_t count,
     return CCHARTS_OK;
 }
 
+/* ------------------------------ Bar chart ------------------------------ */
+
+int32_t ccharts_bar(const ccharts_bar_slice* items, int32_t count,
+                    int32_t width, int32_t height,
+                    const ccharts_bar_settings* settings,
+                    char** out, size_t* out_len) {
+    cc_bar_settings_t bs;
+    char* chart;
+    int32_t i;
+
+    if (out == NULL) return CCHARTS_ERR_INVALID_ARG;
+    *out = NULL;
+    if (out_len != NULL) *out_len = 0;
+    if (items == NULL || count <= 0) return CCHARTS_ERR_INVALID_ARG;
+    if (!cc_dim_ok((int)width, (int)height)) return CCHARTS_ERR_DIMENSIONS;
+
+    /* NaN/inf bar values would poison the column max/min math (and lround in
+     * the pixel mapping), so reject them at the boundary like every other
+     * price path. Negative values are clamped to zero by the renderer, not
+     * rejected. */
+    for (i = 0; i < count; i++) {
+        if (!isfinite(items[i].value)) return CCHARTS_ERR_NON_FINITE;
+    }
+
+    memset(&bs, 0, sizeof(bs));
+    if (settings != NULL) {
+        bs.rise_color = settings->rise_color;
+        bs.bg_color = settings->bg_color;
+        bs.show_labels = (int)settings->show_labels;
+        bs.show_prices = (int)settings->show_prices;
+    }
+
+    /* ccharts_bar_slice and cc_bar_item_t have identical {label, value}
+     * layout; a cast (rather than a copy) hand is all the FFI needs. */
+    chart = cc_bar_create((const cc_bar_item_t*)items, (int)count,
+                          (int)width, (int)height, &bs);
+    if (chart == NULL) return CCHARTS_ERR_NOMEM;
+
+    *out = chart;
+    if (out_len != NULL) *out_len = strlen(chart);
+    return CCHARTS_OK;
+}
+
 /* ---------------------------- Introspection ---------------------------- */
 
 const char* ccharts_color(int32_t index) {

@@ -37,7 +37,7 @@ width/height at 100000 cells per side and 1000000 total cells
 """
 
 from ._core import (parse_json, parse_arrays, create_line, create_candle,
-                    create_pie, create_hist, create_spark)
+                    create_pie, create_hist, create_spark, create_bar)
 
 
 def _check_dimensions(width, height):
@@ -306,4 +306,45 @@ class Chart:
             samples, width, height,
             rise_color, area_color,
             int(min_above), int(min_below),
+        )
+
+    @staticmethod
+    def bar(labels, values, *, width=60, height=8, color=None, bg_color=None,
+            show_labels=False, show_prices=False, plain=False):
+        """Draw a categorical bar chart and return it as a string.
+
+        A bar chart is not OHLC data, so this is a static method: it takes the
+        ``(label, value)`` pairs directly instead of reading ``self``. Each
+        bar grows up from a shared zero baseline, scaled so the largest value
+        fills the full chart height; distinct from the histogram (which bins
+        raw samples) and the pie (which normalizes proportions).
+
+        Args:
+            labels: one categorical label per bar (``str`` or ``None``).
+            values: one non-negative height per bar. Negative values are
+                clamped to zero (drawn at baseline height); NaN/inf raise
+                ``ValueError``.
+            width, height: chart size in cells (positive integers).
+            color: ANSI escape string for the bar fill (None = green).
+            bg_color: ANSI escape string for the empty cells above a bar
+                (None = terminal background).
+            show_labels: append a footer row under the plot with each
+                column's label, truncated to the column width.
+            show_prices: prepend an 8-column value axis with the max bar
+                value at the top and 0 (the baseline) at the bottom.
+            plain: return text with no ANSI escapes at all, overriding every
+                color.
+
+        Raises ``ValueError`` for non-finite values (NaN/inf would corrupt the
+        pixel mapping), mismatched label/value lengths, and invalid
+        dimensions. An empty ``labels``/``values`` sequence raises
+        ``ValueError``.
+        """
+        _check_dimensions(width, height)
+        if plain:
+            color = bg_color = ""
+        return create_bar(
+            labels, values, width, height,
+            color, bg_color,
+            int(show_labels), int(show_prices),
         )

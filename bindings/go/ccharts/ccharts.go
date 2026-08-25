@@ -586,8 +586,97 @@ func Sparkline(samples []float64, width, height int, opts *SparklineOptions) (st
 	return C.GoStringN(out, C.int(length)), nil
 }
 
-// setColors fills the C settings struct and returns a function releasing the
-// C strings it allocated.
+// BarOptions controls how a bar chart is drawn. A nil *BarOptions behaves
+// like &BarOptions{}: green bars, no background, no label or value footer.
+type BarOptions struct {
+	// RiseColor colors the bars (default green).
+	RiseColor Color
+	// BackgroundColor fills empty cells (default: the terminal background).
+	BackgroundColor Color
+	// ShowLabels prints each column's label in a footer row below the chart.
+	ShowLabels bool
+	// ShowPrices prints the max bar value and 0 (the baseline) in a left
+	// value-axis margin.
+	ShowPrices bool
+	// Plain renders with no ANSI escapes at all, overriding every color.
+	Plain bool
+}
+
+// Bar renders a categorical bar chart of the (label, value) pairs formed by
+// the parallel labels and values arrays. A bar chart has no OHLC dataset, so
+// this is a package function rather than a Chart method.
+//
+// labels and values must have the same length. opts may be nil. Negative
+// values are clamped to zero by the renderer; NaN and inf are rejected with
+// ErrNonFinite.
+func Bar(labels []string, values []float64, width, height int, opts *BarOptions) (string, error) {
+	if len(labels) == 0 {
+		return "", ErrInvalidArgument
+	}
+	if len(labels) != len(values) {
+		return "", ErrInvalidArgument
+	}
+	if width <= 0 || height <= 0 || width > int(C.ccharts_max_dim()) ||
+		height > int(C.ccharts_max_dim()) {
+		return "", ErrDimensions
+	}
+
+	n := len(labels)
+	cItems := make([]C.ccharts_bar_slice, n)
+	owned := make([]*C.char, n)
+	for i := range labels {
+		owned[i] = C.CString(labels[i])
+		cItems[i].label = owned[i]
+		cItems[i].value = C.double(values[i])
+	}
+	defer func() {
+		for _, cs := range owned {
+			C.free(unsafe.Pointer(cs))
+		}
+	}()
+
+	var settings C.ccharts_bar_settings
+	var allocated []*C.char
+	defer func() {
+		for _, cs := range allocated {
+			C.free(unsafe.Pointer(cs))
+		}
+	}()
+	set := func(dst **C.char, color Color) {
+		if opts == nil {
+			return
+		}
+		if opts.Plain {
+			cs := C.CString("")
+			allocated = append(allocated, cs)
+			*dst = cs
+			return
+		}
+		if color == "" {
+			return
+		}
+		cs := C.CString(string(color))
+		allocated = append(allocated, cs)
+		*dst = cs
+	}
+	set(&settings.rise_color, opts.RiseColor)
+	set(&settings.bg_color, opts.BackgroundColor)
+	if opts != nil {
+		settings.show_labels = boolToC(opts.ShowLabels)
+		settings.show_prices = boolToC(opts.ShowPrices)
+	}
+
+	var out *C.char
+	var length C.size_t
+	status := C.ccharts_bar(
+		&cItems[0], C.int32_t(n), C.int32_t(width), C.int32_t(height),
+		&settings, &out, &length)
+	if err := statusError(status); err != nil {
+		return "", err
+	}
+	defer C.ccharts_string_free(out)
+	return C.GoStringN(out, C.int(length)), nil
+}
 func setColors(settings *C.ccharts_settings, opts *Options) func() {
 	if opts == nil {
 		return func() {}

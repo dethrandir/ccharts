@@ -183,6 +183,10 @@ const PIE_SLICE_BYTES = 16; // 32-bit label pointer, 4 bytes padding, double val
 const HIST_SETTINGS_BYTES = 40;
 // ccharts_spark_settings: two 32-bit pointers then two int32. 4+4+4+4 = 16.
 const SPARK_SETTINGS_BYTES = 16;
+// ccharts_bar_settings: two 32-bit pointers then two int32. 4+4+4+4 = 16.
+// (The bar items reuse PIE_SLICE_BYTES: a 32-bit label pointer, 4 bytes
+// padding, then a double value at offset 8.)
+const BAR_SETTINGS_BYTES = 16;
 const PTR_BYTES = 4;
 
 /**
@@ -522,6 +526,80 @@ export class Chart {
       lenPtr = malloc(4);
       const status = exports.ccharts_spark(
         samplesPtr, samples.length, width, height, settings, outPtr, lenPtr);
+      if (status !== STATUS.OK) throw fail(status);
+
+      const dv2 = view();
+      const chartPtr = dv2.getUint32(outPtr, true);
+      const length = dv2.getUint32(lenPtr, true);
+      try {
+        return decoder.decode(u8().subarray(chartPtr, chartPtr + length));
+      } finally {
+        exports.ccharts_string_free(chartPtr);
+      }
+    } finally {
+      for (const ptr of owned) exports.free(ptr);
+      if (outPtr) exports.free(outPtr);
+      if (lenPtr) exports.free(lenPtr);
+    }
+  }
+
+  /**
+   * Renders a categorical bar chart of the (label, value) pairs formed by the
+   * parallel `labels` and `values` arrays. A bar chart has no OHLC dataset,
+   * so this is a static method taking the labels and values directly.
+   *
+   * @param {string[]} labels the categorical label of each bar
+   * @param {ArrayLike<number>} values the height of each bar
+   * @param {BarOptions} [options]
+   * @returns {string}
+   */
+  static bar(labels, values, options = {}) {
+    const {
+      width = 60, height = 8,
+      riseColor, backgroundColor, showLabels = false, showPrices = false,
+      plain = false,
+    } = options;
+
+    if (!Array.isArray(labels) || labels.length === 0) {
+      throw new CchartsError(STATUS.INVALID_ARGUMENT, "need at least one bar");
+    }
+    if (!Array.isArray(values) || values.length !== labels.length) {
+      throw new CchartsError(STATUS.INVALID_ARGUMENT,
+        "labels and values must have the same length");
+    }
+    if (!Number.isInteger(width) || !Number.isInteger(height)) {
+      throw new CchartsError(STATUS.DIMENSIONS, "width and height must be integers");
+    }
+
+    const owned = [];
+    let itemsPtr = 0;
+    let settings = 0;
+    let outPtr = 0;
+    let lenPtr = 0;
+    try {
+      itemsPtr = malloc(labels.length * PIE_SLICE_BYTES);
+      owned.push(itemsPtr);
+      const dv = view();
+      for (let i = 0; i < labels.length; i++) {
+        const label = writeCString(String(labels[i]));
+        owned.push(label);
+        dv.setUint32(itemsPtr + i * PIE_SLICE_BYTES, label, true);
+        dv.setFloat64(itemsPtr + i * PIE_SLICE_BYTES + 8, values[i], true);
+      }
+
+      settings = malloc(BAR_SETTINGS_BYTES);
+      owned.push(settings);
+      const rise = colorPtr(owned, plain, riseColor);
+      const background = colorPtr(owned, plain, backgroundColor);
+      dv.setUint32(settings, rise, true);
+      dv.setUint32(settings + 4, background, true);
+      dv.setInt32(settings + 8, showLabels ? 1 : 0, true);
+      dv.setInt32(settings + 12, showPrices ? 1 : 0, true);
+
+      outPtr = malloc(4);
+      lenPtr = malloc(4);
+      const status = exports.ccharts_bar(
+        itemsPtr, labels.length, width, height, settings, outPtr, lenPtr);
       if (status !== STATUS.OK) throw fail(status);
 
       const dv2 = view();

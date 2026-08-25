@@ -37,7 +37,7 @@ function color(name) {
 test("matches the shared goldens", { skip: !existsSync(join(SUITE_DIR, "cases.json")) },
   () => {
     const suite = JSON.parse(readFileSync(join(SUITE_DIR, "cases.json"), "utf8"));
-    assert.ok(suite.cases.length >= 46, "conformance suite looks truncated");
+    assert.ok(suite.cases.length >= 52, "conformance suite looks truncated");
 
     for (const testCase of suite.cases) {
       const settings = testCase.settings;
@@ -69,6 +69,19 @@ test("matches the shared goldens", { skip: !existsSync(join(SUITE_DIR, "cases.js
           minBelow: settings.min_below ?? 0,
           plain: settings.plain ?? false,
         });
+      } else if (testCase.chart === "bar") {
+        rendered = Chart.bar(
+          testCase.items.map((item) => item.label ?? ""),
+          testCase.items.map((item) => item.value),
+          {
+            width: testCase.width,
+            height: testCase.height,
+            riseColor: color(settings.rise_color),
+            backgroundColor: color(settings.bg_color),
+            showLabels: settings.show_labels ?? false,
+            showPrices: settings.show_prices ?? false,
+            plain: settings.plain ?? false,
+          });
       } else if (testCase.chart === "pie") {
         rendered = Chart.pie(
           testCase.slices.map((slice) => ({ label: slice.label ?? null, value: slice.value })),

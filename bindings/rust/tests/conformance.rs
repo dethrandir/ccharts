@@ -6,7 +6,7 @@
 
 use std::path::{Path, PathBuf};
 
-use ccharts::{Chart, Color, HistogramOptions, PieOptions, PieSlice, Settings, SparklineOptions};
+use ccharts::{BarOptions, Chart, Color, HistogramOptions, PieOptions, PieSlice, Settings, SparklineOptions};
 use serde_json::Value;
 
 fn suite_dir() -> Option<PathBuf> {
@@ -64,7 +64,7 @@ fn matches_the_shared_goldens() {
     let doc: Value =
         serde_json::from_slice(&std::fs::read(dir.join("cases.json")).unwrap()).unwrap();
     let cases = doc["cases"].as_array().expect("cases");
-    assert!(cases.len() >= 46, "conformance suite looks truncated");
+    assert!(cases.len() >= 52, "conformance suite looks truncated");
 
     let mut failures = Vec::new();
     for case in cases {
@@ -112,6 +112,27 @@ fn matches_the_shared_goldens() {
                 opts = opts.area(c);
             }
             Chart::sparkline(&samples, width, height, &opts)
+        } else if case["chart"].as_str().unwrap() == "bar" {
+            let items = case["items"].as_array().expect("bar items");
+            let labels: Vec<&str> = items
+                .iter()
+                .map(|it| it["label"].as_str().unwrap_or(""))
+                .collect();
+            let values: Vec<f64> = items
+                .iter()
+                .map(|it| it["value"].as_f64().expect("bar value"))
+                .collect();
+            let mut opts = BarOptions::new()
+                .show_labels(cfg["show_labels"].as_bool().unwrap_or(false))
+                .show_prices(cfg["show_prices"].as_bool().unwrap_or(false))
+                .plain(cfg["plain"].as_bool().unwrap_or(false));
+            if let Some(c) = color(&cfg["rise_color"]) {
+                opts = opts.rise(c);
+            }
+            if let Some(c) = color(&cfg["bg_color"]) {
+                opts = opts.background(c);
+            }
+            Chart::bar(&labels, &values, width, height, &opts)
         } else if case["chart"].as_str().unwrap() == "pie" {
             let slices: Vec<PieSlice> = case["slices"]
                 .as_array()

@@ -249,3 +249,33 @@ public sealed record SparklineOptions
     /// </summary>
     public bool Plain { get; init; }
 }
+
+/// <summary>
+/// How a bar chart is drawn. The default instance gives green bars, no
+/// background, no label or value footer.
+/// </summary>
+public sealed record BarOptions
+{
+    /// <summary>ANSI escape for the bars. Default green.</summary>
+    public string? Color { get; init; }
+
+    /// <summary>ANSI escape filling empty cells. Default: the terminal background.</summary>
+    public string? BackgroundColor { get; init; }
+
+    /// <summary>
+    /// Print each column's label in a footer row below the chart.
+    /// </summary>
+    public bool ShowLabels { get; init; }
+
+    /// <summary>
+    /// Print the max bar value and 0 (the baseline) in a left value-axis margin.
+    /// </summary>
+    public bool ShowPrices { get; init; }
+
+    /// <summary>
+    /// Render with no ANSI escapes at all, overriding every color. Use it when
+    /// the chart is going somewhere that does not interpret escapes — a log
+    /// file, an HTML block, a commit message.
+    /// </summary>
+    public bool Plain { get; init; }
+}

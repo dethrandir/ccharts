@@ -389,6 +389,85 @@ public final class Chart implements AutoCloseable {
     }
 
     /**
+     * Renders a bar chart of the given named values. A bar chart has no OHLC
+     * dataset, so this is a static method taking the labels and values
+     * directly.
+     *
+     * @param labels bar column labels, one per value
+     * @param values the bar heights; negatives are clamped to zero
+     * @param width chart width in cells
+     * @param height chart height in cells
+     * @param options bar options
+     * @return the chart as a printable string
+     * @throws CchartsException if the arrays are empty, of differing lengths,
+     *     hold NaN/infinity, or the dimensions are out of range
+     */
+    public static String bar(String[] labels, double[] values, int width, int height,
+            BarOptions options) {
+        if (labels == null || labels.length == 0) {
+            throw new CchartsException(CchartsException.Status.INVALID_ARGUMENT,
+                    "need at least one bar");
+        }
+        if (values == null || values.length != labels.length) {
+            throw new CchartsException(CchartsException.Status.INVALID_ARGUMENT,
+                    "labels and values must have the same length");
+        }
+
+        try (Arena arena = Arena.ofConfined()) {
+            // Each bar is a {label, value} cell: a C-string segment and a
+            // double. The label is null-safe (the renderer treats a missing
+            // label as empty).
+            MemorySegment items = arena.allocate(Native.BAR_ITEM, labels.length);
+            for (int i = 0; i < labels.length; i++) {
+                long offset = i * Native.BAR_ITEM.byteSize();
+                items.set(ValueLayout.ADDRESS, offset, text(arena, labels[i]));
+                items.set(ValueLayout.JAVA_DOUBLE, offset + 8, values[i]);
+            }
+
+            MemorySegment settings = arena.allocate(Native.BAR_SETTINGS);
+            // An empty C string means "emit no escape at all", which is
+            // different from a null pointer (use the default color).
+            String forced = options.plain() ? "" : null;
+            settings.set(ValueLayout.ADDRESS, 0,
+                    text(arena, forced != null ? forced : options.riseColor()));
+            settings.set(ValueLayout.ADDRESS, 8,
+                    text(arena, forced != null ? forced : options.backgroundColor()));
+            settings.set(ValueLayout.JAVA_INT, 16, options.showLabels() ? 1 : 0);
+            settings.set(ValueLayout.JAVA_INT, 20, options.showPrices() ? 1 : 0);
+
+            MemorySegment out = arena.allocate(ValueLayout.ADDRESS);
+            MemorySegment lengthOut = arena.allocate(ValueLayout.JAVA_LONG);
+            int status = (int) Native.BAR.invokeExact(
+                    items, labels.length, width, height, settings, out, lengthOut);
+            CchartsException.throwIfError(status);
+
+            MemorySegment chart = out.get(ValueLayout.ADDRESS, 0);
+            long size = lengthOut.get(ValueLayout.JAVA_LONG, 0);
+            try {
+                byte[] bytes = chart.reinterpret(size).toArray(ValueLayout.JAVA_BYTE);
+                return new String(bytes, StandardCharsets.UTF_8);
+            } finally {
+                Native.STRING_FREE.invokeExact(chart);
+            }
+        } catch (Throwable t) {
+            throw Native.wrap(t);
+        }
+    }
+
+    /**
+     * Renders a bar chart of the given named values with the default options.
+     *
+     * @param labels bar column labels, one per value
+     * @param values the bar heights; negatives are clamped to zero
+     * @param width chart width in cells
+     * @param height chart height in cells
+     * @return the chart as a printable string
+     */
+    public static String bar(String[] labels, double[] values, int width, int height) {
+        return bar(labels, values, width, height, BarOptions.DEFAULTS);
+    }
+
+    /**
      * Number of candles in the dataset.
      *
      * @return the candle count

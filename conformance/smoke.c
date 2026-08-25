@@ -174,6 +174,54 @@ int main(void) {
         }
     }
 
+    /* Bar chart: (label, value) pairs, no dataset or capsule. */
+    {
+        ccharts_bar_slice items[] = {
+            {"A", 1}, {"B", 4}, {"C", 2}, {"D", 5}, {"E", 3}
+        };
+        ccharts_bar_settings bs;
+        memset(&bs, 0, sizeof(bs));
+        check(ccharts_bar(items, 5, 40, 5, &bs, &chart, &len) == CCHARTS_OK, "bar");
+        check(chart != NULL && len > 0, "bar output");
+        ccharts_string_free(chart);
+
+        bs.rise_color = ccharts_color(CCHARTS_COLOR_BLUE);
+        bs.bg_color = ccharts_color(CCHARTS_COLOR_BRIGHT_BLACK);
+        bs.show_labels = 1;
+        bs.show_prices = 1;
+        check(ccharts_bar(items, 5, 40, 5, &bs, &chart, &len) == CCHARTS_OK,
+              "bar with settings");
+        check(chart != NULL && len > 0, "bar settings output");
+        ccharts_string_free(chart);
+
+        check(ccharts_bar(NULL, 0, 40, 5, NULL, &chart, &len)
+              == CCHARTS_ERR_INVALID_ARG, "NULL bar items rejected");
+        check(ccharts_bar(items, 5, 0, 5, NULL, &chart, &len)
+              == CCHARTS_ERR_DIMENSIONS, "zero width bar rejected");
+
+        /* NaN/inf must be rejected; negative values are clamped, not errors. */
+        {
+            double inf_b[2];
+            double nan_b[2];
+            static const double one = 1.0;
+            ccharts_bar_slice inf_items[2] = {{"Inf", one}, {"Ok", 1.0}};
+            ccharts_bar_slice nan_items[2] = {{"Nan", one}, {"Ok", 1.0}};
+            ccharts_bar_slice neg_items[2] = {{"Neg", -3}, {"Ok", 5}};
+            inf_b[0] = one / 0.0;                       /* +inf without <math.h> */
+            nan_b[0] = one / 0.0 - one / 0.0;           /* NaN */
+            inf_items[0].value = inf_b[0];
+            nan_items[0].value = nan_b[0];
+            check(ccharts_bar(inf_items, 2, 40, 5, NULL, &chart, &len)
+                  == CCHARTS_ERR_NON_FINITE, "inf bar value rejected");
+            check(ccharts_bar(nan_items, 2, 40, 5, NULL, &chart, &len)
+                  == CCHARTS_ERR_NON_FINITE, "NaN bar value rejected");
+            check(chart == NULL, "no string on bar error");
+            check(ccharts_bar(neg_items, 2, 40, 5, NULL, &chart, &len)
+                  == CCHARTS_OK, "negative bar value clamped");
+            ccharts_string_free(chart);
+        }
+    }
+
     /* Invalid dimensions must be reported, not answered with "". */
     check(ccharts_line(data, 0, 5, NULL, &chart, &len) == CCHARTS_ERR_DIMENSIONS,
           "zero width rejected");

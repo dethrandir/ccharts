@@ -403,6 +403,61 @@ CC_INLINE char* cc_spark_create(const double* samples, int count,
                                 int width, int height,
                                 const cc_spark_settings_t* settings);
 
+/* ============================= Bar chart =============================
+ * A categorical bar chart draws an ordered list of (label, value) pairs as
+ * vertical bars growing up from a shared zero baseline. Unlike the pie
+ * (which normalizes slices to proportions) and the histogram (which bins raw
+ * samples), each bar is drawn at its OWN height in proportion to the largest
+ * value. Labels are categorical and are printed, when requested, in a footer
+ * row below the plot (one label per output column, truncated to the column
+ * width). */
+
+/* One bar: a categorical label (may be NULL or empty) and a non-negative
+ * height. Values are clamped to zero for the render (a negative value draws
+ * that bar at zero height rather than below the axis; a future stage could
+ * add a diverging below-baseline variant). Non-finite values are rejected
+ * upstream (the wrapper and ABI), which keeps this header free of C99-only
+ * `isfinite`. */
+typedef struct cc_bar_item {
+    const char* label;
+    double       value;
+} cc_bar_item_t;
+
+/* Bar chart rendering options. Unspecified fields fall back to defaults:
+ *   - rise_color : bar fill color                  (default green)
+ *   - bg_color   : background of empty cells above a bar (default: none)
+ *   - show_labels: 1 = append a footer row under the plot with each column's
+ *                  label, truncated to the column width
+ *   - show_prices: 1 = prepend an 8-column left value axis with the max bar
+ *                  value at the top and 0 (the baseline) at the bottom
+ * Build with a designated initializer and pass NULL to any chart function
+ * for full defaults. All fields here are pointers or plain ints, so a
+ * partial {0} brace initializer gets exactly the same defaults as NULL (no
+ * double sentinels, so there is no brace-init ambiguity — unlike the
+ * histogram's NaN window fields). */
+typedef struct cc_bar_settings {
+    const char* rise_color;
+    const char* bg_color;
+    int   show_labels;
+    int   show_prices;
+} cc_bar_settings_t;
+
+/* Renders a bar chart of `count` (label, value) pairs into a `width` x
+ * `height` grid (cells) and returns a malloc'd string (caller frees). Bars
+ * grow up from a zero baseline, scaled so the largest value fills the full
+ * height, and are drawn with 8 sub-pixel rows (cc_lower_eighth tops) like the
+ * line chart. When width >= count each item maps to one or more columns;
+ * when width < count the items are folded deterministically into the columns
+ * (long-arithmetic index mapping, mirroring the histogram) and each column is
+ * drawn at the MAX of the values in its span. An optional label footer
+ * (show_labels) and 8-column value axis (show_prices) are assembled around
+ * the grid. Returns a malloc'd string (caller frees); NULL items, count <= 0,
+ * or invalid dimensions yield an empty string. Scratch buffers are
+ * heap-allocated (no VLAs) and freed on every path. */
+CC_INLINE char* cc_bar_create(const cc_bar_item_t* items, int count,
+                              int width, int height,
+                              const cc_bar_settings_t* settings);
+
 #ifdef __cplusplus
 }
 #endif
@@ -1952,6 +2007,181 @@ CC_INLINE char* cc_spark_create(const double* samples, int count,
 
     char* chart = cc_spark_assemble(width, height, columns);
     free(vals); free(py); free(columns);
+    return chart;
+}
+
+/* ------------------------------ Bar renderer ------------------------------
+ * An ordered list of (label, value) pairs drawn as vertical bars from a
+ * shared zero baseline. Each output column maps to a deterministic span of
+ * items via the same long-arithmetic mapping as the histogram and sparkline
+ * (width >= count spreads an item over several columns; width < count folds
+ * several items into one column, drawn at their max value). The tallest bar
+ * fills the full height; heights use 8 sub-pixel rows (cc_lower_eighth tops)
+ * like the line chart. Values are non-negative for now — a negative value is
+ * clamped to zero — and non-finite values are rejected upstream (wrapper/ABI)
+ * so this header stays free of C99-only `isfinite`. Scratch buffers are
+ * heap-allocated (no VLAs), sizeof(char) calloc on bad args, freed on every
+ * path. ------------------------------------------------------------------- */
+
+/* Joins the per-cell strings (columns[(x*height + y)*32 .. +32), y counted
+ * from the bottom) into the final bar string, printing rows top-to-bottom.
+ * An optional 8-column value axis (show_prices: max value top, 0 bottom) is
+ * prepended to every row, and an optional label footer (show_labels) is
+ * appended below the plot: for each column, the label of the first item in
+ * that column's span, truncated to the column width. Allocates with a pointer
+ * cursor (no strcat re-scans); caller frees. */
+CC_INLINE char* cc_bar_assemble(int width, int height, char* columns,
+                                const cc_bar_item_t* items, int count,
+                                const cc_bar_settings_t* s,
+                                double max_value,
+                                const int* first_idx, const int* span_len) {
+    int margin = s->show_prices ? 8 : 0;
+    char max_label[16] = "";
+    char min_label[16] = "";
+    if (margin > 0) {
+        snprintf(max_label, sizeof(max_label), "%8.4g", max_value);
+        snprintf(min_label, sizeof(min_label), "%8.0f", 0.0);
+    }
+
+    int footer = s->show_labels ? 1 : 0;
+    const int line_len = width + margin;
+    const int rows = height + footer;
+    /* Bounded by CC_MAX_CELLS: width*height <= 1e6, so this is <= ~32 MB. */
+    size_t total_size = (size_t)line_len * (size_t)rows * 32 + (size_t)rows + 1;
+    char* chart = (char*)calloc(total_size, 1);
+    if (chart == NULL) return NULL;
+
+    char* w = chart;
+    for (int y = height - 1; y >= 0; y--) {
+        if (margin > 0) {
+            char mlabel[16] = "";
+            if (y == height - 1) snprintf(mlabel, sizeof(mlabel), "%8s", max_label);
+            else if (y == 0)     snprintf(mlabel, sizeof(mlabel), "%8s", min_label);
+            else { memset(mlabel, ' ', 8); mlabel[8] = '\0'; }
+            size_t ml = strlen(mlabel);
+            memcpy(w, mlabel, ml);
+            w += ml;
+        }
+        for (int x = 0; x < width; x++) {
+            const char* cell = columns + ((size_t)x * height + (size_t)y) * 32;
+            size_t cl = strlen(cell);
+            memcpy(w, cell, cl);
+            w += cl;
+        }
+        *w++ = '\n';
+    }
+
+    if (footer) {
+        if (margin > 0) {
+            memset(w, ' ', (size_t)margin);
+            w += margin;
+        }
+        for (int x = 0; x < width; x++) {
+            int span = span_len[x];
+            if (span < 1) span = 1;
+            const char* label = items[first_idx[x]].label;
+            const char* L = (label != NULL) ? label : "";
+            size_t n = strlen(L);
+            if (n > (size_t)span) n = (size_t)span;
+            if (n > 0) { memcpy(w, L, n); w += n; }
+            if ((size_t)span > n) {
+                memset(w, ' ', (size_t)span - n);
+                w += (size_t)span - n;
+            }
+        }
+        *w++ = '\n';
+    }
+    *w = '\0';
+    (void)count;
+    return chart;
+}
+
+CC_INLINE char* cc_bar_create(const cc_bar_item_t* items, int count,
+                              int width, int height,
+                              const cc_bar_settings_t* settings) {
+    if (items == NULL || count <= 0 || !cc_dim_ok(width, height)) {
+        return (char*)calloc(1, sizeof(char));
+    }
+
+    cc_bar_settings_t s;
+    /* All pointer/int fields: a partial {0} brace initializer matches NULL,
+     * so there is no sentinel ambiguity (unlike the histogram's doubles). */
+    s.rise_color = (settings && settings->rise_color) ? settings->rise_color : CC_COLOR_GREEN;
+    s.bg_color   = settings ? settings->bg_color : NULL;
+    s.show_labels = settings ? settings->show_labels : 0;
+    s.show_prices = settings ? settings->show_prices : 0;
+    if (s.show_labels < 0) s.show_labels = 0;
+    if (s.show_prices < 0) s.show_prices = 0;
+
+    double* colv = (double*)calloc((size_t)width, sizeof(double));
+    int* first_idx = (int*)malloc((size_t)width * sizeof(int));
+    int* span_len = (int*)malloc((size_t)width * sizeof(int));
+    char* columns = (char*)malloc((size_t)width * (size_t)height * 32);
+    if (colv == NULL || first_idx == NULL || span_len == NULL || columns == NULL) {
+        free(colv); free(first_idx); free(span_len); free(columns);
+        return NULL;
+    }
+
+    /* Fold the items into `width` columns. The same long-arithmetic mapping
+     * covers both decompositions: width >= count spreads each item over
+     * several columns (repeating its value), width < count aggregates several
+     * items per column drawn at their max value (so a peak is never hidden by
+     * a collapsing average). */
+    double max_value = 0.0;
+    for (int w = 0; w < width; w++) {
+        int is = (int)(((long long)w * count) / width);
+        int ie = (int)(((((long long)w + 1) * count) / width));
+        if (ie <= is) ie = is + 1;
+        if (ie > count) ie = count;
+        first_idx[w] = is;
+        span_len[w] = ie - is;
+
+        double v = 0.0;   /* zero baseline; negative values clamp to 0 */
+        for (int k = is; k < ie; k++) {
+            double val = items[k].value;
+            if (val < 0.0) val = 0.0;
+            if (val > v) v = val;
+        }
+        colv[w] = v;
+        if (v > max_value) max_value = v;
+    }
+
+    const char* color = s.rise_color;
+    int pixel_height = height * 8;
+
+    for (int w = 0; w < width; w++) {
+        int pix;
+        if (max_value <= 0.0) pix = 0;
+        else pix = (int)(colv[w] * pixel_height / max_value);
+        if (pix < 0) pix = 0;
+        if (pix > pixel_height) pix = pixel_height;
+
+        int nfull = pix / 8;
+        int rem = pix % 8;
+        char* col = columns + (size_t)w * height * 32;
+
+        for (int r = 0; r < nfull && r < height; r++) {
+            snprintf(col + (size_t)r * 32, 32, "%s%s%s", CC_S(color),
+                     CC_BLOCK_FULL, cc_reset_for(color, NULL));
+        }
+        if (rem > 0 && nfull < height) {
+            snprintf(col + (size_t)nfull * 32, 32, "%s%s%s", CC_S(color),
+                     cc_lower_eighth(rem), cc_reset_for(color, NULL));
+        }
+        for (int r = (rem > 0 ? nfull + 1 : nfull); r < height; r++) {
+            char* cell = col + (size_t)r * 32;
+            if (s.bg_color != NULL) {
+                snprintf(cell, 32, "%s %s", s.bg_color,
+                         cc_reset_for(s.bg_color, NULL));
+            } else {
+                snprintf(cell, 32, " ");
+            }
+        }
+    }
+
+    char* chart = cc_bar_assemble(width, height, columns, items, count, &s,
+                                  max_value, first_idx, span_len);
+    free(colv); free(first_idx); free(span_len); free(columns);
     return chart;
 }
 
