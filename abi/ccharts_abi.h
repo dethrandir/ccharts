@@ -39,7 +39,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define CCHARTS_VERSION "0.2.1"
+#define CCHARTS_VERSION "0.2.2"
 
 #if defined(_WIN32)
 #  if defined(CCHARTS_ABI_BUILD_SHARED)
@@ -222,7 +222,7 @@ CCHARTS_API const char* ccharts_color(int32_t index);
 /* Human-readable message for a status code; never NULL. */
 CCHARTS_API const char* ccharts_error_message(int32_t status);
 
-/* Library version ("0.2.1"), shared by every binding. */
+/* Library version ("0.2.2"), shared by every binding. */
 CCHARTS_API const char* ccharts_version(void);
 
 /* CC_MAX_DIM / CC_MAX_CELLS, so bindings do not duplicate the limits. */
