@@ -27,6 +27,15 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <math.h>
+
+#if defined(NAN)
+#define CC_NAN ((double)NAN)
+#elif defined(_MSC_VER)
+#define CC_NAN ((double)sqrt(-1.0))
+#else
+#define CC_NAN (0.0 / 0.0)
+#endif
 
 #include "ccharts_abi.h"
 

@@ -159,7 +159,7 @@ public final class HistogramOptions {
         /**
          * Lower edge of the value window; {@code null} (the default, NaN) uses
          * the data minimum. When set, must be strictly less than
-         * {@link #maxValue(double)}.
+         * {@link #maxValue(Double)}.
          */
         public Builder minValue(Double value) {
             this.minValue = value;

@@ -1018,7 +1018,8 @@ class TestBoxplot(unittest.TestCase):
         # nearest-rank mapping end-to-end (index quartiles -> cell rows).
         with open(
                 os.path.join(os.path.dirname(__file__), "..",
-                             "conformance", "golden", "box_odd.txt")) as fh:
+                             "conformance", "golden", "box_odd.txt"),
+                encoding="utf-8") as fh:
             self.assertEqual(out, fh.read())
 
     def test_box_accepts_dict_series(self):
