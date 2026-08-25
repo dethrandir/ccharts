@@ -181,6 +181,8 @@ const PIE_SLICE_BYTES = 16; // 32-bit label pointer, 4 bytes padding, double val
 // ccharts_hist_settings: two 32-bit pointers, int32 bin_count, padding, then
 // two doubles (8-byte aligned), then two int32. 4+4+4+4 + (8+8) + 4+4 = 40.
 const HIST_SETTINGS_BYTES = 40;
+// ccharts_spark_settings: two 32-bit pointers then two int32. 4+4+4+4 = 16.
+const SPARK_SETTINGS_BYTES = 16;
 const PTR_BYTES = 4;
 
 /**
@@ -454,6 +456,71 @@ export class Chart {
       outPtr = malloc(4);
       lenPtr = malloc(4);
       const status = exports.ccharts_hist(
+        samplesPtr, samples.length, width, height, settings, outPtr, lenPtr);
+      if (status !== STATUS.OK) throw fail(status);
+
+      const dv2 = view();
+      const chartPtr = dv2.getUint32(outPtr, true);
+      const length = dv2.getUint32(lenPtr, true);
+      try {
+        return decoder.decode(u8().subarray(chartPtr, chartPtr + length));
+      } finally {
+        exports.ccharts_string_free(chartPtr);
+      }
+    } finally {
+      for (const ptr of owned) exports.free(ptr);
+      if (outPtr) exports.free(outPtr);
+      if (lenPtr) exports.free(lenPtr);
+    }
+  }
+
+  /**
+   * Renders a sparkline of the given scalar samples. A sparkline has no OHLC
+   * dataset, so this is a static method taking the raw sample values.
+   *
+   * @param {ArrayLike<number>} samples the close-like trend values
+   * @param {SparklineOptions} [options]
+   * @returns {string}
+   */
+  static sparkline(samples, options = {}) {
+    const {
+      width = 24, height = 1,
+      riseColor, areaColor, minAbove = 0, minBelow = 0,
+      plain = false,
+    } = options;
+
+    if (!Array.isArray(samples) || samples.length === 0) {
+      throw new CchartsError(STATUS.INVALID_ARGUMENT, "need at least one sample");
+    }
+    if (!Number.isInteger(width) || !Number.isInteger(height)) {
+      throw new CchartsError(STATUS.DIMENSIONS, "width and height must be integers");
+    }
+
+    const owned = [];
+    let samplesPtr = 0;
+    let settings = 0;
+    let outPtr = 0;
+    let lenPtr = 0;
+    try {
+      samplesPtr = malloc(samples.length * 8);
+      owned.push(samplesPtr);
+      new Float64Array(exports.memory.buffer, samplesPtr, samples.length).set(
+        samples instanceof Float64Array ? samples : Float64Array.from(samples, Number));
+
+      settings = malloc(SPARK_SETTINGS_BYTES);
+      owned.push(settings);
+      const rise = colorPtr(owned, plain, riseColor);
+      const area = colorPtr(owned, plain, areaColor);
+
+      const dv = view();
+      dv.setUint32(settings, rise, true);
+      dv.setUint32(settings + 4, area, true);
+      dv.setInt32(settings + 8, minAbove, true);
+      dv.setInt32(settings + 12, minBelow, true);
+
+      outPtr = malloc(4);
+      lenPtr = malloc(4);
+      const status = exports.ccharts_spark(
         samplesPtr, samples.length, width, height, settings, outPtr, lenPtr);
       if (status !== STATUS.OK) throw fail(status);
 

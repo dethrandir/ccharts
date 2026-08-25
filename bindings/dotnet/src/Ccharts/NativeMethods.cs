@@ -36,6 +36,16 @@ internal struct NativeHistSettings
     public int ShowPrices;
 }
 
+/// <summary>Layout of ccharts_spark_settings from abi/ccharts_abi.h.</summary>
+[StructLayout(LayoutKind.Sequential)]
+internal struct NativeSparkSettings
+{
+    public IntPtr RiseColor;
+    public IntPtr AreaColor;
+    public int MinAbove;
+    public int MinBelow;
+}
+
 /// <summary>
 /// P/Invoke declarations for the ccharts C ABI. Strings are handled as raw
 /// pointers on both directions: the library owns what it returns, and
@@ -87,6 +97,11 @@ internal static partial class NativeMethods
     internal static partial int Hist(
         [In] double[] samples, int count, int width, int height,
         in NativeHistSettings settings, out IntPtr chart, out nuint length);
+
+    [LibraryImport(Library, EntryPoint = "ccharts_spark")]
+    internal static partial int Spark(
+        [In] double[] samples, int count, int width, int height,
+        in NativeSparkSettings settings, out IntPtr chart, out nuint length);
 
     [LibraryImport(Library, EntryPoint = "ccharts_color")]
     internal static partial IntPtr ColorAt(int index);

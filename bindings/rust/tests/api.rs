@@ -1,7 +1,7 @@
 //! Behavioral tests for the safe wrapper. The rendering itself is checked
 //! against the shared goldens in conformance.rs.
 
-use ccharts::{Chart, Color, Error, HistogramOptions, PieOptions, PieSlice, Settings};
+use ccharts::{Chart, Color, Error, HistogramOptions, PieOptions, PieSlice, Settings, SparklineOptions};
 
 fn sample() -> Chart {
     Chart::from_arrays(
@@ -253,6 +253,42 @@ fn histogram_renders_and_wires_options() {
 
     // Colors flow through.
     let colored = Chart::histogram(&samples, 40, 6, &HistogramOptions::new().rise(Color::Blue))
+        .unwrap();
+    assert!(colored.contains("\u{1b}[34m"));
+}
+
+#[test]
+fn sparkline_renders_and_wires_options() {
+    let samples = [5.0, 7.0, 4.0, 8.0, 6.0, 9.0, 4.0, 7.0, 10.0, 8.0];
+    let base = Chart::sparkline(&samples, 24, 1, &SparklineOptions::new()).unwrap();
+    assert!(!base.is_empty(), "single-row sparkline renders");
+
+    // Reserved edge sub-pixels change the render of a tiny height.
+    let margined = Chart::sparkline(
+        &samples,
+        24,
+        1,
+        &SparklineOptions::new().min_above(2).min_below(1),
+    )
+    .unwrap();
+    assert_ne!(base, margined, "min_above/min_below must take effect");
+
+    // An area color changes the render.
+    let area =
+        Chart::sparkline(&samples, 24, 2, &SparklineOptions::new().area(Color::BrightBlack))
+            .unwrap();
+    assert_ne!(base, area, "area_color must take effect");
+
+    // NaN/inf samples are rejected with Error::NonFinite.
+    for bad in [f64::NAN, f64::INFINITY] {
+        assert_eq!(
+            Chart::sparkline(&[bad], 24, 1, &SparklineOptions::new()).unwrap_err(),
+            Error::NonFinite
+        );
+    }
+
+    // Colors flow through.
+    let colored = Chart::sparkline(&samples, 24, 1, &SparklineOptions::new().rise(Color::Blue))
         .unwrap();
     assert!(colored.contains("\u{1b}[34m"));
 }

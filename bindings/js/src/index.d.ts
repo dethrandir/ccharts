@@ -125,6 +125,32 @@ export interface HistogramOptions {
   plain?: boolean;
 }
 
+/** Options accepted by {@link Chart.sparkline}. */
+export interface SparklineOptions {
+  /** Chart width in cells. Default 24. */
+  width?: number;
+  /** Chart height in cells. Default 1 (a single row). */
+  height?: number;
+  /** ANSI escape for the trend line. Default green. */
+  riseColor?: string;
+  /** ANSI escape filling the area under the line. Default: nothing. */
+  areaColor?: string;
+  /**
+   * Reserve this many sub-pixels at the top edge so the line does not clip
+   * at the very top of a tiny chart. Default 0.
+   */
+  minAbove?: number;
+  /**
+   * Reserve this many sub-pixels at the bottom edge so the line does not clip
+   * at the very bottom of a tiny chart. Default 0.
+   */
+  minBelow?: number;
+  /**
+   * Render with no ANSI escapes at all, overriding every color. Default false.
+   */
+  plain?: boolean;
+}
+
 /** An error reported by the chart library. */
 export class CchartsError extends Error {
   /** The ccharts_status code: 1 invalid argument, 2 parse, 3 out of memory, 4 non-finite, 5 dimensions. */
@@ -198,6 +224,13 @@ export class Chart {
    * @throws {CchartsError} on empty input, non-finite samples or bad dimensions.
    */
   static histogram(samples: ArrayLike<number>, options?: HistogramOptions): string;
+
+  /**
+   * Renders a sparkline of the given scalar samples. A sparkline has no OHLC
+   * dataset, so this is a static method taking the raw sample values.
+   * @throws {CchartsError} on empty input, non-finite samples or bad dimensions.
+   */
+  static sparkline(samples: ArrayLike<number>, options?: SparklineOptions): string;
 
   /** Releases the dataset. Safe to call more than once. */
   free(): void;

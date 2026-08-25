@@ -135,6 +135,45 @@ int main(void) {
         }
     }
 
+    /* Sparkline: raw scalar samples, two heights, margins and error paths. */
+    {
+        static const double samples[] = {5,7,4,8,6,9,4,7,10,8,12,6,11,9,13};
+        ccharts_spark_settings ss;
+        memset(&ss, 0, sizeof(ss));
+        check(ccharts_spark(samples, 15, 24, 1, &ss, &chart, &len) == CCHARTS_OK,
+              "spark");
+        check(chart != NULL && len > 0, "spark output");
+        ccharts_string_free(chart);
+
+        ss.rise_color = ccharts_color(CCHARTS_COLOR_BLUE);
+        ss.area_color = ccharts_color(CCHARTS_COLOR_BRIGHT_BLACK);
+        ss.min_above = 2;
+        ss.min_below = 1;
+        check(ccharts_spark(samples, 15, 24, 2, &ss, &chart, &len) == CCHARTS_OK,
+              "spark with settings");
+        check(chart != NULL && len > 0, "spark settings output");
+        ccharts_string_free(chart);
+
+        check(ccharts_spark(NULL, 0, 24, 1, NULL, &chart, &len)
+              == CCHARTS_ERR_INVALID_ARG, "NULL spark samples rejected");
+        check(ccharts_spark(samples, 15, 0, 1, NULL, &chart, &len)
+              == CCHARTS_ERR_DIMENSIONS, "zero width spark rejected");
+
+        /* NaN/inf samples must be rejected at the boundary. */
+        {
+            double inf_s[2] = {1.0, 1.0};
+            double nan_s[2] = {1.0, 0.0};
+            static const double one = 1.0;
+            inf_s[1] = one / 0.0;                       /* +inf without <math.h> */
+            nan_s[1] = one / 0.0 - one / 0.0;           /* NaN */
+            check(ccharts_spark(inf_s, 2, 24, 1, NULL, &chart, &len)
+                  == CCHARTS_ERR_NON_FINITE, "inf spark sample rejected");
+            check(ccharts_spark(nan_s, 2, 24, 1, NULL, &chart, &len)
+                  == CCHARTS_ERR_NON_FINITE, "NaN spark sample rejected");
+            check(chart == NULL, "no string on spark error");
+        }
+    }
+
     /* Invalid dimensions must be reported, not answered with "". */
     check(ccharts_line(data, 0, 5, NULL, &chart, &len) == CCHARTS_ERR_DIMENSIONS,
           "zero width rejected");

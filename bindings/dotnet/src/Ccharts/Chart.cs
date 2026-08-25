@@ -305,6 +305,70 @@ public sealed class Chart : IDisposable
         }
     }
 
+    /// <summary>
+    /// Renders a sparkline of the given scalar samples. A sparkline has no
+    /// OHLC dataset, so this is a static method taking the raw sample values.
+    /// </summary>
+    /// <param name="samples">The close-like trend values to draw.</param>
+    /// <param name="options">Sparkline options, or <c>null</c> for the defaults.</param>
+    /// <returns>The chart as a printable string.</returns>
+    /// <exception cref="CchartsException">
+    /// The samples were empty or held NaN/infinity, or the dimensions were out
+    /// of range.
+    /// </exception>
+    public static string Sparkline(IReadOnlyList<double> samples, SparklineOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(samples);
+        NativeLibraryResolver.EnsureInstalled();
+
+        options ??= new SparklineOptions();
+        if (samples.Count == 0)
+        {
+            throw new CchartsException(CchartsStatus.InvalidArgument,
+                "need at least one sample");
+        }
+
+        var colors = new IntPtr[2];
+        try
+        {
+            // An empty C string means "emit no escape at all", which is
+            // different from a null pointer (use the default color).
+            colors[0] = options.Plain ? Empty() : Utf8(options.RiseColor);
+            colors[1] = options.Plain ? Empty() : Utf8(options.AreaColor);
+
+            var settings = new NativeSparkSettings
+            {
+                RiseColor = colors[0],
+                AreaColor = colors[1],
+                MinAbove = options.MinAbove,
+                MinBelow = options.MinBelow,
+            };
+
+            var status = NativeMethods.Spark(samples.ToArray(), samples.Count,
+                options.Width, options.Height, in settings, out var chart, out var length);
+            CchartsException.ThrowIfError(status);
+
+            try
+            {
+                return Marshal.PtrToStringUTF8(chart, checked((int)length));
+            }
+            finally
+            {
+                NativeMethods.StringFree(chart);
+            }
+        }
+        finally
+        {
+            foreach (var color in colors)
+            {
+                if (color != IntPtr.Zero)
+                {
+                    Marshal.FreeCoTaskMem(color);
+                }
+            }
+        }
+    }
+
     /// <summary>Version of the underlying C library.</summary>
     public static string Version
     {

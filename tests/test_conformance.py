@@ -107,6 +107,16 @@ class TestConformance(unittest.TestCase):
                 show_prices=cfg.get("show_prices", False),
                 plain=cfg.get("plain", False),
             )
+        if case["chart"] == "spark":
+            return Chart.sparkline(
+                case["samples"],
+                width=case["width"], height=case["height"],
+                rise_color=COLORS.get(cfg["rise_color"]),
+                area_color=COLORS.get(cfg["area_color"]),
+                min_above=cfg.get("min_above", 0),
+                min_below=cfg.get("min_below", 0),
+                plain=cfg.get("plain", False),
+            )
         draw = getattr(self._chart(case), case["chart"])
         return draw(
             width=case["width"], height=case["height"],

@@ -37,7 +37,7 @@ width/height at 100000 cells per side and 1000000 total cells
 """
 
 from ._core import (parse_json, parse_arrays, create_line, create_candle,
-                    create_pie, create_hist)
+                    create_pie, create_hist, create_spark)
 
 
 def _check_dimensions(width, height):
@@ -267,4 +267,43 @@ class Chart:
             float("nan") if min_value is None else float(min_value),
             float("nan") if max_value is None else float(max_value),
             int(show_bins), int(show_prices),
+        )
+
+    @staticmethod
+    def sparkline(samples, *, width=60, height=1, rise_color=None,
+                  area_color=None, min_above=0, min_below=0, plain=False):
+        """Draw a tiny axis-less trend line from a series of values and return
+        it as a string.
+
+        A sparkline is not OHLC data, so this is a static method: it takes the
+        raw samples directly instead of reading ``self``. Each column averages
+        the samples in its span (exactly the line chart's downsampling), then
+        maps the average to an 8-sub-pixel row, so a ``height=1`` sparkline is
+        still smooth.
+
+        Args:
+            samples: one value per step — a list, tuple, numpy array,
+                array.array or any other sized sequence.
+            width, height: chart size in cells (positive integers). ``height``
+                is expected small (default ``1``, up to ~3).
+            rise_color: ANSI escape string for the line (None = green).
+            area_color: ANSI escape string for a faint fill under the line,
+                or None for no fill (default).
+            min_above, min_below: reserved sub-pixels at the top/bottom edge
+                so the line does not clip against the edge at tiny heights
+                (both default to ``0``).
+            plain: return text with no ANSI escapes at all, overriding every
+                color.
+
+        Raises ``ValueError`` for non-finite samples (NaN/inf would corrupt
+        the column math), mismatched/non-numeric items, and invalid
+        dimensions. An empty ``samples`` sequence renders the empty string.
+        """
+        _check_dimensions(width, height)
+        if plain:
+            rise_color = area_color = ""
+        return create_spark(
+            samples, width, height,
+            rise_color, area_color,
+            int(min_above), int(min_below),
         )

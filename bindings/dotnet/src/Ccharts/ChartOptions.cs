@@ -217,3 +217,35 @@ public sealed record HistogramOptions
     /// </summary>
     public bool Plain { get; init; }
 }
+
+/// <summary>
+/// How a sparkline is drawn. The default instance gives a one-row-high line
+/// that follows the data, with no margins and the default rising color.
+/// </summary>
+public sealed record SparklineOptions
+{
+    /// <summary>Chart width in cells. Default 24.</summary>
+    public int Width { get; init; } = 24;
+
+    /// <summary>Chart height in cells. Default 1.</summary>
+    public int Height { get; init; } = 1;
+
+    /// <summary>ANSI escape for the rising line. Default green.</summary>
+    public string? RiseColor { get; init; }
+
+    /// <summary>ANSI escape filling the area below the line. Default: nothing.</summary>
+    public string? AreaColor { get; init; }
+
+    /// <summary>Sub-pixels reserved above the line so it does not clip. Default 0.</summary>
+    public int MinAbove { get; init; }
+
+    /// <summary>Sub-pixels reserved below the line so it does not clip. Default 0.</summary>
+    public int MinBelow { get; init; }
+
+    /// <summary>
+    /// Render with no ANSI escapes at all, overriding every color. Use it when
+    /// the chart is going somewhere that does not interpret escapes — a log
+    /// file, an HTML block, a commit message.
+    /// </summary>
+    public bool Plain { get; init; }
+}

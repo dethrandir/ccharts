@@ -97,7 +97,7 @@ class ConformanceTest {
                 Files.readAllBytes(suite.resolve("cases.json")));
         JsonNode datasets = document.get("datasets");
         JsonNode cases = document.get("cases");
-        assertTrue(cases.size() >= 41, "conformance suite looks truncated");
+        assertTrue(cases.size() >= 46, "conformance suite looks truncated");
 
         for (JsonNode testCase : cases) {
             String name = testCase.get("name").asText();
@@ -168,6 +168,23 @@ class ConformanceTest {
                         .plain(settings.path("plain").asBoolean(false))
                         .build();
                 rendered = Chart.histogram(samples, testCase.get("width").asInt(),
+                        testCase.get("height").asInt(), options);
+            } else if (testCase.get("chart").asText().equals("spark")) {
+                JsonNode samplesNode = testCase.get("samples");
+                double[] samples = new double[samplesNode.size()];
+                for (int i = 0; i < samples.length; i++) {
+                    samples[i] = samplesNode.get(i).asDouble();
+                }
+
+                SparklineOptions options = SparklineOptions.builder()
+                        .size(testCase.get("width").asInt(), testCase.get("height").asInt())
+                        .rise(color(settings, "rise_color"))
+                        .area(color(settings, "area_color"))
+                        .minAbove(settings.path("min_above").asInt(0))
+                        .minBelow(settings.path("min_below").asInt(0))
+                        .plain(settings.path("plain").asBoolean(false))
+                        .build();
+                rendered = Chart.sparkline(samples, testCase.get("width").asInt(),
                         testCase.get("height").asInt(), options);
             } else {
                 JsonNode dataset = datasets.get(testCase.get("dataset").asText());

@@ -58,6 +58,13 @@ final class Native {
             ValueLayout.JAVA_INT.withName("show_bins"),
             ValueLayout.JAVA_INT.withName("show_prices"));
 
+    /** Layout of {@code ccharts_spark_settings}: two pointers then two ints. */
+    static final StructLayout SPARK_SETTINGS = MemoryLayout.structLayout(
+            ValueLayout.ADDRESS.withName("rise_color"),
+            ValueLayout.ADDRESS.withName("area_color"),
+            ValueLayout.JAVA_INT.withName("min_above"),
+            ValueLayout.JAVA_INT.withName("min_below"));
+
     private static final Linker LINKER = Linker.nativeLinker();
 
     /** Lives as long as the process: the library must not be unloaded. */
@@ -94,6 +101,9 @@ final class Native {
                     ValueLayout.JAVA_DOUBLE, INT, ValueLayout.JAVA_DOUBLE,
                     INT, PTR, PTR, PTR));
     static final MethodHandle HIST = downcall("ccharts_hist",
+            FunctionDescriptor.of(INT, PTR, INT, INT, INT, PTR,
+                    PTR, PTR));
+    static final MethodHandle SPARK = downcall("ccharts_spark",
             FunctionDescriptor.of(INT, PTR, INT, INT, INT, PTR,
                     PTR, PTR));
     static final MethodHandle COLOR = downcall("ccharts_color",

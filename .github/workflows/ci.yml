@@ -75,7 +75,7 @@ jobs:
           set -euo pipefail
           exported="$(nm -D --defined-only build/libccharts_abi.so | grep -c ' T ')"
           echo "exported symbols: ${exported}"
-          test "${exported}" -eq 15
+          test "${exported}" -eq 16
           ! nm -D --defined-only build/libccharts_abi.so | grep -q ' T cc_'
 
       - name: Conformance goldens are current

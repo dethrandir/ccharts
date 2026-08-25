@@ -66,6 +66,16 @@ class HistSettings(ctypes.Structure):
     ]
 
 
+# Mirrors ccharts_spark_settings in abi/ccharts_abi.h.
+class SparkSettings(ctypes.Structure):
+    _fields_ = [
+        ("rise_color", ctypes.c_char_p),
+        ("area_color", ctypes.c_char_p),
+        ("min_above", ctypes.c_int32),
+        ("min_below", ctypes.c_int32),
+    ]
+
+
 def find_library(explicit=None):
     if explicit:
         return explicit
@@ -127,6 +137,11 @@ def load(path):
     lib.ccharts_hist.argtypes = [
         ctypes.POINTER(ctypes.c_double), ctypes.c_int32,
         ctypes.c_int32, ctypes.c_int32, ctypes.POINTER(HistSettings),
+        ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_size_t)]
+    lib.ccharts_spark.restype = ctypes.c_int32
+    lib.ccharts_spark.argtypes = [
+        ctypes.POINTER(ctypes.c_double), ctypes.c_int32,
+        ctypes.c_int32, ctypes.c_int32, ctypes.POINTER(SparkSettings),
         ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_size_t)]
     return lib
 
@@ -233,11 +248,39 @@ def render_hist(lib, case):
         lib.ccharts_string_free(out)
 
 
+def render_spark(lib, case):
+    """Renders a sparkline case through ccharts_spark."""
+    cfg = case["settings"]
+    n = len(case["samples"])
+    samples = (ctypes.c_double * n)(*case["samples"])
+    plain = b"" if cfg.get("plain") else None
+    settings = SparkSettings(
+        rise_color=plain if plain is not None else color(lib, cfg["rise_color"]),
+        area_color=plain if plain is not None else color(lib, cfg["area_color"]),
+        min_above=int(cfg.get("min_above", 0)),
+        min_below=int(cfg.get("min_below", 0)),
+    )
+    out = ctypes.c_void_p()
+    length = ctypes.c_size_t()
+    status = lib.ccharts_spark(samples, n, case["width"], case["height"],
+                               ctypes.byref(settings), ctypes.byref(out),
+                               ctypes.byref(length))
+    if status != CCHARTS_OK:
+        raise SystemExit("%s: %s" % (case["name"],
+                                     lib.ccharts_error_message(status).decode()))
+    try:
+        return ctypes.string_at(out, length.value)
+    finally:
+        lib.ccharts_string_free(out)
+
+
 def render(lib, case, datasets):
     if case["chart"] == "pie":
         return render_pie(lib, case)
     if case["chart"] == "hist":
         return render_hist(lib, case)
+    if case["chart"] == "spark":
+        return render_spark(lib, case)
     handle = build_data(lib, datasets[case["dataset"]], case["source"])
     try:
         cfg = case["settings"]

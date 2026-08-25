@@ -251,6 +251,35 @@ CCHARTS_API int32_t ccharts_hist(const double* samples, int32_t count,
                                  const ccharts_hist_settings* settings,
                                  char** out, size_t* out_len);
 
+/* ------------------------------ Sparkline ------------------------------ */
+
+/* Sparkline rendering options. Mirrors cc_spark_settings_t in ccharts.h (the
+ * two structs stay separate: the header channels are internally linked, this
+ * one is the FFI surface, and layout is documented here rather than shared).
+ * Every color is a NUL-terminated ANSI escape string or NULL for the library
+ * default; pass NULL for the whole struct to take every default. `min_above`
+ * / `min_below` reserve that many sub-pixels at the top/bottom edge so the
+ * line does not clip; both are plain ints defaulting to 0, so a partial {0}
+ * initializer means the same as NULL (no sentinel ambiguity). */
+typedef struct ccharts_spark_settings {
+    const char* rise_color;
+    const char* area_color;
+    int32_t min_above;
+    int32_t min_below;
+} ccharts_spark_settings;
+
+/* Renders a sparkline of `count` scalar samples (a 1-D sequence of
+ * close-like values, not OHLC rows) into a `width` x `height` grid. Same
+ * contract as ccharts_line: CCHARTS_OK with *out (NUL-terminated UTF-8,
+ * release with ccharts_string_free) on success, CCHARTS_ERR_INVALID_ARG for
+ * NULL samples / count <= 0 / NULL out, CCHARTS_ERR_NON_FINITE for NaN/inf
+ * samples, CCHARTS_ERR_DIMENSIONS for width/height outside cc_dim_ok,
+ * CCHARTS_ERR_NOMEM on allocation failure. On error *out is set to NULL. */
+CCHARTS_API int32_t ccharts_spark(const double* samples, int32_t count,
+                                  int32_t width, int32_t height,
+                                  const ccharts_spark_settings* settings,
+                                  char** out, size_t* out_len);
+
 /* ---------------------------- Introspection ---------------------------- */
 
 /* ANSI escape for a ccharts_color_index, or NULL when out of range. */

@@ -31,6 +31,14 @@
  *       non-str/non-number items; slice values <= 0 make the renderer return
  *       the empty string, exactly like cc_pie_create.
  *
+ *   create_hist(samples, width, height, rise, bg, bins, min, max, bins_flag, prices) -> str
+ *   create_spark(samples, width, height, rise, area, min_above, min_below) -> str
+ *       Both render a 1-D sequence of scalar samples (no capsule). The
+ *       histogram draws vertical bars into equal-width bins; the sparkline
+ *       draws a tiny axis-less trend line. Both raise ValueError for
+ *       non-finite samples (NaN/inf) and invalid dimensions; empty samples
+ *       render the empty string, exactly like cc_hist_create / cc_spark_create.
+ *
  * Build: `make test-py` (see setup.py).
  */
 
@@ -756,6 +764,108 @@ static PyObject* py_create_hist(PyObject* self, PyObject* args) {
     return result;
 }
 
+/* ============================= Sparkline =============================
+ * A sparkline renders a 1-D sequence of scalar samples into a tiny axis-less
+ * trend line (no OHLC capsule). The samples are read through the same buffer
+ * protocol / sequence fast path as the histogram, NaN/inf is rejected, and
+ * the rows are handed to cc_spark_create. Empty samples render the empty
+ * string, matching the C renderer. */
+
+/* Fills `out` with n doubles from a buffer or any sequence, rejecting any
+ * NaN/inf sample before it can reach the renderer's column math. 0 = ok. */
+static int fill_spark_samples(PyObject* obj, double* out, Py_ssize_t n) {
+    PyObject* fast;
+    Py_ssize_t i;
+
+    if (!try_copy_doubles(obj, out, n)) {
+        fast = PySequence_Fast(obj, "samples must be a sequence or a buffer");
+        if (fast == NULL) return -1;
+        if (PySequence_Fast_GET_SIZE(fast) != n) {
+            Py_DECREF(fast);
+            PyErr_SetString(PyExc_ValueError, "samples changed size");
+            return -1;
+        }
+        for (i = 0; i < n; i++) {
+            double v = PyFloat_AsDouble(PySequence_Fast_GET_ITEM(fast, i));
+            if (v == -1.0 && PyErr_Occurred()) {
+                Py_DECREF(fast);
+                return -1;
+            }
+            out[i] = v;
+        }
+        Py_DECREF(fast);
+    }
+    for (i = 0; i < n; i++) {
+        if (!isfinite(out[i])) {
+            PyErr_SetString(PyExc_ValueError,
+                            "sparkline samples must be finite (no NaN or inf)");
+            return -1;
+        }
+    }
+    return 0;
+}
+
+/* Renders a sparkline of a scalar sample sequence. */
+static PyObject* py_create_spark(PyObject* self, PyObject* args) {
+    PyObject* o_samples;
+    const char* rise_color = NULL;
+    const char* area_color = NULL;
+    int width, height;
+    int min_above = 0, min_below = 0;
+    Py_ssize_t n;
+    double* vals = NULL;
+    cc_spark_settings_t settings;
+    char* chart;
+    PyObject* result;
+
+    /* "Oii|zzii": samples, width, height, then optional rise/area colors
+     * and min_above/min_below sub-pixel margins. */
+    if (!PyArg_ParseTuple(args, "Oii|zzii", &o_samples, &width, &height,
+                          &rise_color, &area_color, &min_above, &min_below)) {
+        return NULL;
+    }
+    if (!check_dimensions(width, height)) {
+        PyErr_SetString(PyExc_ValueError,
+                        "width and height must be positive integers within "
+                        "CC_MAX_DIM and CC_MAX_CELLS limits");
+        return NULL;
+    }
+
+    n = arg_len(o_samples);
+    if (n < 0) return NULL;
+    if (n > (Py_ssize_t)(INT_MAX / (int)sizeof(double))) {
+        PyErr_SetString(PyExc_ValueError, "too many samples");
+        return NULL;
+    }
+
+    vals = (double*)malloc((size_t)((n > 0) ? n : 1) * sizeof(double));
+    if (vals == NULL) {
+        PyErr_NoMemory();
+        return NULL;
+    }
+    if (n > 0 && fill_spark_samples(o_samples, vals, n) != 0) {
+        free(vals);
+        return NULL;
+    }
+
+    memset(&settings, 0, sizeof(settings));
+    settings.rise_color = rise_color;
+    settings.area_color = area_color;
+    settings.min_above = min_above;
+    settings.min_below = min_below;
+
+    chart = cc_spark_create(vals, (int)n, width, height, &settings);
+    free(vals);
+    if (chart == NULL) {
+        PyErr_SetString(PyExc_RuntimeError, "failed to create chart");
+        return NULL;
+    }
+
+    result = PyUnicode_FromString(chart);
+    free(chart);
+    return result;
+}
+
 /* Module method table + module definition. */
 static PyMethodDef CChartsMethods[] = {
     {"parse_json", py_parse_json, METH_VARARGS, "convert JSON data into OHLC format"},
@@ -764,6 +874,7 @@ static PyMethodDef CChartsMethods[] = {
     {"create_candle", py_create_candle, METH_VARARGS, "create a candle chart"},
     {"create_pie", py_create_pie, METH_VARARGS, "create a pie or donut chart"},
     {"create_hist", py_create_hist, METH_VARARGS, "create a histogram chart"},
+    {"create_spark", py_create_spark, METH_VARARGS, "create a sparkline chart"},
     {NULL, NULL, 0, NULL}
 };
 

@@ -368,6 +368,43 @@ CC_INLINE char* cc_hist_create(const double* samples, int count,
                                int width, int height,
                                const cc_hist_settings_t* settings);
 
+/* ============================ Sparkline ============================
+ * A sparkline is an ultra-compact, axis-less trend line drawn from a series
+ * of close-like values. Unlike line/candle there is no OHLC data, no price
+ * margin and no time footer — just a single (or few-row) line reusing the
+ * line chart's 8-sub-pixel-per-cell smoothness (cc_lower_eighth). height is
+ * expected small (default 1, up to ~3). */
+
+/* Sparkline rendering options. Unspecified fields fall back to defaults:
+ *   - rise_color : the single line / trend color   (default green)
+ *   - area_color : faint fill under the line, or NULL for none (default)
+ *   - min_above  : reserved sub-pixels at the TOP edge so the line does not
+ *                  touch the top (default 0)
+ *   - min_below  : reserved sub-pixels at the BOTTOM edge (default 0)
+ * Build with a designated initializer and pass NULL to any chart function
+ * for full defaults. min_above/min_below are plain ints, so a partial {0}
+ * brace initializer gets the same defaults as NULL (0 sub-pixels reserved)
+ * with no sentinel ambiguity; rise_color/area_color fall back per field. */
+typedef struct cc_spark_settings {
+    const char* rise_color;
+    const char* area_color;
+    int min_above;
+    int min_below;
+} cc_spark_settings_t;
+
+/* Renders a sparkline of `count` samples into a `width` x `height` grid
+ * (cells). Each column averages the samples in its span, exactly like the
+ * line chart's downsampling, then maps the average to an 8-sub-pixel row;
+ * heights are drawn with cc_lower_eighth tops and rows are assembled
+ * top-to-bottom with no margin/footer/legend. An optional area_color fills
+ * cells below the line. A flat (all-equal) series is centered exactly like
+ * the line chart (no divide-by-zero). Returns a malloc'd string (caller
+ * frees); invalid dimensions or NULL samples/count <= 0 yield an empty
+ * string. Scratch buffers are heap-allocated and freed on every path. */
+CC_INLINE char* cc_spark_create(const double* samples, int count,
+                                int width, int height,
+                                const cc_spark_settings_t* settings);
+
 #ifdef __cplusplus
 }
 #endif
@@ -1772,6 +1809,151 @@ CC_INLINE char* cc_hist_create(const double* samples, int count,
     char* chart = cc_hist_assemble(width, height, columns, &s,
                                    wmin, wmax, max_count, min_count);
     free(counts); free(colv); free(columns);
+    return chart;
+}
+
+/* ---------------------------- Sparkline renderer ---------------------------
+ * An axis-less trend line. For each output column, average the samples that
+ * fall into that column (exactly the line chart's downsampling mapping, so
+ * width < count aggregates and width >= count spreads), map the column
+ * average to an 8-sub-pixel row, then draw the column exactly like the line
+ * chart: cells below the (current,next) line segment get the optional area
+ * fill (or blank), the top partial cell uses cc_lower_eighth, and rows are
+ * assembled top-to-bottom with no margin, footer or legend. min_above /
+ * min_below reserve sub-pixels at the plot's top/bottom edges so the line
+ * does not clip against the very edge at tiny heights. A flat (all-equal)
+ * series is centered (cc_pixel semantics: range 0 -> middle), so there is
+ * no divide-by-zero. Non-finite samples are rejected upstream (wrapper/ABI).
+ * All scratch buffers are heap-allocated (no VLAs), sizeof(char) calloc on
+ * bad args, and freed on every path. ------------------------------------------------------------------------- */
+
+/* Joins the per-cell strings (columns[(x*height + y)*32 .. +32), y counted
+ * from the bottom) into the final sparkline string, printing rows
+ * top-to-bottom with a trailing newline per row and no margin/footer/legend.
+ * Allocates with a pointer cursor (no strcat re-scans); caller frees. */
+CC_INLINE char* cc_spark_assemble(int width, int height, char* columns) {
+    /* Bounded by CC_MAX_CELLS: width*height <= 1e6, so this is <= ~32 MB. */
+    size_t total_size = (size_t)width * (size_t)height * 32 + (size_t)height + 1;
+    char* chart = (char*)calloc(total_size, 1);
+    if (chart == NULL) return NULL;
+
+    char* w = chart;
+    for (int y = height - 1; y >= 0; y--) {
+        for (int x = 0; x < width; x++) {
+            const char* cell = columns + ((size_t)x * height + (size_t)y) * 32;
+            size_t cl = strlen(cell);
+            memcpy(w, cell, cl);
+            w += cl;
+        }
+        *w++ = '\n';
+    }
+    *w = '\0';
+    return chart;
+}
+
+CC_INLINE char* cc_spark_create(const double* samples, int count,
+                                int width, int height,
+                                const cc_spark_settings_t* settings) {
+    if (samples == NULL || count <= 0 || !cc_dim_ok(width, height)) {
+        return (char*)calloc(1, sizeof(char));
+    }
+
+    cc_spark_settings_t s;
+    /* min_above/min_below are plain ints: a partial {0} brace initializer or
+     * a NULL settings both yield 0, so no sentinel ambiguity (unlike the
+     * histogram's double window fields). */
+    s.rise_color = (settings && settings->rise_color) ? settings->rise_color : CC_COLOR_GREEN;
+    s.area_color = (settings && settings->area_color) ? settings->area_color : NULL;
+    s.min_above  = settings ? settings->min_above : 0;
+    s.min_below  = settings ? settings->min_below : 0;
+    if (s.min_above < 0) s.min_above = 0;
+    if (s.min_below < 0) s.min_below = 0;
+
+    double* vals = (double*)calloc((size_t)width, sizeof(double));
+    int* py = (int*)malloc((size_t)width * sizeof(int));
+    char* columns = (char*)malloc((size_t)width * (size_t)height * 32);
+    if (vals == NULL || py == NULL || columns == NULL) {
+        free(vals); free(py); free(columns);
+        return NULL;
+    }
+
+    /* Column averages, exactly the line chart's downsampling mapping. */
+    for (int w = 0; w < width; w++) {
+        int start_idx = (int)(((long long)w * count) / width);
+        int end_idx = (int)((((long long)w + 1) * count) / width);
+        if (end_idx <= start_idx) end_idx = start_idx + 1;
+
+        double sum = 0.0;
+        for (int k = start_idx; k < end_idx && k < count; k++) {
+            sum += samples[k];
+        }
+        vals[w] = sum / (end_idx - start_idx);
+    }
+
+    double min = find_min(vals, width);
+    double max = find_max(vals, width);
+    double range = max - min;
+
+    int pixel_height = height * 8;
+    int span = pixel_height - s.min_above - s.min_below;
+    if (span < 1) span = 1;
+
+    for (int i = 0; i < width; i++) {
+        /* Mirrors cc_pixel but reserves the top/bottom sub-pixel margins.
+         * range == 0 (flat series) centers the line in the usable band. */
+        double t = (range == 0.0) ? 0.5 : (vals[i] - min) / range;
+        int p = (int)lround(s.min_above + t * (span - 1));
+        if (p < 0) p = 0;
+        if (p >= pixel_height) p = pixel_height - 1;
+        py[i] = p;
+    }
+
+    for (int i = 0; i < width; i++) {
+        int lo = py[i];
+        int hi = py[i];
+        if (i + 1 < width) {
+            if (py[i+1] < lo) lo = py[i+1];
+            if (py[i+1] > hi) hi = py[i+1];
+        }
+
+        int cell_lo = lo / 8;
+        int cell_hi = hi / 8;
+        char* col = columns + (size_t)i * height * 32;
+
+        /* Below the line segment: area fill or blank. */
+        for (int r = 0; r < cell_lo && r < height; r++) {
+            char* cell = col + (size_t)r * 32;
+            if (s.area_color != NULL) {
+                snprintf(cell, 32, "%s %s", s.area_color,
+                         cc_reset_for(s.area_color, NULL));
+            } else {
+                snprintf(cell, 32, " ");
+            }
+        }
+
+        /* Line body: full blocks between columns' pixels. */
+        for (int r = cell_lo; r < cell_hi && r < height; r++) {
+            snprintf(col + (size_t)r * 32, 32, "%s%s%s", CC_S(s.rise_color),
+                     CC_BLOCK_FULL, cc_reset_for(s.rise_color, NULL));
+        }
+
+        /* Top partial cell: smooth 8-level top. */
+        if (cell_hi >= 0 && cell_hi < height) {
+            int count8 = hi - cell_hi * 8 + 1;
+            if (count8 > 8) count8 = 8;
+            snprintf(col + (size_t)cell_hi * 32, 32, "%s%s%s",
+                     CC_S(s.rise_color), cc_lower_eighth(count8),
+                     cc_reset_for(s.rise_color, NULL));
+        }
+
+        /* Above the line: blank. */
+        for (int r = cell_hi + 1; r < height; r++) {
+            snprintf(col + (size_t)r * 32, 32, " ");
+        }
+    }
+
+    char* chart = cc_spark_assemble(width, height, columns);
+    free(vals); free(py); free(columns);
     return chart;
 }
 

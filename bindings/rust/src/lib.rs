@@ -507,6 +507,82 @@ impl Default for HistogramOptions {
     }
 }
 
+/// Options for [`Chart::sparkline`]. Every field is optional; unset ones take
+/// the library defaults (green line, no area fill, no reserved edge margins).
+#[derive(Debug, Clone)]
+pub struct SparklineOptions {
+    rise: Option<ColorSpec>,
+    area: Option<ColorSpec>,
+    min_above: i32,
+    min_below: i32,
+    plain: bool,
+}
+
+impl SparklineOptions {
+    /// Options with every field at its default.
+    pub fn new() -> Self {
+        Self {
+            rise: None,
+            area: None,
+            min_above: 0,
+            min_below: 0,
+            plain: false,
+        }
+    }
+
+    color_setter!(rise, rise_ansi, rise, "Trend line color.");
+    color_setter!(
+        area,
+        area_ansi,
+        area,
+        "Fill color below the line (the area under the trend)."
+    );
+
+    /// Reserve this many sub-pixels at the top edge so the line does not clip
+    /// at the very top of a tiny chart. Default `0`.
+    pub fn min_above(mut self, sub_pixels: i32) -> Self {
+        self.min_above = sub_pixels;
+        self
+    }
+
+    /// Reserve this many sub-pixels at the bottom edge so the line does not
+    /// clip at the very bottom of a tiny chart. Default `0`.
+    pub fn min_below(mut self, sub_pixels: i32) -> Self {
+        self.min_below = sub_pixels;
+        self
+    }
+
+    /// Render with no ANSI escapes at all, overriding every color.
+    pub fn plain(mut self, yes: bool) -> Self {
+        self.plain = yes;
+        self
+    }
+
+    fn to_raw(&self) -> ffi::ccharts_spark_settings {
+        const EMPTY: &[u8] = b"\0";
+        let plain = EMPTY.as_ptr() as *const c_char;
+        let ptr = |spec: &Option<ColorSpec>| -> *const c_char {
+            if self.plain {
+                plain
+            } else {
+                spec.as_ref().map_or(std::ptr::null(), ColorSpec::as_ptr)
+            }
+        };
+        ffi::ccharts_spark_settings {
+            rise_color: ptr(&self.rise),
+            area_color: ptr(&self.area),
+            min_above: self.min_above,
+            min_below: self.min_below,
+        }
+    }
+}
+
+impl Default for SparklineOptions {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// A parsed OHLC dataset that can be rendered as a line or candle chart.
 pub struct Chart {
     handle: NonNull<ffi::ccharts_data>,
@@ -709,6 +785,53 @@ impl Chart {
         // receives an owned string we release below.
         let status = unsafe {
             ffi::ccharts_hist(
+                samples.as_ptr(),
+                count,
+                width,
+                height,
+                &raw,
+                &mut out,
+                &mut len,
+            )
+        };
+        if status != 0 {
+            return Err(Error::from_status(status));
+        }
+        // Safety: `out` is a library-owned buffer released by take_string.
+        unsafe { Self::take_string(out, len) }
+    }
+
+    /// Renders a sparkline of the given scalar samples.
+    ///
+    /// A sparkline has no OHLC data, so (like [`Chart::pie`]) this is an
+    /// associated function: it takes the samples directly. `options.rise`
+    /// / `options.area` override the line/fill colors, and `options.min_above`
+    /// / `options.min_below` reserve sub-pixels at the top/bottom edge so the
+    /// line does not clip. NaN or infinite samples are rejected with
+    /// [`Error::NonFinite`].
+    pub fn sparkline(
+        samples: &[f64],
+        width: u32,
+        height: u32,
+        options: &SparklineOptions,
+    ) -> Result<String> {
+        if samples.is_empty() {
+            return Err(Error::InvalidArgument("need at least one sample"));
+        }
+        let count = i32::try_from(samples.len())
+            .map_err(|_| Error::InvalidArgument("too many samples"))?;
+        let (width, height) = match (i32::try_from(width), i32::try_from(height)) {
+            (Ok(w), Ok(h)) => (w, h),
+            _ => return Err(Error::Dimensions),
+        };
+
+        let raw = options.to_raw();
+        let mut out: *mut c_char = std::ptr::null_mut();
+        let mut len: usize = 0;
+        // Safety: the samples and settings live across the call, and `out`
+        // receives an owned string we release below.
+        let status = unsafe {
+            ffi::ccharts_spark(
                 samples.as_ptr(),
                 count,
                 width,

@@ -58,6 +58,8 @@ type suite struct {
 			MinValue         *float64 `json:"min_value"`
 			MaxValue         *float64 `json:"max_value"`
 			ShowBins         bool     `json:"show_bins"`
+			MinAbove         int      `json:"min_above"`
+			MinBelow         int      `json:"min_below"`
 		} `json:"settings"`
 	} `json:"cases"`
 }
@@ -127,7 +129,7 @@ func TestConformance(t *testing.T) {
 	if err := json.Unmarshal(raw, &s); err != nil {
 		t.Fatalf("cases.json: %v", err)
 	}
-	if len(s.Cases) < 41 {
+	if len(s.Cases) < 46 {
 		t.Fatalf("conformance suite looks truncated: %d cases", len(s.Cases))
 	}
 
@@ -147,6 +149,15 @@ func TestConformance(t *testing.T) {
 						ShowBins:        tc.Settings.ShowBins,
 						ShowPrices:      tc.Settings.ShowPrices,
 						Plain:           tc.Settings.Plain,
+					})
+			} else if tc.Chart == "spark" {
+				got, err = ccharts.Sparkline(tc.Samples, tc.Width, tc.Height,
+					&ccharts.SparklineOptions{
+						RiseColor: color(t, tc.Settings.RiseColor),
+						AreaColor: color(t, tc.Settings.AreaColor),
+						MinAbove:  tc.Settings.MinAbove,
+						MinBelow:  tc.Settings.MinBelow,
+						Plain:     tc.Settings.Plain,
 					})
 			} else if tc.Chart == "pie" {
 				slices := make([]ccharts.Slice, len(tc.Slices))

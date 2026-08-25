@@ -349,6 +349,45 @@ int32_t ccharts_hist(const double* samples, int32_t count,
     return CCHARTS_OK;
 }
 
+/* ------------------------------ Sparkline ------------------------------ */
+
+int32_t ccharts_spark(const double* samples, int32_t count,
+                      int32_t width, int32_t height,
+                      const ccharts_spark_settings* settings,
+                      char** out, size_t* out_len) {
+    cc_spark_settings_t ss;
+    char* chart;
+    int32_t i;
+
+    if (out == NULL) return CCHARTS_ERR_INVALID_ARG;
+    *out = NULL;
+    if (out_len != NULL) *out_len = 0;
+    if (samples == NULL || count <= 0) return CCHARTS_ERR_INVALID_ARG;
+    if (!cc_dim_ok((int)width, (int)height)) return CCHARTS_ERR_DIMENSIONS;
+
+    /* NaN/inf samples would poison the column-average min/max math (and
+     * lround in the mapping), so reject them at the boundary like every
+     * other price path. */
+    for (i = 0; i < count; i++) {
+        if (!isfinite(samples[i])) return CCHARTS_ERR_NON_FINITE;
+    }
+
+    memset(&ss, 0, sizeof(ss));
+    if (settings != NULL) {
+        ss.rise_color = settings->rise_color;
+        ss.area_color = settings->area_color;
+        ss.min_above = (int)settings->min_above;
+        ss.min_below = (int)settings->min_below;
+    }
+
+    chart = cc_spark_create(samples, (int)count, (int)width, (int)height, &ss);
+    if (chart == NULL) return CCHARTS_ERR_NOMEM;
+
+    *out = chart;
+    if (out_len != NULL) *out_len = strlen(chart);
+    return CCHARTS_OK;
+}
+
 /* ---------------------------- Introspection ---------------------------- */
 
 const char* ccharts_color(int32_t index) {

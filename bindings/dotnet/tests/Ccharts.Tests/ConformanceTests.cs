@@ -65,7 +65,7 @@ public class ConformanceTests
             File.ReadAllBytes(Path.Combine(suiteDir!, "cases.json")));
         var datasets = document.RootElement.GetProperty("datasets");
         var cases = document.RootElement.GetProperty("cases").EnumerateArray().ToList();
-        Assert.True(cases.Count >= 41, "conformance suite looks truncated");
+        Assert.True(cases.Count >= 46, "conformance suite looks truncated");
 
         foreach (var testCase in cases)
         {
@@ -96,6 +96,24 @@ public class ConformanceTests
                     ShowBins = settings.TryGetProperty("show_bins", out var bins) && bins.GetBoolean(),
                     ShowPrices = settings.TryGetProperty("show_prices", out var prices)
                         && prices.GetBoolean(),
+                    Plain = settings.TryGetProperty("plain", out var plain) && plain.GetBoolean(),
+                });
+            }
+            else if (chartName == "spark")
+            {
+                var samples = testCase.GetProperty("samples").EnumerateArray()
+                    .Select(v => v.GetDouble()).ToArray();
+
+                rendered = Chart.Sparkline(samples, new SparklineOptions
+                {
+                    Width = testCase.GetProperty("width").GetInt32(),
+                    Height = testCase.GetProperty("height").GetInt32(),
+                    RiseColor = ColorFor(settings, "rise_color"),
+                    AreaColor = ColorFor(settings, "area_color"),
+                    MinAbove = settings.TryGetProperty("min_above", out var above)
+                        ? above.GetInt32() : 0,
+                    MinBelow = settings.TryGetProperty("min_below", out var below)
+                        ? below.GetInt32() : 0,
                     Plain = settings.TryGetProperty("plain", out var plain) && plain.GetBoolean(),
                 });
             }

@@ -38,6 +38,14 @@ pub struct ccharts_hist_settings {
     pub show_prices: i32,
 }
 
+#[repr(C)]
+pub struct ccharts_spark_settings {
+    pub rise_color: *const c_char,
+    pub area_color: *const c_char,
+    pub min_above: i32,
+    pub min_below: i32,
+}
+
 extern "C" {
     pub fn ccharts_from_arrays(
         open: *const f64,
@@ -82,6 +90,16 @@ extern "C" {
         width: i32,
         height: i32,
         settings: *const ccharts_hist_settings,
+        out: *mut *mut c_char,
+        out_len: *mut usize,
+    ) -> i32;
+
+    pub fn ccharts_spark(
+        samples: *const f64,
+        count: i32,
+        width: i32,
+        height: i32,
+        settings: *const ccharts_spark_settings,
         out: *mut *mut c_char,
         out_len: *mut usize,
     ) -> i32;

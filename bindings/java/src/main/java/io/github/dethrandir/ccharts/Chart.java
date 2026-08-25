@@ -326,6 +326,69 @@ public final class Chart implements AutoCloseable {
     }
 
     /**
+     * Renders a sparkline of the given scalar samples. A sparkline has no
+     * OHLC dataset, so this is a static method taking the raw sample values.
+     *
+     * @param samples the close-like trend values to draw
+     * @param width chart width in cells
+     * @param height chart height in cells
+     * @param options sparkline options
+     * @return the chart as a printable string
+     * @throws CchartsException if the samples are empty, hold NaN/infinity,
+     *     or the dimensions are out of range
+     */
+    public static String sparkline(double[] samples, int width, int height,
+            SparklineOptions options) {
+        if (samples == null || samples.length == 0) {
+            throw new CchartsException(CchartsException.Status.INVALID_ARGUMENT,
+                    "need at least one sample");
+        }
+
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment settings = arena.allocate(Native.SPARK_SETTINGS);
+            // An empty C string means "emit no escape at all", which is
+            // different from a null pointer (use the default color).
+            String forced = options.plain() ? "" : null;
+            settings.set(ValueLayout.ADDRESS, 0,
+                    text(arena, forced != null ? forced : options.riseColor()));
+            settings.set(ValueLayout.ADDRESS, 8,
+                    text(arena, forced != null ? forced : options.areaColor()));
+            settings.set(ValueLayout.JAVA_INT, 16, options.minAbove());
+            settings.set(ValueLayout.JAVA_INT, 20, options.minBelow());
+
+            MemorySegment out = arena.allocate(ValueLayout.ADDRESS);
+            MemorySegment lengthOut = arena.allocate(ValueLayout.JAVA_LONG);
+            int status = (int) Native.SPARK.invokeExact(
+                    arena.allocateFrom(ValueLayout.JAVA_DOUBLE, samples),
+                    samples.length, width, height, settings, out, lengthOut);
+            CchartsException.throwIfError(status);
+
+            MemorySegment chart = out.get(ValueLayout.ADDRESS, 0);
+            long size = lengthOut.get(ValueLayout.JAVA_LONG, 0);
+            try {
+                byte[] bytes = chart.reinterpret(size).toArray(ValueLayout.JAVA_BYTE);
+                return new String(bytes, StandardCharsets.UTF_8);
+            } finally {
+                Native.STRING_FREE.invokeExact(chart);
+            }
+        } catch (Throwable t) {
+            throw Native.wrap(t);
+        }
+    }
+
+    /**
+     * Renders a sparkline of the given samples with the default options.
+     *
+     * @param samples the close-like trend values to draw
+     * @param width chart width in cells
+     * @param height chart height in cells
+     * @return the chart as a printable string
+     */
+    public static String sparkline(double[] samples, int width, int height) {
+        return sparkline(samples, width, height, SparklineOptions.DEFAULTS);
+    }
+
+    /**
      * Number of candles in the dataset.
      *
      * @return the candle count

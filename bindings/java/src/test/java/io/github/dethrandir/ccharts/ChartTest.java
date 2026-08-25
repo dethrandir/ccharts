@@ -244,4 +244,30 @@ class ChartTest {
                 () -> Chart.histogram(new double[] {Double.NaN, 1.0}, 40, 6));
         assertEquals(CchartsException.Status.NON_FINITE, bad.status());
     }
+
+    @Test
+    @DisplayName("sparkline draws a trend line, passes color/margins and rejects empty/NaN samples")
+    void sparklineRendersAndValidates() {
+        double[] samples = {5, 7, 4, 8, 6, 9, 4, 7, 10, 8, 12, 6};
+
+        String line = Chart.sparkline(samples, 24, 1);
+        assertTrue(line.length() > 0, "sparkline draws a row");
+
+        String colored = Chart.sparkline(samples, 24, 2, SparklineOptions.builder()
+                .rise(Color.BLUE)
+                .area(Color.BRIGHT_BLACK)
+                .minAbove(2)
+                .minBelow(1)
+                .build());
+        assertTrue(colored.contains("\u001b[34m"), "rise color passes through");
+        assertTrue(colored.contains("\u001b[90m"), "area color passes through");
+
+        CchartsException empty = assertThrows(CchartsException.class,
+                () -> Chart.sparkline(new double[0], 24, 1));
+        assertEquals(CchartsException.Status.INVALID_ARGUMENT, empty.status());
+
+        CchartsException bad = assertThrows(CchartsException.class,
+                () -> Chart.sparkline(new double[] {Double.NaN, 1.0}, 24, 1));
+        assertEquals(CchartsException.Status.NON_FINITE, bad.status());
+    }
 }

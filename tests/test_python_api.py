@@ -8,6 +8,7 @@ Run from the repo root (or via `make test-py`):
 import array
 import gc
 import json
+import re
 import unittest
 from datetime import datetime
 
@@ -517,6 +518,88 @@ class TestHistogram(unittest.TestCase):
 
     def test_histogram_plain_has_no_escapes(self):
         out = Chart.histogram(self.SAMPLES, plain=True)
+        self.assertNotIn("\x1b", out)
+
+
+class TestSparkline(unittest.TestCase):
+    """Sparkline rendering (Chart.sparkline) — a static method, raw samples."""
+
+    SAMPLES = [5, 7, 4, 8, 6, 9, 4, 7, 10, 8, 12, 6,
+               11, 9, 13, 10, 15, 12, 14, 16, 11, 13, 9, 12]
+
+    def test_sparkline_returns_string(self):
+        out = Chart.sparkline(self.SAMPLES)
+        self.assertIsInstance(out, str)
+        self.assertGreater(len(out), 0)
+        self.assertIn("\n", out)
+
+    def test_sparkline_default_height_one(self):
+        # Default height=1 must fit on a single line (plus the trailing newline).
+        out = Chart.sparkline(self.SAMPLES, width=24)
+        self.assertEqual(len(out.strip("\n").split("\n")), 1)
+
+    def test_sparkline_uses_block_chars(self):
+        out = Chart.sparkline(self.SAMPLES)
+        self.assertTrue(any(ch in out for ch in "▁▂▃▅▆▇█"),
+                        "sparkline should use eighth-block bar characters")
+
+    def test_sparkline_is_deterministic(self):
+        self.assertEqual(Chart.sparkline(self.SAMPLES),
+                         Chart.sparkline(self.SAMPLES))
+
+    def test_sparkline_height_two_more_rows(self):
+        h1 = Chart.sparkline(self.SAMPLES, width=24, height=1)
+        h2 = Chart.sparkline(self.SAMPLES, width=24, height=2)
+        self.assertEqual(len(h2.strip("\n").split("\n")), 2)
+        self.assertNotEqual(h1, h2)
+
+    def test_sparkline_area_fill(self):
+        plain = Chart.sparkline(self.SAMPLES, width=24, height=2)
+        filled = Chart.sparkline(self.SAMPLES, width=24, height=2,
+                                 area_color="\x1b[90m")
+        self.assertNotEqual(plain, filled)
+
+    def test_sparkline_margins_change_output(self):
+        no_margin = Chart.sparkline(self.SAMPLES, width=24)
+        margined = Chart.sparkline(self.SAMPLES, width=24,
+                                   min_above=2, min_below=1)
+        self.assertNotEqual(no_margin, margined)
+
+    def test_sparkline_flat_series(self):
+        out = Chart.sparkline([5.0] * 20, width=20)
+        # One bar per column, ignoring ANSI color/reset escape sequences.
+        self.assertEqual(
+            len(re.sub(r"\x1b\[[0-9;]*m", "", out).strip("\n")), 20)
+        out2 = Chart.sparkline([2.0] * 5, width=5)
+        self.assertEqual(
+            len(re.sub(r"\x1b\[[0-9;]*m", "", out2).strip("\n")), 5)
+
+    def test_sparkline_single_sample(self):
+        out = Chart.sparkline([3], width=12, height=2)
+        self.assertGreater(len(out), 0)
+
+    def test_sparkline_non_finite_raises(self):
+        for bad in (float("nan"), float("inf"), float("-inf")):
+            with self.assertRaises(ValueError):
+                Chart.sparkline([1.0, bad])
+
+    def test_sparkline_zero_count_is_empty(self):
+        self.assertEqual(Chart.sparkline([]), "")
+
+    def test_sparkline_dimension_validation(self):
+        with self.assertRaises(ValueError):
+            Chart.sparkline(self.SAMPLES, width=0)
+        with self.assertRaises(ValueError):
+            Chart.sparkline(self.SAMPLES, height=-1)
+        with self.assertRaises(TypeError):
+            Chart.sparkline(self.SAMPLES, width=2.5)
+
+    def test_sparkline_buffer_input(self):
+        out = Chart.sparkline(array.array("d", self.SAMPLES), width=24)
+        self.assertGreater(len(out), 0)
+
+    def test_sparkline_plain_has_no_escapes(self):
+        out = Chart.sparkline(self.SAMPLES, plain=True)
         self.assertNotIn("\x1b", out)
 
 

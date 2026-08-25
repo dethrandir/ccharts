@@ -6,7 +6,7 @@
 
 use std::path::{Path, PathBuf};
 
-use ccharts::{Chart, Color, HistogramOptions, PieOptions, PieSlice, Settings};
+use ccharts::{Chart, Color, HistogramOptions, PieOptions, PieSlice, Settings, SparklineOptions};
 use serde_json::Value;
 
 fn suite_dir() -> Option<PathBuf> {
@@ -64,7 +64,7 @@ fn matches_the_shared_goldens() {
     let doc: Value =
         serde_json::from_slice(&std::fs::read(dir.join("cases.json")).unwrap()).unwrap();
     let cases = doc["cases"].as_array().expect("cases");
-    assert!(cases.len() >= 41, "conformance suite looks truncated");
+    assert!(cases.len() >= 46, "conformance suite looks truncated");
 
     let mut failures = Vec::new();
     for case in cases {
@@ -94,6 +94,24 @@ fn matches_the_shared_goldens() {
                 opts = opts.background(c);
             }
             Chart::histogram(&samples, width, height, &opts)
+        } else if case["chart"].as_str().unwrap() == "spark" {
+            let samples: Vec<f64> = case["samples"]
+                .as_array()
+                .expect("spark samples")
+                .iter()
+                .map(|v| v.as_f64().expect("sample value"))
+                .collect();
+            let mut opts = SparklineOptions::new()
+                .min_above(cfg["min_above"].as_i64().unwrap_or(0) as i32)
+                .min_below(cfg["min_below"].as_i64().unwrap_or(0) as i32)
+                .plain(cfg["plain"].as_bool().unwrap_or(false));
+            if let Some(c) = color(&cfg["rise_color"]) {
+                opts = opts.rise(c);
+            }
+            if let Some(c) = color(&cfg["area_color"]) {
+                opts = opts.area(c);
+            }
+            Chart::sparkline(&samples, width, height, &opts)
         } else if case["chart"].as_str().unwrap() == "pie" {
             let slices: Vec<PieSlice> = case["slices"]
                 .as_array()

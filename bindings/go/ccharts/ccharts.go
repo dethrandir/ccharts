@@ -510,6 +510,82 @@ func Histogram(samples []float64, width, height int, opts *HistogramOptions) (st
 	return C.GoStringN(out, C.int(length)), nil
 }
 
+// SparklineOptions controls how a sparkline is drawn. A nil *SparklineOptions
+// behaves like &SparklineOptions{}: a green line, no area fill, no reserved
+// edge margins.
+type SparklineOptions struct {
+	// RiseColor colors the trend line (default green).
+	RiseColor Color
+	// AreaColor fills the area under the line (default: nothing).
+	AreaColor Color
+	// MinAbove reserves this many sub-pixels at the top edge so the line
+	// does not clip at the very top of a tiny chart.
+	MinAbove int
+	// MinBelow reserves this many sub-pixels at the bottom edge so the line
+	// does not clip at the very bottom of a tiny chart.
+	MinBelow int
+	// Plain renders with no ANSI escapes at all, overriding every color.
+	Plain bool
+}
+
+// Sparkline renders a sparkline of the given scalar samples. A sparkline has
+// no OHLC dataset, so this is a package function rather than a Chart method.
+//
+// opts may be nil. NaN and inf samples are rejected with ErrNonFinite.
+func Sparkline(samples []float64, width, height int, opts *SparklineOptions) (string, error) {
+	if len(samples) == 0 {
+		return "", ErrInvalidArgument
+	}
+	if width <= 0 || height <= 0 || width > int(C.ccharts_max_dim()) ||
+		height > int(C.ccharts_max_dim()) {
+		return "", ErrDimensions
+	}
+
+	var settings C.ccharts_spark_settings
+	var allocated []*C.char
+	defer func() {
+		for _, cs := range allocated {
+			C.free(unsafe.Pointer(cs))
+		}
+	}()
+	set := func(dst **C.char, color Color) {
+		if opts == nil {
+			return
+		}
+		if opts.Plain {
+			cs := C.CString("")
+			allocated = append(allocated, cs)
+			*dst = cs
+			return
+		}
+		if color == "" {
+			return
+		}
+		cs := C.CString(string(color))
+		allocated = append(allocated, cs)
+		*dst = cs
+	}
+	set(&settings.rise_color, opts.RiseColor)
+	set(&settings.area_color, opts.AreaColor)
+	if opts != nil {
+		settings.min_above = C.int32_t(opts.MinAbove)
+		settings.min_below = C.int32_t(opts.MinBelow)
+	}
+
+	var out *C.char
+	var length C.size_t
+	status := C.ccharts_spark(
+		(*C.double)(unsafe.Pointer(&samples[0])), C.int32_t(len(samples)),
+		C.int32_t(width), C.int32_t(height),
+		&settings, &out, &length)
+	runtime.KeepAlive(samples)
+	if err := statusError(status); err != nil {
+		return "", err
+	}
+	defer C.ccharts_string_free(out)
+	return C.GoStringN(out, C.int(length)), nil
+}
+
 // setColors fills the C settings struct and returns a function releasing the
 // C strings it allocated.
 func setColors(settings *C.ccharts_settings, opts *Options) func() {
