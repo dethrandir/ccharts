@@ -153,6 +153,14 @@
 #define CC_GMTIME_R(t, tm) (gmtime_r((t), (tm)) != NULL)
 #endif
 
+#if defined(NAN)
+#define CC_NAN ((double)NAN)
+#elif defined(_MSC_VER)
+#define CC_NAN ((double)sqrt(-1.0))
+#else
+#define CC_NAN (0.0 / 0.0)
+#endif
+
 /* Chart dimensions are bounded to keep allocations sane and to avoid
  * integer-overflow surprises. A terminal chart needs nowhere near these
  * sizes; dimension checks fail cleanly (empty string / NULL) instead of
@@ -2000,9 +2008,9 @@ CC_INLINE char* cc_hist_create(const double* samples, int count,
     s.bin_count   = settings ? settings->bin_count : 0;
     /* NaN is the "auto" sentinel for the window doubles (0.0 is meaningful). */
     s.min_value   = (settings && settings->min_value == settings->min_value)
-                    ? settings->min_value : 0.0/0.0;
+                    ? settings->min_value : CC_NAN;
     s.max_value   = (settings && settings->max_value == settings->max_value)
-                    ? settings->max_value : 0.0/0.0;
+                    ? settings->max_value : CC_NAN;
     s.show_bins   = settings ? settings->show_bins : 0;
     s.show_prices = settings ? settings->show_prices : 0;
 

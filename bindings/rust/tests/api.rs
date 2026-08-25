@@ -2,8 +2,8 @@
 //! against the shared goldens in conformance.rs.
 
 use ccharts::{
-    BarOptions, BoxOptions, Chart, Color, Error, HeatOptions, HistogramOptions, PieOptions, PieSlice,
-    Settings, SparklineOptions, StackOptions,
+    BarOptions, BoxOptions, Chart, Color, Error, HeatOptions, HistogramOptions, PieOptions,
+    PieSlice, Settings, SparklineOptions, StackOptions,
 };
 
 fn sample() -> Chart {
@@ -162,9 +162,20 @@ fn exposes_library_metadata() {
 
 #[test]
 fn pie_renders_disk_and_donut_and_rejects_bad_input() {
-    let slices = [PieSlice { label: Some("A"), value: 40.0 },
-                  PieSlice { label: Some("B"), value: 30.0 },
-                  PieSlice { label: Some("C"), value: 30.0 }];
+    let slices = [
+        PieSlice {
+            label: Some("A"),
+            value: 40.0,
+        },
+        PieSlice {
+            label: Some("B"),
+            value: 30.0,
+        },
+        PieSlice {
+            label: Some("C"),
+            value: 30.0,
+        },
+    ];
 
     let disk = Chart::pie(&slices, 24, 10, &PieOptions::new()).unwrap();
     assert!(disk.contains('█'));
@@ -173,35 +184,92 @@ fn pie_renders_disk_and_donut_and_rejects_bad_input() {
     assert_ne!(disk, donut);
 
     // All-zero slices render the empty string, not an error.
-    let empty = Chart::pie(&[PieSlice { label: Some("Zero"), value: 0.0 }],
-                           24, 10, &PieOptions::new()).unwrap();
+    let empty = Chart::pie(
+        &[PieSlice {
+            label: Some("Zero"),
+            value: 0.0,
+        }],
+        24,
+        10,
+        &PieOptions::new(),
+    )
+    .unwrap();
     assert!(empty.is_empty());
 
     // NaN and inf are rejected with Error::NonFinite.
-    let bad = Chart::pie(&[PieSlice { label: None, value: f64::NAN }],
-                         24, 10, &PieOptions::new());
+    let bad = Chart::pie(
+        &[PieSlice {
+            label: None,
+            value: f64::NAN,
+        }],
+        24,
+        10,
+        &PieOptions::new(),
+    );
     assert_eq!(bad.unwrap_err(), ccharts::Error::NonFinite);
 }
 
 #[test]
 fn pie_optional_settings_are_wired_through() {
-    let slices = [PieSlice { label: Some("A"), value: 40.0 },
-                  PieSlice { label: Some("B"), value: 30.0 },
-                  PieSlice { label: Some("C"), value: 30.0 }];
+    let slices = [
+        PieSlice {
+            label: Some("A"),
+            value: 40.0,
+        },
+        PieSlice {
+            label: Some("B"),
+            value: 30.0,
+        },
+        PieSlice {
+            label: Some("C"),
+            value: 30.0,
+        },
+    ];
 
     let base = Chart::pie(&slices, 24, 10, &PieOptions::new().donut(true)).unwrap();
 
-    let gap = Chart::pie(&slices, 24, 10, &PieOptions::new().donut(true).slice_gap(0.15)).unwrap();
-    let thick = Chart::pie(&slices, 24, 10, &PieOptions::new().donut(true)
-        .inner_radius_ratio(0.2)).unwrap();
-    let alt = Chart::pie(&slices, 24, 10, &PieOptions::new().donut(true)
-        .legend_format(1)).unwrap();
-    let angled = Chart::pie(&slices, 24, 10, &PieOptions::new().donut(true)
-        .start_angle(0.0)).unwrap();
-    let cw = Chart::pie(&slices, 24, 10, &PieOptions::new().donut(true)
-        .counter_clockwise(true)).unwrap();
-    let centered = Chart::pie(&slices, 24, 10, &PieOptions::new().donut(true)
-        .center_text("42")).unwrap();
+    let gap = Chart::pie(
+        &slices,
+        24,
+        10,
+        &PieOptions::new().donut(true).slice_gap(0.15),
+    )
+    .unwrap();
+    let thick = Chart::pie(
+        &slices,
+        24,
+        10,
+        &PieOptions::new().donut(true).inner_radius_ratio(0.2),
+    )
+    .unwrap();
+    let alt = Chart::pie(
+        &slices,
+        24,
+        10,
+        &PieOptions::new().donut(true).legend_format(1),
+    )
+    .unwrap();
+    let angled = Chart::pie(
+        &slices,
+        24,
+        10,
+        &PieOptions::new().donut(true).start_angle(0.0),
+    )
+    .unwrap();
+    let cw = Chart::pie(
+        &slices,
+        24,
+        10,
+        &PieOptions::new().donut(true).counter_clockwise(true),
+    )
+    .unwrap();
+    let centered = Chart::pie(
+        &slices,
+        24,
+        10,
+        &PieOptions::new().donut(true).center_text("42"),
+    )
+    .unwrap();
 
     // Every new option changes at least the render, proving the value reached
     // the renderer rather than being ignored.
@@ -225,8 +293,7 @@ fn histogram_renders_and_wires_options() {
     assert_eq!(base.lines().count(), 6);
 
     // A >0 bin count and an explicit range each change the render.
-    let binned =
-        Chart::histogram(&samples, 40, 6, &HistogramOptions::new().bin_count(5)).unwrap();
+    let binned = Chart::histogram(&samples, 40, 6, &HistogramOptions::new().bin_count(5)).unwrap();
     assert_ne!(base, binned, "bin_count must take effect");
 
     let ranged = Chart::histogram(
@@ -255,8 +322,8 @@ fn histogram_renders_and_wires_options() {
     }
 
     // Colors flow through.
-    let colored = Chart::histogram(&samples, 40, 6, &HistogramOptions::new().rise(Color::Blue))
-        .unwrap();
+    let colored =
+        Chart::histogram(&samples, 40, 6, &HistogramOptions::new().rise(Color::Blue)).unwrap();
     assert!(colored.contains("\u{1b}[34m"));
 }
 
@@ -277,9 +344,13 @@ fn sparkline_renders_and_wires_options() {
     assert_ne!(base, margined, "min_above/min_below must take effect");
 
     // An area color changes the render.
-    let area =
-        Chart::sparkline(&samples, 24, 2, &SparklineOptions::new().area(Color::BrightBlack))
-            .unwrap();
+    let area = Chart::sparkline(
+        &samples,
+        24,
+        2,
+        &SparklineOptions::new().area(Color::BrightBlack),
+    )
+    .unwrap();
     assert_ne!(base, area, "area_color must take effect");
 
     // NaN/inf samples are rejected with Error::NonFinite.
@@ -291,8 +362,8 @@ fn sparkline_renders_and_wires_options() {
     }
 
     // Colors flow through.
-    let colored = Chart::sparkline(&samples, 24, 1, &SparklineOptions::new().rise(Color::Blue))
-        .unwrap();
+    let colored =
+        Chart::sparkline(&samples, 24, 1, &SparklineOptions::new().rise(Color::Blue)).unwrap();
     assert!(colored.contains("\u{1b}[34m"));
 }
 
@@ -305,11 +376,25 @@ fn bar_renders_and_wires_options() {
     assert_eq!(base.lines().count(), 6);
 
     // A label footer changes the render.
-    let labeled = Chart::bar(&labels, &values, 12, 6, &BarOptions::new().show_labels(true)).unwrap();
+    let labeled = Chart::bar(
+        &labels,
+        &values,
+        12,
+        6,
+        &BarOptions::new().show_labels(true),
+    )
+    .unwrap();
     assert_ne!(base, labeled, "show_labels must take effect");
 
     // A value axis changes the render.
-    let margined = Chart::bar(&labels, &values, 12, 6, &BarOptions::new().show_prices(true)).unwrap();
+    let margined = Chart::bar(
+        &labels,
+        &values,
+        12,
+        6,
+        &BarOptions::new().show_prices(true),
+    )
+    .unwrap();
     assert_ne!(base, margined, "show_prices must take effect");
 
     // Plain output has no escapes.
@@ -331,7 +416,14 @@ fn bar_renders_and_wires_options() {
     ));
 
     // Colors flow through.
-    let colored = Chart::bar(&labels, &values, 12, 6, &BarOptions::new().rise(Color::Blue)).unwrap();
+    let colored = Chart::bar(
+        &labels,
+        &values,
+        12,
+        6,
+        &BarOptions::new().rise(Color::Blue),
+    )
+    .unwrap();
     assert!(colored.contains("\u{1b}[34m"));
 
     // An interior NUL in a label is rejected.
@@ -352,7 +444,8 @@ fn stacked_bar_renders_and_wires_options() {
     assert_eq!(base.lines().count(), 8);
 
     // A category-label footer changes the render.
-    let labeled = Chart::stacked_bar(&series, 20, 8, &StackOptions::new().show_labels(true)).unwrap();
+    let labeled =
+        Chart::stacked_bar(&series, 20, 8, &StackOptions::new().show_labels(true)).unwrap();
     assert_ne!(base, labeled, "show_labels must take effect");
 
     // Category names flow through the footer.
@@ -393,9 +486,13 @@ fn stacked_bar_renders_and_wires_options() {
     ));
 
     // Colors flow through.
-    let colored =
-        Chart::stacked_bar(&series, 20, 8, &StackOptions::new().colors(&[Color::Red, Color::Green]))
-            .unwrap();
+    let colored = Chart::stacked_bar(
+        &series,
+        20,
+        8,
+        &StackOptions::new().colors(&[Color::Red, Color::Green]),
+    )
+    .unwrap();
     assert!(colored.contains("\u{1b}[31m"));
 }
 
@@ -415,7 +512,10 @@ fn heatmap_renders_and_wires_options() {
         &matrix,
         5,
         5,
-        &HeatOptions::new().low_color(Color::Blue).high_color(Color::Red).mid_color(Color::Green),
+        &HeatOptions::new()
+            .low_color(Color::Blue)
+            .high_color(Color::Red)
+            .mid_color(Color::Green),
     )
     .unwrap();
     assert_ne!(base, compensated, "low/high/mid colors must take effect");
@@ -425,7 +525,10 @@ fn heatmap_renders_and_wires_options() {
         &matrix,
         5,
         5,
-        &HeatOptions::new().show_labels(true).row_labels(&["a", "b", "c"]).col_labels(&["1", "2", "3"]),
+        &HeatOptions::new()
+            .show_labels(true)
+            .row_labels(&["a", "b", "c"])
+            .col_labels(&["1", "2", "3"]),
     )
     .unwrap();
     assert_ne!(base, labeled, "labels must take effect");
@@ -461,7 +564,8 @@ fn heatmap_renders_and_wires_options() {
     ));
 
     // Colors flow through.
-    let colored = Chart::heatmap(&matrix, 5, 5, &HeatOptions::new().low_color(Color::Blue)).unwrap();
+    let colored =
+        Chart::heatmap(&matrix, 5, 5, &HeatOptions::new().low_color(Color::Blue)).unwrap();
     assert!(colored.contains("\u{1b}[34m"));
 }
 

@@ -22,6 +22,4 @@ Gem::Specification.new do |spec|
   spec.extensions = ["ext/ccharts/extconf.rb"]
 
   spec.add_development_dependency "rake", "~> 13.0"
-
-  spec.metadata["rubygems_mfa_required"] = "true"
 end

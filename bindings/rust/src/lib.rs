@@ -893,12 +893,7 @@ impl BoxOptions {
         }
     }
 
-    color_setter!(
-        rise,
-        rise_ansi,
-        rise,
-        "Color for the box and median line."
-    );
+    color_setter!(rise, rise_ansi, rise, "Color for the box and median line.");
     color_setter!(
         area,
         area_ansi,
@@ -1040,12 +1035,17 @@ impl Chart {
     /// per-slice palette when set; all-zero or non-positive slice values
     /// produce the empty string, while NaN/inf are rejected with
     /// [`Error::NonFinite`].
-    pub fn pie(slices: &[PieSlice<'_>], width: u32, height: u32, options: &PieOptions) -> Result<String> {
+    pub fn pie(
+        slices: &[PieSlice<'_>],
+        width: u32,
+        height: u32,
+        options: &PieOptions,
+    ) -> Result<String> {
         if slices.is_empty() {
             return Err(Error::InvalidArgument("need at least one slice"));
         }
-        let count = i32::try_from(slices.len())
-            .map_err(|_| Error::InvalidArgument("too many slices"))?;
+        let count =
+            i32::try_from(slices.len()).map_err(|_| Error::InvalidArgument("too many slices"))?;
         let (width, height) = match (i32::try_from(width), i32::try_from(height)) {
             (Ok(w), Ok(h)) => (w, h),
             _ => return Err(Error::Dimensions),
@@ -1137,8 +1137,8 @@ impl Chart {
         if samples.is_empty() {
             return Err(Error::InvalidArgument("need at least one sample"));
         }
-        let count = i32::try_from(samples.len())
-            .map_err(|_| Error::InvalidArgument("too many samples"))?;
+        let count =
+            i32::try_from(samples.len()).map_err(|_| Error::InvalidArgument("too many samples"))?;
         let (width, height) = match (i32::try_from(width), i32::try_from(height)) {
             (Ok(w), Ok(h)) => (w, h),
             _ => return Err(Error::Dimensions),
@@ -1184,8 +1184,8 @@ impl Chart {
         if samples.is_empty() {
             return Err(Error::InvalidArgument("need at least one sample"));
         }
-        let count = i32::try_from(samples.len())
-            .map_err(|_| Error::InvalidArgument("too many samples"))?;
+        let count =
+            i32::try_from(samples.len()).map_err(|_| Error::InvalidArgument("too many samples"))?;
         let (width, height) = match (i32::try_from(width), i32::try_from(height)) {
             (Ok(w), Ok(h)) => (w, h),
             _ => return Err(Error::Dimensions),
@@ -1239,8 +1239,8 @@ impl Chart {
                 "labels and values must have the same length",
             ));
         }
-        let count = i32::try_from(labels.len())
-            .map_err(|_| Error::InvalidArgument("too many bars"))?;
+        let count =
+            i32::try_from(labels.len()).map_err(|_| Error::InvalidArgument("too many bars"))?;
         let (width, height) = match (i32::try_from(width), i32::try_from(height)) {
             (Ok(w), Ok(h)) => (w, h),
             _ => return Err(Error::Dimensions),
@@ -1313,10 +1313,10 @@ impl Chart {
                 "all series must have the same number of values",
             ));
         }
-        let series_count = i32::try_from(series.len())
-            .map_err(|_| Error::InvalidArgument("too many series"))?;
-        let cat_count = i32::try_from(cats)
-            .map_err(|_| Error::InvalidArgument("too many categories"))?;
+        let series_count =
+            i32::try_from(series.len()).map_err(|_| Error::InvalidArgument("too many series"))?;
+        let cat_count =
+            i32::try_from(cats).map_err(|_| Error::InvalidArgument("too many categories"))?;
         let (width, height) = match (i32::try_from(width), i32::try_from(height)) {
             (Ok(w), Ok(h)) => (w, h),
             _ => return Err(Error::Dimensions),
@@ -1451,10 +1451,10 @@ impl Chart {
                 "all rows must have the same number of values",
             ));
         }
-        let rows = i32::try_from(values.len())
-            .map_err(|_| Error::InvalidArgument("too many rows"))?;
-        let col_count = i32::try_from(cols)
-            .map_err(|_| Error::InvalidArgument("too many columns"))?;
+        let rows =
+            i32::try_from(values.len()).map_err(|_| Error::InvalidArgument("too many rows"))?;
+        let col_count =
+            i32::try_from(cols).map_err(|_| Error::InvalidArgument("too many columns"))?;
         let (width, height) = match (i32::try_from(width), i32::try_from(height)) {
             (Ok(w), Ok(h)) => (w, h),
             _ => return Err(Error::Dimensions),
