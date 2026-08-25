@@ -823,5 +823,114 @@ class TestStackedBar(unittest.TestCase):
         self.assertNotIn("\x1b", out)
 
 
+class TestHeatmap(unittest.TestCase):
+    """Heatmap rendering (Chart.heatmap) — a static method taking a 2-D
+    matrix of scalar values, not OHLC data."""
+
+    MATRIX = [
+        [0.0, 0.1, 0.2, 0.3, 0.4],
+        [0.5, 0.6, 0.7, 0.8, 0.9],
+        [1.0, 0.0, 0.2, 0.5, 1.0],
+        [0.3, 0.6, 0.1, 0.8, 0.4],
+        [0.7, 0.2, 0.9, 0.5, 0.0],
+    ]
+
+    def test_heat_returns_string(self):
+        out = Chart.heatmap(self.MATRIX)
+        self.assertIsInstance(out, str)
+        self.assertGreater(len(out), 0)
+        self.assertIn("\n", out)
+
+    def test_heat_uses_full_blocks(self):
+        out = Chart.heatmap(self.MATRIX)
+        self.assertIn("█", out, "heatmap cells should be full-block blocks")
+
+    def test_heat_default_2_stop(self):
+        # Default (no explicit colors) is a 2-stop ramp. The low and high ends
+        # must differ from the interior colors on a non-flat gradient.
+        out = Chart.heatmap(self.MATRIX)
+        # A min value maps to ladder index 0 (bright_black) and the max to
+        # index 9 (bright_white); both escapes must appear.
+        self.assertIn("\x1b[90m", out)  # bright_black (index 0)
+        self.assertIn("\x1b[97m", out)  # bright_white (index 9)
+
+    def test_heat_3_stop(self):
+        # mid_color substitutes the ladder's middle entry, which must not
+        # appear in the default (2-stop) render.
+        plain2 = Chart.heatmap(self.MATRIX, plain=True)
+        three = Chart.heatmap(self.MATRIX,
+                              low_color="\x1b[34m", high_color="\x1b[31m",
+                              mid_color="\x1b[32m")
+        self.assertNotEqual(plain2, three)
+        self.assertIn("\x1b[34m", three)  # blue low
+        self.assertIn("\x1b[32m", three)  # green mid
+        self.assertIn("\x1b[31m", three)  # red high
+
+    def test_heat_show_labels_adds_frame(self):
+        rows = ["R01", "R02", "R03", "R04", "R05"]
+        cols = ["C1", "C2", "C3", "C4", "C5"]
+        plain = Chart.heatmap(self.MATRIX, width=5, height=5, plain=True)
+        labelled = Chart.heatmap(self.MATRIX, width=5, height=5,
+                                 plain=True, row_labels=rows,
+                                 col_labels=cols, show_labels=True)
+        # show_labels adds a left row-label margin and a footer row.
+        self.assertEqual(len(plain.strip("\n").split("\n")), 5)
+        self.assertEqual(len(labelled.strip("\n").split("\n")), 6)
+        lines = labelled.strip("\n").split("\n")
+        self.assertTrue(lines[0].startswith("R01"))
+        # Rows carry a left margin and the footer row repeats its width (3
+        # spaces) before the column labels. Each label truncates to its
+        # 1-cell span (first letter), so C1..C5 render as "CCCCC", like the
+        # stack footer.
+        self.assertEqual(lines[-1].strip(), "CCCCC")
+
+    def test_heat_downsample_larger_matrix(self):
+        # A matrix larger than the grid is block-averaged down to it.
+        big = [[float(r * 8 + c) for c in range(8)] for r in range(8)]
+        out = Chart.heatmap(big, width=4, height=4)
+        self.assertGreater(len(out), 0)
+        stripped = re.sub(r"\x1b\[[0-9;]*m", "",
+                          out.strip("\n").split("\n")[0])
+        self.assertEqual(len(stripped), 4)
+
+    def test_heat_small_matrix_pads_with_bg(self):
+        # A matrix smaller than the grid occupies the top-left cells; the
+        # rest of the grid is background (space cells, no block characters).
+        small = [[0.2, 0.5, 0.9], [0.1, 0.6, 0.4]]
+        out = Chart.heatmap(small, width=6, height=5, plain=True)
+        rows = out.strip("\n").split("\n")
+        self.assertEqual(len(rows), 5)
+        self.assertEqual(len(rows[0]), 6)
+        # The padded bottom rows contain no matrix cell blocks.
+        self.assertNotIn("█", rows[3])
+        self.assertNotIn("█", rows[4])
+
+    def test_heat_flat_single_color(self):
+        # All-equal matrix: range is zero, so every cell maps to a single
+        # color (ladder index 0 = the low/default end).
+        flat = [[5.0] * 4 for _ in range(3)]
+        out = Chart.heatmap(flat, width=3, height=4)
+        self.assertIn("█", out)
+
+    def test_heat_non_finite_raises(self):
+        for bad in (float("nan"), float("inf"), float("-inf")):
+            with self.assertRaises(ValueError):
+                Chart.heatmap([[1.0, bad], [2.0, 3.0]])
+
+    def test_heat_jagged_rows_raises(self):
+        with self.assertRaises(ValueError):
+            Chart.heatmap([[1.0, 2.0, 3.0], [4.0, 5.0]])
+
+    def test_heat_dimension_validation(self):
+        with self.assertRaises(ValueError):
+            Chart.heatmap(self.MATRIX, width=0)
+        with self.assertRaises(ValueError):
+            Chart.heatmap(self.MATRIX, height=-1)
+        with self.assertRaises(TypeError):
+            Chart.heatmap(self.MATRIX, width=2.5)
+        with self.assertRaises(ValueError):
+            Chart.heatmap([])
+
+
 if __name__ == "__main__":
     unittest.main()

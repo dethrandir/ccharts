@@ -44,6 +44,9 @@ type suite struct {
 			Name   string    `json:"name"`
 			Values []float64 `json:"values"`
 		} `json:"series"`
+		// Values carries the 2-D heatmap matrix: each row is a []float64 of
+		// the same length.
+		Values [][]float64 `json:"values"`
 		// Samples carries the scalar histogram input (no OHLC dataset).
 		Samples  []float64 `json:"samples"`
 		Settings struct {
@@ -51,6 +54,11 @@ type suite struct {
 			FallColor        *string  `json:"fall_color"`
 			BgColor          *string  `json:"bg_color"`
 			AreaColor        *string  `json:"area_color"`
+			LowColor         *string  `json:"low_color"`
+			HighColor        *string  `json:"high_color"`
+			MidColor         *string  `json:"mid_color"`
+			RowLabels        []string `json:"row_labels"`
+			ColLabels        []string `json:"col_labels"`
 			SingleColor      bool     `json:"single_color"`
 			ShowPrices       bool     `json:"show_prices"`
 			ShowTimes        bool     `json:"show_times"`
@@ -142,7 +150,7 @@ func TestConformance(t *testing.T) {
 	if err := json.Unmarshal(raw, &s); err != nil {
 		t.Fatalf("cases.json: %v", err)
 	}
-	if len(s.Cases) < 58 {
+	if len(s.Cases) < 64 {
 		t.Fatalf("conformance suite looks truncated: %d cases", len(s.Cases))
 	}
 
@@ -233,6 +241,18 @@ func TestConformance(t *testing.T) {
 						CategoryLabels:  tc.Settings.CatLabels,
 						ShowLabels:      tc.Settings.ShowLabels,
 						ShowPrices:      tc.Settings.ShowPrices,
+						Plain:           tc.Settings.Plain,
+					})
+			} else if tc.Chart == "heat" {
+				got, err = ccharts.Heatmap(tc.Values, tc.Width, tc.Height,
+					&ccharts.HeatOptions{
+						LowColor:        color(t, tc.Settings.LowColor),
+						HighColor:       color(t, tc.Settings.HighColor),
+						MidColor:        color(t, tc.Settings.MidColor),
+						BackgroundColor: color(t, tc.Settings.BgColor),
+						RowLabels:       tc.Settings.RowLabels,
+						ColLabels:       tc.Settings.ColLabels,
+						ShowLabels:      tc.Settings.ShowLabels,
 						Plain:           tc.Settings.Plain,
 					})
 			} else {

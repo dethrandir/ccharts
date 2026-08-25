@@ -191,6 +191,8 @@ const BAR_SETTINGS_BYTES = 16;
 const STACK_SERIES_BYTES = 8;
 // ccharts_stack_settings: three 32-bit pointers then four int32. 4*3+4*4 = 28.
 const STACK_SETTINGS_BYTES = 28;
+// ccharts_heat_settings: six 32-bit pointers then one int32. 4*6+4 = 28.
+const HEAT_SETTINGS_BYTES = 28;
 const PTR_BYTES = 4;
 
 /**
@@ -727,6 +729,109 @@ export class Chart {
       lenPtr = malloc(4);
       const status = exports.ccharts_stack(
         seriesPtr, series.length, width, height, settings, outPtr, lenPtr);
+      if (status !== STATUS.OK) throw fail(status);
+
+      const dv2 = view();
+      const chartPtr = dv2.getUint32(outPtr, true);
+      const length = dv2.getUint32(lenPtr, true);
+      try {
+        return decoder.decode(u8().subarray(chartPtr, chartPtr + length));
+      } finally {
+        exports.ccharts_string_free(chartPtr);
+      }
+    } finally {
+      for (const ptr of owned) exports.free(ptr);
+      if (outPtr) exports.free(outPtr);
+      if (lenPtr) exports.free(lenPtr);
+    }
+  }
+
+  /**
+   * Renders a heatmap of a rows x cols row-major values matrix into a
+   * width x height grid. Every row must share the same length.
+   *
+   * Matrix elements map to the fixed deterministic colormap ladder by their
+   * position between the matrix min/max; a matrix larger than the grid is
+   * downsampled by block-average, and one smaller than the grid occupies the
+   * top-left with background padding. A heatmap has no OHLC dataset, so this
+   * is a static method taking the matrix directly.
+   *
+   * @param {Array<ArrayLike<number>>} values the matrix, one {cols}-long row
+   *   per {rows} sub-array
+   * @param {HeatOptions} [options]
+   * @returns {string}
+   */
+  static heatmap(values, options = {}) {
+    const {
+      width = 24, height = 10,
+      lowColor, highColor, midColor, backgroundColor,
+      rowLabels, colLabels, showLabels = false, plain = false,
+    } = options;
+
+    if (!Array.isArray(values) || values.length === 0) {
+      throw new CchartsError(STATUS.INVALID_ARGUMENT, "need at least one matrix row");
+    }
+    const rows = values.length;
+    const cols = values[0].length;
+    if (cols === 0) {
+      throw new CchartsError(STATUS.INVALID_ARGUMENT,
+        "matrix columns must not be empty");
+    }
+    for (const row of values) {
+      if (!row || row.length !== cols) {
+        throw new CchartsError(STATUS.INVALID_ARGUMENT,
+          "all rows must have the same number of values");
+      }
+    }
+    if (!Number.isInteger(width) || !Number.isInteger(height)) {
+      throw new CchartsError(STATUS.DIMENSIONS, "width and height must be integers");
+    }
+
+    const owned = [];
+    let valuesPtr = 0;
+    let settings = 0;
+    let outPtr = 0;
+    let lenPtr = 0;
+    try {
+      valuesPtr = malloc(rows * cols * 8);
+      owned.push(valuesPtr);
+      const flat = new Float64Array(exports.memory.buffer, valuesPtr, rows * cols);
+      let i = 0;
+      for (const row of values) {
+        for (const value of row) flat[i++] = Number(value);
+      }
+
+      const dv = view();
+      // row_labels / col_labels are `rows` / `cols` entry C-string pointer
+      // arrays (indexed by the renderer; a NULL-terminator is defensive).
+      // They are plain text, so `plain` does not affect them.
+      const labelArray = (labels) => {
+        if (!labels || labels.length === 0) return 0;
+        const arr = malloc((labels.length + 1) * PTR_BYTES);
+        owned.push(arr);
+        for (let j = 0; j < labels.length; j++) {
+          const ptr = writeCString(String(labels[j]));
+          owned.push(ptr);
+          dv.setUint32(arr + j * PTR_BYTES, ptr, true);
+        }
+        dv.setUint32(arr + labels.length * PTR_BYTES, 0, true);
+        return arr;
+      };
+
+      settings = malloc(HEAT_SETTINGS_BYTES);
+      owned.push(settings);
+      dv.setUint32(settings, colorPtr(owned, plain, lowColor), true);
+      dv.setUint32(settings + 4, colorPtr(owned, plain, highColor), true);
+      dv.setUint32(settings + 8, colorPtr(owned, plain, midColor), true);
+      dv.setUint32(settings + 12, colorPtr(owned, plain, backgroundColor), true);
+      dv.setUint32(settings + 16, labelArray(rowLabels), true);
+      dv.setUint32(settings + 20, labelArray(colLabels), true);
+      dv.setInt32(settings + 24, showLabels ? 1 : 0, true);
+
+      outPtr = malloc(4);
+      lenPtr = malloc(4);
+      const status = exports.ccharts_heat(
+        valuesPtr, rows, cols, width, height, settings, outPtr, lenPtr);
       if (status !== STATUS.OK) throw fail(status);
 
       const dv2 = view();

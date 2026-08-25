@@ -77,6 +77,17 @@ pub struct ccharts_stack_settings {
     pub show_prices: i32,
 }
 
+#[repr(C)]
+pub struct ccharts_heat_settings {
+    pub low_color: *const c_char,
+    pub high_color: *const c_char,
+    pub mid_color: *const c_char,
+    pub bg_color: *const c_char,
+    pub row_labels: *const *const c_char,
+    pub col_labels: *const *const c_char,
+    pub show_labels: i32,
+}
+
 extern "C" {
     pub fn ccharts_from_arrays(
         open: *const f64,
@@ -151,6 +162,17 @@ extern "C" {
         width: i32,
         height: i32,
         settings: *const ccharts_stack_settings,
+        out: *mut *mut c_char,
+        out_len: *mut usize,
+    ) -> i32;
+
+    pub fn ccharts_heat(
+        values: *const f64,
+        rows: i32,
+        cols: i32,
+        width: i32,
+        height: i32,
+        settings: *const ccharts_heat_settings,
         out: *mut *mut c_char,
         out_len: *mut usize,
     ) -> i32;

@@ -140,6 +140,19 @@ class TestConformance(unittest.TestCase):
                 show_prices=cfg.get("show_prices", False),
                 plain=cfg.get("plain", False),
             )
+        if case["chart"] == "heat":
+            return Chart.heatmap(
+                case["values"],
+                width=case["width"], height=case["height"],
+                low_color=COLORS.get(cfg["low_color"]),
+                high_color=COLORS.get(cfg["high_color"]),
+                mid_color=COLORS.get(cfg["mid_color"]),
+                bg_color=COLORS.get(cfg["bg_color"]),
+                row_labels=cfg.get("row_labels"),
+                col_labels=cfg.get("col_labels"),
+                show_labels=cfg.get("show_labels", False),
+                plain=cfg.get("plain", False),
+            )
         draw = getattr(self._chart(case), case["chart"])
         return draw(
             width=case["width"], height=case["height"],

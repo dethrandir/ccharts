@@ -83,6 +83,18 @@ final class Native {
             ValueLayout.ADDRESS.withName("name"),
             ValueLayout.ADDRESS.withName("values"));
 
+    /** Layout of {@code ccharts_heat_settings}: six pointers then one int.
+     * 8*6 + 4 = 52 bytes, aligned to 56 on x64; the int does not precede a
+     * double, so no paddingLayout (same int-only rule as spark/bar/stack). */
+    static final StructLayout HEAT_SETTINGS = MemoryLayout.structLayout(
+            ValueLayout.ADDRESS.withName("low_color"),
+            ValueLayout.ADDRESS.withName("high_color"),
+            ValueLayout.ADDRESS.withName("mid_color"),
+            ValueLayout.ADDRESS.withName("bg_color"),
+            ValueLayout.ADDRESS.withName("row_labels"),
+            ValueLayout.ADDRESS.withName("col_labels"),
+            ValueLayout.JAVA_INT.withName("show_labels"));
+
     /** Layout of {@code ccharts_stack_settings}: three pointers then four ints.
      * 8*3 + 4*4 = 40 bytes; ints do not precede a double, so no padding. */
     static final StructLayout STACK_SETTINGS = MemoryLayout.structLayout(
@@ -140,6 +152,9 @@ final class Native {
                     PTR, PTR));
     static final MethodHandle STACK = downcall("ccharts_stack",
             FunctionDescriptor.of(INT, PTR, INT, INT, INT, PTR,
+                    PTR, PTR));
+    static final MethodHandle HEAT = downcall("ccharts_heat",
+            FunctionDescriptor.of(INT, PTR, INT, INT, INT, INT, PTR,
                     PTR, PTR));
     static final MethodHandle COLOR = downcall("ccharts_color",
             FunctionDescriptor.of(PTR, INT));

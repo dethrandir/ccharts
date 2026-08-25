@@ -855,6 +855,169 @@ func StackedBar(series []StackSeries, width, height int, opts *StackOptions) (st
 	return C.GoStringN(out, C.int(length)), nil
 }
 
+// HeatOptions controls how a heatmap is drawn. A nil *HeatOptions behaves
+// like &HeatOptions{}: the fixed deterministic colormap ladder, no
+// background, no row/column labels.
+type HeatOptions struct {
+	// LowColor is the ANSI color for the matrix minimum (default the ladder's
+	// low end).
+	LowColor Color
+	// HighColor is the ANSI color for the matrix maximum (default the
+	// ladder's high end).
+	HighColor Color
+	// MidColor optionally replaces the ladder's middle entry with a 3-stop
+	// ramp (zero value = 2-stop).
+	MidColor Color
+	// BackgroundColor colors the grid cells the matrix does not cover (a
+	// matrix smaller than the grid); default: the terminal background.
+	BackgroundColor Color
+	// RowLabels labels each matrix row around the grid when ShowLabels is
+	// set (nil = no labels).
+	RowLabels []string
+	// ColLabels labels each matrix column around the grid when ShowLabels is
+	// set (nil = no labels).
+	ColLabels []string
+	// ShowLabels prints the row/column labels around the grid.
+	ShowLabels bool
+	// Plain renders with no ANSI escapes at all, overriding every color.
+	Plain bool
+}
+
+// Heatmap renders a heatmap of a rows x cols row-major values matrix into a
+// width x height grid. Every row of the matrix must share the same length.
+// A heatmap has no OHLC dataset, so this is a package function rather than a
+// Chart method.
+//
+// opts may be nil. The colormap ladder is deterministic in the C core; the
+// matrix elements just map to it by their position between the matrix min and
+// max. NaN and inf values are rejected with ErrNonFinite.
+func Heatmap(values [][]float64, width, height int, opts *HeatOptions) (string, error) {
+	if len(values) == 0 {
+		return "", ErrInvalidArgument
+	}
+	cols := len(values[0])
+	if cols == 0 {
+		return "", ErrInvalidArgument
+	}
+	for _, row := range values {
+		if len(row) != cols {
+			return "", ErrInvalidArgument
+		}
+	}
+	if width <= 0 || height <= 0 || width > int(C.ccharts_max_dim()) ||
+		height > int(C.ccharts_max_dim()) {
+		return "", ErrDimensions
+	}
+
+	rows := len(values)
+	var cAlloc []unsafe.Pointer
+	defer func() {
+		for _, p := range cAlloc {
+			C.free(p)
+		}
+	}()
+
+	// Flatten the matrix row-major into a contiguous C buffer. cgo rejects
+	// Go-heap pointers nested inside a struct handed to a C call, and the
+	// values come as a single double* the library reads directly, so the
+	// whole matrix lives in C memory for the call.
+	buf := C.malloc(C.size_t(rows*cols) * C.size_t(unsafe.Sizeof(float64(0))))
+	if buf == nil {
+		return "", ErrOutOfMemory
+	}
+	cAlloc = append(cAlloc, buf)
+	flat := unsafe.Slice((*C.double)(buf), rows*cols)
+	idx := 0
+	for _, row := range values {
+		for _, v := range row {
+			flat[idx] = C.double(v)
+			idx++
+		}
+	}
+
+	var allocated []*C.char
+	defer func() {
+		for _, cs := range allocated {
+			C.free(unsafe.Pointer(cs))
+		}
+	}()
+	strPtr := func(s string) *C.char {
+		cs := C.CString(s)
+		allocated = append(allocated, cs)
+		return cs
+	}
+	set := func(dst **C.char, color Color) {
+		if opts == nil {
+			return
+		}
+		if opts.Plain {
+			*dst = strPtr("")
+			return
+		}
+		if color == "" {
+			return
+		}
+		*dst = strPtr(string(color))
+	}
+
+	var settings C.ccharts_heat_settings
+	if opts != nil {
+		set(&settings.low_color, opts.LowColor)
+		set(&settings.high_color, opts.HighColor)
+		set(&settings.mid_color, opts.MidColor)
+		set(&settings.bg_color, opts.BackgroundColor)
+		settings.show_labels = boolToC(opts.ShowLabels)
+	}
+
+	// Copy the label strings into freshly allocated, C-owned arrays of
+	// pointers. The settings struct holds the array pointers, so they must be
+	// C memory — cgo rejects Go-heap pointers nested inside a struct handed
+	// to a C call.
+	allocPtrs := func(ptrs []*C.char) **C.char {
+		if len(ptrs) == 0 {
+			return nil
+		}
+		arrBuf := C.malloc(C.size_t(len(ptrs)+1) * C.size_t(unsafe.Sizeof((*C.char)(nil))))
+		if arrBuf == nil {
+			return nil
+		}
+		cAlloc = append(cAlloc, arrBuf)
+		arr := unsafe.Slice((**C.char)(arrBuf), len(ptrs)+1)
+		for i, p := range ptrs {
+			arr[i] = p
+		}
+		arr[len(ptrs)] = nil
+		return &arr[0]
+	}
+
+	if opts != nil && len(opts.RowLabels) > 0 {
+		ptrs := make([]*C.char, len(opts.RowLabels))
+		for i, l := range opts.RowLabels {
+			ptrs[i] = strPtr(l)
+		}
+		settings.row_labels = allocPtrs(ptrs)
+	}
+	if opts != nil && len(opts.ColLabels) > 0 {
+		ptrs := make([]*C.char, len(opts.ColLabels))
+		for i, l := range opts.ColLabels {
+			ptrs[i] = strPtr(l)
+		}
+		settings.col_labels = allocPtrs(ptrs)
+	}
+
+	var out *C.char
+	var length C.size_t
+	status := C.ccharts_heat(
+		(*C.double)(buf), C.int32_t(rows), C.int32_t(cols),
+		C.int32_t(width), C.int32_t(height),
+		&settings, &out, &length)
+	if err := statusError(status); err != nil {
+		return "", err
+	}
+	defer C.ccharts_string_free(out)
+	return C.GoStringN(out, C.int(length)), nil
+}
+
 func setColors(settings *C.ccharts_settings, opts *Options) func() {
 	if opts == nil {
 		return func() {}

@@ -490,6 +490,53 @@ int32_t ccharts_stack(const ccharts_stack_series* series, int32_t series_count,
     return CCHARTS_OK;
 }
 
+/* ------------------------------ Heatmap chart ---------------------------- */
+
+int32_t ccharts_heat(const double* values, int32_t rows, int32_t cols,
+                     int32_t width, int32_t height,
+                     const ccharts_heat_settings* settings,
+                     char** out, size_t* out_len) {
+    cc_heat_settings_t hs;
+    char* chart;
+    int64_t n, i;
+
+    if (out == NULL) return CCHARTS_ERR_INVALID_ARG;
+    *out = NULL;
+    if (out_len != NULL) *out_len = 0;
+    if (values == NULL || rows <= 0 || cols <= 0) return CCHARTS_ERR_INVALID_ARG;
+    if (!cc_dim_ok((int)width, (int)height)) return CCHARTS_ERR_DIMENSIONS;
+
+    /* NaN/inf values would poison the min/max and block-average math (and
+     * lround in the colour mapping), so reject them at the boundary like
+     * every other price path. Counted in 64-bit: rows*cols is not bounded
+     * by cc_dim_ok (only width/height are). */
+    n = (int64_t)rows * (int64_t)cols;
+    for (i = 0; i < n; i++) {
+        if (!isfinite(values[i])) return CCHARTS_ERR_NON_FINITE;
+    }
+
+    memset(&hs, 0, sizeof(hs));
+    if (settings != NULL) {
+        hs.low_color = settings->low_color;
+        hs.high_color = settings->high_color;
+        hs.mid_color = settings->mid_color;
+        hs.bg_color = settings->bg_color;
+        hs.row_labels = settings->row_labels;
+        hs.col_labels = settings->col_labels;
+        hs.show_labels = (int)settings->show_labels;
+    }
+
+    /* The caller's row-major values array matches cc_heat_create's layout
+     * exactly, so no copy is needed as long as it stays valid for the call. */
+    chart = cc_heat_create(values, (int)rows, (int)cols,
+                           (int)width, (int)height, &hs);
+    if (chart == NULL) return CCHARTS_ERR_NOMEM;
+
+    *out = chart;
+    if (out_len != NULL) *out_len = strlen(chart);
+    return CCHARTS_OK;
+}
+
 /* ---------------------------- Introspection ---------------------------- */
 
 const char* ccharts_color(int32_t index) {

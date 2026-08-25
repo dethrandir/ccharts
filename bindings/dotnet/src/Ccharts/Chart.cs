@@ -633,6 +633,122 @@ public sealed class Chart : IDisposable
         }
     }
 
+    /// <summary>
+    /// Renders a heatmap of a <c>rows</c> x <c>cols</c> row-major values matrix
+    /// into a <paramref name="width"/> x <paramref name="height"/> grid. Every
+    /// row must share the same length. Matrix elements map to the fixed
+    /// deterministic colormap ladder by their position between the matrix
+    /// min/max. A heatmap has no OHLC dataset, so this is a static method
+    /// taking the matrix directly.
+    /// </summary>
+    /// <exception cref="CchartsException">on null/ragged input, non-finite
+    /// values or bad dimensions.</exception>
+    public static string Heatmap(IReadOnlyList<IReadOnlyList<double>> values,
+        int width, int height, HeatmapOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(values);
+        NativeLibraryResolver.EnsureInstalled();
+
+        options ??= new HeatmapOptions();
+        if (values.Count == 0)
+        {
+            throw new CchartsException(CchartsStatus.InvalidArgument,
+                "need at least one matrix row");
+        }
+        var cols = values[0].Count;
+        if (cols == 0)
+        {
+            throw new CchartsException(CchartsStatus.InvalidArgument,
+                "matrix columns must not be empty");
+        }
+        foreach (var row in values)
+        {
+            if (row.Count != cols)
+            {
+                throw new CchartsException(CchartsStatus.InvalidArgument,
+                    "all rows must have the same number of values");
+            }
+        }
+
+        // Flatten the matrix row-major into a contiguous buffer.
+        var flat = new double[values.Count * cols];
+        var index = 0;
+        foreach (var row in values)
+        {
+            foreach (var v in row) flat[index++] = v;
+        }
+
+        var colorPtrs = new List<IntPtr>();
+        var labelStrPtrs = new List<IntPtr>();
+        GCHandle rowHandle = default;
+        GCHandle colHandle = default;
+        try
+        {
+            // An empty C string means "emit no escape at all": `plain` blanks
+            // the WHOLE colormap ladder (the heatmap's plain convention), so
+            // every color becomes Empty(); otherwise a null/empty color is the
+            // library default (IntPtr.Zero).
+            IntPtr ColorFor(string? color)
+            {
+                var ptr = options.Plain ? Empty() : Utf8(color);
+                if (ptr != IntPtr.Zero) colorPtrs.Add(ptr);
+                return ptr;
+            }
+
+            IntPtr LabelArray(string[]? labels, ref GCHandle handle)
+            {
+                if (labels is not { Length: > 0 }) return IntPtr.Zero;
+                var n = labels.Length;
+                var arr = new IntPtr[n + 1];
+                for (var i = 0; i < n; i++)
+                {
+                    arr[i] = Marshal.StringToCoTaskMemUTF8(labels[i] ?? "");
+                    labelStrPtrs.Add(arr[i]);
+                }
+                arr[n] = IntPtr.Zero;
+                handle = GCHandle.Alloc(arr, GCHandleType.Pinned);
+                return handle.AddrOfPinnedObject();
+            }
+
+            var settings = new NativeHeatSettings
+            {
+                LowColor = ColorFor(options.LowColor),
+                HighColor = ColorFor(options.HighColor),
+                MidColor = ColorFor(options.MidColor),
+                BackgroundColor = ColorFor(options.BackgroundColor),
+                RowLabels = LabelArray(options.RowLabels, ref rowHandle),
+                ColLabels = LabelArray(options.ColLabels, ref colHandle),
+                ShowLabels = options.ShowLabels ? 1 : 0,
+            };
+
+            var status = NativeMethods.Heat(flat, values.Count, cols,
+                width, height, in settings, out var chart, out var length);
+            CchartsException.ThrowIfError(status);
+
+            try
+            {
+                return Marshal.PtrToStringUTF8(chart, checked((int)length)) ?? string.Empty;
+            }
+            finally
+            {
+                NativeMethods.StringFree(chart);
+            }
+        }
+        finally
+        {
+            if (rowHandle.IsAllocated) rowHandle.Free();
+            if (colHandle.IsAllocated) colHandle.Free();
+            foreach (var ptr in labelStrPtrs)
+            {
+                if (ptr != IntPtr.Zero) Marshal.FreeCoTaskMem(ptr);
+            }
+            foreach (var ptr in colorPtrs)
+            {
+                if (ptr != IntPtr.Zero) Marshal.FreeCoTaskMem(ptr);
+            }
+        }
+    }
+
     /// <summary>Version of the underlying C library.</summary>
     public static string Version
     {

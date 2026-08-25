@@ -322,3 +322,39 @@ public sealed record StackOptions
     /// </summary>
     public bool Plain { get; init; }
 }
+
+
+/// <summary>
+/// How a heatmap is drawn. The default instance uses the fixed deterministic
+/// colormap ladder, no background, and no row/column labels.
+/// </summary>
+public sealed record HeatmapOptions
+{
+    /// <summary>ANSI escape for the matrix minimum value. Default: the ladder's low end.</summary>
+    public string? LowColor { get; init; }
+
+    /// <summary>ANSI escape for the matrix maximum value. Default: the ladder's high end.</summary>
+    public string? HighColor { get; init; }
+
+    /// <summary>ANSI escape for the ladder's middle entry (a 3-stop ramp). Default: none.</summary>
+    public string? MidColor { get; init; }
+
+    /// <summary>ANSI escape filling cells the matrix does not cover. Default: the terminal background.</summary>
+    public string? BackgroundColor { get; init; }
+
+    /// <summary>Row labels printed around the grid when <see cref="ShowLabels"/> is set, one per row.</summary>
+    public string[]? RowLabels { get; init; }
+
+    /// <summary>Column labels printed around the grid when <see cref="ShowLabels"/> is set, one per column.</summary>
+    public string[]? ColLabels { get; init; }
+
+    /// <summary>Print the row/column labels around the grid.</summary>
+    public bool ShowLabels { get; init; }
+
+    /// <summary>
+    /// Render with no ANSI escapes at all, overriding every color. Use it when
+    /// the chart is going somewhere that does not interpret escapes — a log
+    /// file, an HTML block, a commit message.
+    /// </summary>
+    public bool Plain { get; init; }
+}

@@ -2,7 +2,7 @@
 //! against the shared goldens in conformance.rs.
 
 use ccharts::{
-    BarOptions, Chart, Color, Error, HistogramOptions, PieOptions, PieSlice, Settings,
+    BarOptions, Chart, Color, Error, HeatOptions, HistogramOptions, PieOptions, PieSlice, Settings,
     SparklineOptions, StackOptions,
 };
 
@@ -397,4 +397,70 @@ fn stacked_bar_renders_and_wires_options() {
         Chart::stacked_bar(&series, 20, 8, &StackOptions::new().colors(&[Color::Red, Color::Green]))
             .unwrap();
     assert!(colored.contains("\u{1b}[31m"));
+}
+
+#[test]
+fn heatmap_renders_and_wires_options() {
+    let matrix = [
+        &[0.0f64, 0.5, 1.0][..],
+        &[0.25f64, 0.75, 0.5][..],
+        &[1.0f64, 0.0, 0.9][..],
+    ];
+    let base = Chart::heatmap(&matrix, 5, 5, &HeatOptions::new()).unwrap();
+    assert!(base.contains('█'), "heat glyphs present");
+    assert_eq!(base.lines().count(), 5);
+
+    // A 3-stop ramp (mid_color) changes the render.
+    let compensated = Chart::heatmap(
+        &matrix,
+        5,
+        5,
+        &HeatOptions::new().low_color(Color::Blue).high_color(Color::Red).mid_color(Color::Green),
+    )
+    .unwrap();
+    assert_ne!(base, compensated, "low/high/mid colors must take effect");
+
+    // Row/column labels change the render.
+    let labeled = Chart::heatmap(
+        &matrix,
+        5,
+        5,
+        &HeatOptions::new().show_labels(true).row_labels(&["a", "b", "c"]).col_labels(&["1", "2", "3"]),
+    )
+    .unwrap();
+    assert_ne!(base, labeled, "labels must take effect");
+
+    // A background color changes the render of a matrix smaller than the grid.
+    let backgrounded = Chart::heatmap(
+        &matrix,
+        6,
+        7,
+        &HeatOptions::new().background(Color::BrightBlack),
+    )
+    .unwrap();
+    assert_ne!(base, backgrounded, "bg_color must take effect");
+
+    // Plain output has no escapes.
+    let plain = Chart::heatmap(&matrix, 5, 5, &HeatOptions::new().plain(true)).unwrap();
+    assert!(!plain.contains('\u{1b}'), "plain must override every color");
+
+    // NaN/inf values are rejected with Error::NonFinite.
+    for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        let bad_matrix = [&[bad][..], &[1.0][..]];
+        assert_eq!(
+            Chart::heatmap(&bad_matrix, 5, 5, &HeatOptions::new()).unwrap_err(),
+            Error::NonFinite
+        );
+    }
+
+    // Unequal row lengths are rejected.
+    let ragged = [&[1.0f64, 2.0][..], &[1.0][..]];
+    assert!(matches!(
+        Chart::heatmap(&ragged, 5, 5, &HeatOptions::new()).unwrap_err(),
+        Error::InvalidArgument(_)
+    ));
+
+    // Colors flow through.
+    let colored = Chart::heatmap(&matrix, 5, 5, &HeatOptions::new().low_color(Color::Blue)).unwrap();
+    assert!(colored.contains("\u{1b}[34m"));
 }

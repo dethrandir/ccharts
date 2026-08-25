@@ -284,6 +284,52 @@ int main(void) {
         }
     }
 
+    /* Heatmap: a 2-D matrix of scalars (row-major), no dataset or capsule. */
+    {
+        static const double heat_vals[25] = {
+            0.0, 0.1, 0.2, 0.3, 0.4,
+            0.5, 0.6, 0.7, 0.8, 0.9,
+            1.0, 0.0, 0.2, 0.5, 1.0,
+            0.3, 0.6, 0.1, 0.8, 0.4,
+            0.7, 0.2, 0.9, 0.5, 0.0
+        };
+        ccharts_heat_settings hs;
+        memset(&hs, 0, sizeof(hs));
+        check(ccharts_heat(heat_vals, 5, 5, 5, 5, &hs, &chart, &len) == CCHARTS_OK,
+              "heatmap");
+        check(chart != NULL && len > 0, "heatmap output");
+        ccharts_string_free(chart);
+
+        hs.low_color = ccharts_color(CCHARTS_COLOR_BLUE);
+        hs.high_color = ccharts_color(CCHARTS_COLOR_RED);
+        hs.mid_color = ccharts_color(CCHARTS_COLOR_GREEN);
+        check(ccharts_heat(heat_vals, 5, 5, 5, 5, &hs, &chart, &len) == CCHARTS_OK,
+              "heatmap with settings");
+        check(chart != NULL && len > 0, "heatmap settings output");
+        ccharts_string_free(chart);
+
+        check(ccharts_heat(NULL, 0, 0, 5, 5, NULL, &chart, &len)
+              == CCHARTS_ERR_INVALID_ARG, "NULL heatmap values rejected");
+        check(ccharts_heat(heat_vals, 5, 5, 0, 5, NULL, &chart, &len)
+              == CCHARTS_ERR_DIMENSIONS, "zero width heatmap rejected");
+
+        /* NaN/inf values must be rejected at the boundary. */
+        {
+            static const double one = 1.0;
+            double inf_h[25];
+            double nan_h[25];
+            int k;
+            for (k = 0; k < 25; k++) { inf_h[k] = 0.5; nan_h[k] = 0.5; }
+            inf_h[0] = one / 0.0;                   /* +inf without <math.h> */
+            nan_h[0] = one / 0.0 - one / 0.0;        /* NaN */
+            check(ccharts_heat(inf_h, 5, 5, 5, 5, NULL, &chart, &len)
+                  == CCHARTS_ERR_NON_FINITE, "inf heatmap value rejected");
+            check(ccharts_heat(nan_h, 5, 5, 5, 5, NULL, &chart, &len)
+                  == CCHARTS_ERR_NON_FINITE, "NaN heatmap value rejected");
+            check(chart == NULL, "no string on heatmap error");
+        }
+    }
+
     /* Invalid dimensions must be reported, not answered with "". */
     check(ccharts_line(data, 0, 5, NULL, &chart, &len) == CCHARTS_ERR_DIMENSIONS,
           "zero width rejected");

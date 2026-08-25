@@ -756,6 +756,117 @@ impl Default for StackOptions {
     }
 }
 
+/// Options for [`Chart::heatmap`]. Every field is optional; unset ones take
+/// the library defaults (the fixed deterministic colormap ladder, no
+/// background, no row/column labels).
+#[derive(Debug, Clone)]
+pub struct HeatOptions {
+    low_color: Option<ColorSpec>,
+    high_color: Option<ColorSpec>,
+    mid_color: Option<ColorSpec>,
+    background: Option<ColorSpec>,
+    row_labels: Option<Vec<String>>,
+    col_labels: Option<Vec<String>>,
+    show_labels: bool,
+    plain: bool,
+}
+
+impl HeatOptions {
+    /// Options with every field at its default.
+    pub fn new() -> Self {
+        Self {
+            low_color: None,
+            high_color: None,
+            mid_color: None,
+            background: None,
+            row_labels: None,
+            col_labels: None,
+            show_labels: false,
+            plain: false,
+        }
+    }
+
+    color_setter!(
+        low_color,
+        low_color_ansi,
+        low_color,
+        "Color for the minimum matrix value."
+    );
+    color_setter!(
+        high_color,
+        high_color_ansi,
+        high_color,
+        "Color for the maximum matrix value."
+    );
+    color_setter!(
+        mid_color,
+        mid_color_ansi,
+        mid_color,
+        "Optional middle color of a 3-stop ramp (replaces the ladder's middle entry)."
+    );
+    color_setter!(
+        background,
+        background_ansi,
+        background,
+        "Color of the cells the matrix does not cover."
+    );
+
+    /// Row labels printed around the grid when [`HeatOptions::show_labels`]
+    /// is set (one per matrix row). An interior NUL in any label is rejected
+    /// when rendering.
+    pub fn row_labels(mut self, labels: &[&str]) -> Self {
+        self.row_labels = Some(labels.iter().map(|s| s.to_string()).collect());
+        self
+    }
+
+    /// Column labels printed around the grid when [`HeatOptions::show_labels`]
+    /// is set (one per matrix column). An interior NUL in any label is
+    /// rejected when rendering.
+    pub fn col_labels(mut self, labels: &[&str]) -> Self {
+        self.col_labels = Some(labels.iter().map(|s| s.to_string()).collect());
+        self
+    }
+
+    /// Print the row/column labels around the grid.
+    pub fn show_labels(mut self, yes: bool) -> Self {
+        self.show_labels = yes;
+        self
+    }
+
+    /// Render with no ANSI escapes at all, overriding every color.
+    pub fn plain(mut self, yes: bool) -> Self {
+        self.plain = yes;
+        self
+    }
+
+    fn to_raw(&self) -> ffi::ccharts_heat_settings {
+        const EMPTY: &[u8] = b"\0";
+        let plain = EMPTY.as_ptr() as *const c_char;
+        let ptr = |spec: &Option<ColorSpec>| -> *const c_char {
+            if self.plain {
+                plain
+            } else {
+                spec.as_ref().map_or(std::ptr::null(), ColorSpec::as_ptr)
+            }
+        };
+        ffi::ccharts_heat_settings {
+            low_color: ptr(&self.low_color),
+            high_color: ptr(&self.high_color),
+            mid_color: ptr(&self.mid_color),
+            bg_color: ptr(&self.background),
+            row_labels: std::ptr::null(),
+            col_labels: std::ptr::null(),
+            show_labels: self.show_labels as i32,
+        }
+    }
+}
+
+impl Default for HeatOptions {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// A parsed OHLC dataset that can be rendered as a line or candle chart.
 pub struct Chart {
     handle: NonNull<ffi::ccharts_data>,
@@ -1212,6 +1323,110 @@ impl Chart {
             ffi::ccharts_stack(
                 raw.as_ptr(),
                 series_count,
+                width,
+                height,
+                &settings,
+                &mut out,
+                &mut len,
+            )
+        };
+        if status != 0 {
+            return Err(Error::from_status(status));
+        }
+        // Safety: `out` is a library-owned buffer released by take_string.
+        unsafe { Self::take_string(out, len) }
+    }
+
+    /// Renders a heatmap of a `rows` x `cols` row-major `values` matrix into
+    /// a `width` x `height` grid. Every row must share the same length.
+    ///
+    /// A heatmap has no OHLC data, so (like [`Chart::stacked_bar`]) this is
+    /// an associated function: it takes the matrix directly. Matrix elements
+    /// map to the fixed deterministic colormap ladder by their position
+    /// between the matrix min/max; a matrix larger than the grid is
+    /// downsampled by block-average, and one smaller than the grid occupies
+    /// the top-left with background padding. `options.low_color` /
+    /// `options.high_color` (and optional `options.mid_color` for a 3-stop
+    /// ramp) override the ladder end-points, `options.row_labels` /
+    /// `options.col_labels` are printed around the grid when
+    /// `options.show_labels` is set, and NaN/inf values are rejected with
+    /// [`Error::NonFinite`].
+    pub fn heatmap(
+        values: &[&[f64]],
+        width: u32,
+        height: u32,
+        options: &HeatOptions,
+    ) -> Result<String> {
+        if values.is_empty() {
+            return Err(Error::InvalidArgument("need a non-empty value matrix"));
+        }
+        let cols = values[0].len();
+        if cols == 0 {
+            return Err(Error::InvalidArgument("matrix columns must not be empty"));
+        }
+        if values.iter().any(|row| row.len() != cols) {
+            return Err(Error::InvalidArgument(
+                "all rows must have the same number of values",
+            ));
+        }
+        let rows = i32::try_from(values.len())
+            .map_err(|_| Error::InvalidArgument("too many rows"))?;
+        let col_count = i32::try_from(cols)
+            .map_err(|_| Error::InvalidArgument("too many columns"))?;
+        let (width, height) = match (i32::try_from(width), i32::try_from(height)) {
+            (Ok(w), Ok(h)) => (w, h),
+            _ => return Err(Error::Dimensions),
+        };
+
+        // Flatten the matrix row-major into a contiguous buffer.
+        let mut flat: Vec<f64> = Vec::with_capacity(values.len() * cols);
+        for row in values {
+            flat.extend_from_slice(row);
+        }
+
+        // Row/column label pointer arrays (or NULL when absent), converted here
+        // so an interior NUL can be rejected.
+        let label_cstrs = |labels: &Option<Vec<String>>| -> Result<Vec<CString>> {
+            labels
+                .as_deref()
+                .map(|labels| {
+                    labels
+                        .iter()
+                        .map(|l| CString::new(l.as_str()).map_err(|_| Error::InteriorNul))
+                        .collect::<Result<Vec<_>>>()
+                })
+                .transpose()
+                .map(|v| v.unwrap_or_default())
+        };
+        let row_cstrs = label_cstrs(&options.row_labels)?;
+        let col_cstrs = label_cstrs(&options.col_labels)?;
+        let row_ptrs: Vec<*const c_char> = row_cstrs.iter().map(|c| c.as_ptr()).collect();
+        let col_ptrs: Vec<*const c_char> = col_cstrs.iter().map(|c| c.as_ptr()).collect();
+        let row_labels_ptr = if row_ptrs.is_empty() {
+            std::ptr::null()
+        } else {
+            row_ptrs.as_ptr()
+        };
+        let col_labels_ptr = if col_ptrs.is_empty() {
+            std::ptr::null()
+        } else {
+            col_ptrs.as_ptr()
+        };
+
+        let mut settings = options.to_raw();
+        settings.row_labels = row_labels_ptr;
+        settings.col_labels = col_labels_ptr;
+
+        let mut out: *mut c_char = std::ptr::null_mut();
+        let mut len: usize = 0;
+        // Safety: the flattened matrix, the label pointer arrays and the
+        // settings live across the call, and `out` receives an owned string
+        // we release below.
+        let status = unsafe {
+            ffi::ccharts_heat(
+                flat.as_ptr(),
+                rows,
+                col_count,
                 width,
                 height,
                 &settings,

@@ -1265,6 +1265,173 @@ static PyObject* py_create_stack(PyObject* self, PyObject* args) {
     return result;
 }
 
+/* ============================== Heatmap ==============================
+ * A heatmap renders a 2-D matrix of scalar values (list of lists) as a grid
+ * of colored cells. The matrix is flattened row-major into one double array
+ * and handed to cc_heat_create; NaN/inf is rejected like every other path.
+ * Labels are optional parallel lists (row_labels of `rows` entries,
+ * col_labels of `cols` entries) or None.
+ * ========================================================================= */
+
+/* Flattens a 2-D `matrix` (a sequence of `rows` sequences, each `cols` long)
+ * into *out_flat (caller frees) and returns rows/cols through the outputs,
+ * rejecting ragged rows, empty matrices and any non-finite entry. 0 = ok. */
+static int build_heat_matrix(PyObject* o_matrix, double** out_flat,
+                             Py_ssize_t* out_rows, Py_ssize_t* out_cols) {
+    PyObject* fast;
+    Py_ssize_t rows, cols, r, c;
+
+    fast = PySequence_Fast(o_matrix, "heatmap values must be a 2-D sequence");
+    if (fast == NULL) return -1;
+    rows = PySequence_Fast_GET_SIZE(fast);
+    if (rows <= 0) {
+        Py_DECREF(fast);
+        PyErr_SetString(PyExc_ValueError, "heatmap needs at least one row");
+        return -1;
+    }
+
+    {
+        PyObject* first = PySequence_Fast_GET_ITEM(fast, 0);
+        PyObject* ffast = PySequence_Fast(first, "each row must be a sequence");
+        if (ffast == NULL) { Py_DECREF(fast); return -1; }
+        cols = PySequence_Fast_GET_SIZE(ffast);
+        Py_DECREF(ffast);
+    }
+    if (cols <= 0) {
+        Py_DECREF(fast);
+        PyErr_SetString(PyExc_ValueError, "heatmap needs at least one column");
+        return -1;
+    }
+    if (rows * cols > (Py_ssize_t)(INT_MAX / (int)sizeof(double))) {
+        Py_DECREF(fast);
+        PyErr_SetString(PyExc_ValueError, "too many heatmap values");
+        return -1;
+    }
+
+    {
+        double* flat = (double*)calloc((size_t)rows * (size_t)cols, sizeof(double));
+        if (flat == NULL) {
+            Py_DECREF(fast);
+            PyErr_NoMemory();
+            return -1;
+        }
+        for (r = 0; r < rows; r++) {
+            PyObject* row = PySequence_Fast_GET_ITEM(fast, r);
+            PyObject* rfast = PySequence_Fast(row, "each row must be a sequence");
+            if (rfast == NULL) { free(flat); Py_DECREF(fast); return -1; }
+            if (PySequence_Fast_GET_SIZE(rfast) != cols) {
+                Py_DECREF(rfast);
+                Py_DECREF(fast);
+                free(flat);
+                PyErr_SetString(PyExc_ValueError,
+                                "all heatmap rows must have the same length");
+                return -1;
+            }
+            for (c = 0; c < cols; c++) {
+                PyObject* o = PySequence_Fast_GET_ITEM(rfast, c);
+                double v = PyFloat_AsDouble(o);
+                if (v == -1.0 && PyErr_Occurred()) {
+                    Py_DECREF(rfast);
+                    Py_DECREF(fast);
+                    free(flat);
+                    return -1;
+                }
+                if (!isfinite(v)) {
+                    Py_DECREF(rfast);
+                    Py_DECREF(fast);
+                    free(flat);
+                    PyErr_SetString(PyExc_ValueError,
+                                    "heatmap values must be finite (no NaN or inf)");
+                    return -1;
+                }
+                flat[(size_t)r * (size_t)cols + (size_t)c] = v;
+            }
+            Py_DECREF(rfast);
+        }
+        Py_DECREF(fast);
+        *out_flat = flat;
+    }
+
+    *out_rows = rows;
+    *out_cols = cols;
+    return 0;
+}
+
+static PyObject* py_create_heat(PyObject* self, PyObject* args) {
+    PyObject* o_matrix;
+    const char* low_color = NULL;
+    const char* high_color = NULL;
+    const char* mid_color = NULL;
+    const char* bg_color = NULL;
+    PyObject* o_row_labels = NULL;
+    PyObject* o_col_labels = NULL;
+    int width, height;
+    int show_labels = 0;
+    Py_ssize_t rows, cols;
+    double* flat = NULL;
+    char** row_labels = NULL;
+    char** col_labels = NULL;
+    cc_heat_settings_t settings;
+    char* chart;
+    PyObject* result;
+
+    /* "Oii|zzzzOOi": matrix, width, height, then optional low/high/mid/bg
+     * colors (str or None), row_labels list, col_labels list, show_labels. */
+    if (!PyArg_ParseTuple(args, "Oii|zzzzOOi", &o_matrix, &width, &height,
+                          &low_color, &high_color, &mid_color, &bg_color,
+                          &o_row_labels, &o_col_labels, &show_labels)) {
+        return NULL;
+    }
+    if (!check_dimensions(width, height)) {
+        PyErr_SetString(PyExc_ValueError,
+                        "width and height must be positive integers within "
+                        "CC_MAX_DIM and CC_MAX_CELLS limits");
+        return NULL;
+    }
+
+    if (build_heat_matrix(o_matrix, &flat, &rows, &cols) != 0) return NULL;
+
+    if (o_row_labels != NULL && o_row_labels != Py_None) {
+        Py_ssize_t nrl;
+        row_labels = py_seq_to_cstrings(o_row_labels, &nrl);
+        if (row_labels == NULL) {
+            free(flat);
+            return NULL;
+        }
+    }
+    if (o_col_labels != NULL && o_col_labels != Py_None) {
+        Py_ssize_t ncl;
+        col_labels = py_seq_to_cstrings(o_col_labels, &ncl);
+        if (col_labels == NULL) {
+            free(flat);
+            free(row_labels);
+            return NULL;
+        }
+    }
+
+    memset(&settings, 0, sizeof(settings));
+    settings.low_color = low_color;
+    settings.high_color = high_color;
+    settings.mid_color = mid_color;
+    settings.bg_color = bg_color;
+    settings.row_labels = (const char* const*)row_labels;
+    settings.col_labels = (const char* const*)col_labels;
+    settings.show_labels = show_labels;
+
+    chart = cc_heat_create(flat, (int)rows, (int)cols, width, height, &settings);
+    free(flat);
+    free(row_labels);
+    free(col_labels);
+    if (chart == NULL) {
+        PyErr_SetString(PyExc_RuntimeError, "failed to create chart");
+        return NULL;
+    }
+
+    result = PyUnicode_FromString(chart);
+    free(chart);
+    return result;
+}
+
 /* Module method table + module definition. */
 static PyMethodDef CChartsMethods[] = {
     {"parse_json", py_parse_json, METH_VARARGS, "convert JSON data into OHLC format"},
@@ -1276,6 +1443,7 @@ static PyMethodDef CChartsMethods[] = {
     {"create_spark", py_create_spark, METH_VARARGS, "create a sparkline chart"},
     {"create_bar", py_create_bar, METH_VARARGS, "create a bar chart"},
     {"create_stack", py_create_stack, METH_VARARGS, "create a stacked bar chart"},
+    {"create_heat", py_create_heat, METH_VARARGS, "create a heatmap chart"},
     {NULL, NULL, 0, NULL}
 };
 

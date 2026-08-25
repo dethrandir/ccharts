@@ -38,7 +38,7 @@ width/height at 100000 cells per side and 1000000 total cells
 
 from ._core import (parse_json, parse_arrays, create_line, create_candle,
                     create_pie, create_hist, create_spark, create_bar,
-                    create_stack)
+                    create_stack, create_heat)
 
 
 def _check_dimensions(width, height):
@@ -408,4 +408,51 @@ class Chart:
             names, matrix, width, height,
             bg_color, colors, category_labels,
             int(show_labels), int(show_prices),
+        )
+
+    @staticmethod
+    def heatmap(values, *, width=24, height=10, low_color=None, high_color=None,
+                mid_color=None, bg_color=None, row_labels=None, col_labels=None,
+                show_labels=False, plain=False):
+        """Draw a heatmap of a 2-D matrix of values and return it as a string.
+
+        A heatmap is not OHLC data, so this is a static method: it takes the
+        matrix directly instead of reading ``self``. Each value maps to one
+        color on a fixed deterministic ladder by its position between the
+        matrix minimum and maximum.
+
+        Args:
+            values: a list of lists (rows of columns) — the matrix, row-major.
+                Every row must have the same length.
+            width, height: chart size in cells (positive integers). When the
+                matrix is larger than the grid it is downsampled by
+                block-average; when it is smaller, each matrix element
+                occupies its own cell in the top-left and the rest are
+                background.
+            low_color: ANSI escape string for the minimum value (None = a
+                fixed dim color, ladder index 0).
+            high_color: ANSI escape string for the maximum value (None = a
+                fixed bright color, ladder index 9).
+            mid_color: optional ANSI escape string that replaces the ladder's
+                middle entry (index 5) for a 3-stop ramp; None = 2-stop.
+            bg_color: ANSI escape string for the cells the matrix does not
+                cover (None = terminal background).
+            row_labels: optional list of one label per matrix row, printed in
+                a left margin when ``show_labels`` is set.
+            col_labels: optional list of one label per matrix column, printed
+                in a footer row when ``show_labels`` is set.
+            show_labels: print the row/col label frame around the grid.
+            plain: return text with no ANSI escapes at all, overriding every
+                color.
+
+        Raises ``ValueError`` for non-finite values (NaN/inf would corrupt the
+        color mapping), ragged rows, an empty matrix, and invalid dimensions.
+        """
+        _check_dimensions(width, height)
+        if plain:
+            low_color = high_color = mid_color = bg_color = ""
+        return create_heat(
+            values, width, height,
+            low_color, high_color, mid_color, bg_color,
+            row_labels, col_labels, int(show_labels),
         )

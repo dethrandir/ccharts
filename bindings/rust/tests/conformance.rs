@@ -7,8 +7,8 @@
 use std::path::{Path, PathBuf};
 
 use ccharts::{
-    BarOptions, Chart, Color, HistogramOptions, PieOptions, PieSlice, Settings, SparklineOptions,
-    StackOptions,
+    BarOptions, Chart, Color, HeatOptions, HistogramOptions, PieOptions, PieSlice, Settings,
+    SparklineOptions, StackOptions,
 };
 use serde_json::Value;
 
@@ -67,7 +67,7 @@ fn matches_the_shared_goldens() {
     let doc: Value =
         serde_json::from_slice(&std::fs::read(dir.join("cases.json")).unwrap()).unwrap();
     let cases = doc["cases"].as_array().expect("cases");
-    assert!(cases.len() >= 58, "conformance suite looks truncated");
+    assert!(cases.len() >= 64, "conformance suite looks truncated");
 
     let mut failures = Vec::new();
     for case in cases {
@@ -214,6 +214,43 @@ fn matches_the_shared_goldens() {
                 options = options.category_labels(&names);
             }
             Chart::stacked_bar(&refs, width, height, &options)
+        } else if case["chart"].as_str().unwrap() == "heat" {
+            let rows_arr = case["values"].as_array().expect("heat rows");
+            let matrix: Vec<Vec<f64>> = rows_arr
+                .iter()
+                .map(|row| {
+                    row.as_array()
+                        .expect("heat row")
+                        .iter()
+                        .map(|v| v.as_f64().expect("heat value"))
+                        .collect()
+                })
+                .collect();
+            let refs: Vec<&[f64]> = matrix.iter().map(|row| row.as_slice()).collect();
+            let mut options = HeatOptions::new()
+                .show_labels(cfg["show_labels"].as_bool().unwrap_or(false))
+                .plain(cfg["plain"].as_bool().unwrap_or(false));
+            if let Some(c) = color(&cfg["low_color"]) {
+                options = options.low_color(c);
+            }
+            if let Some(c) = color(&cfg["high_color"]) {
+                options = options.high_color(c);
+            }
+            if let Some(c) = color(&cfg["mid_color"]) {
+                options = options.mid_color(c);
+            }
+            if let Some(c) = color(&cfg["bg_color"]) {
+                options = options.background(c);
+            }
+            if let Some(labels) = cfg["row_labels"].as_array() {
+                let names: Vec<&str> = labels.iter().map(|l| l.as_str().unwrap_or("")).collect();
+                options = options.row_labels(&names);
+            }
+            if let Some(labels) = cfg["col_labels"].as_array() {
+                let names: Vec<&str> = labels.iter().map(|l| l.as_str().unwrap_or("")).collect();
+                options = options.col_labels(&names);
+            }
+            Chart::heatmap(&refs, width, height, &options)
         } else {
             let dataset = &doc["datasets"][case["dataset"].as_str().unwrap()];
             let chart = if case["source"] == "json" {

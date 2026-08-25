@@ -85,6 +85,20 @@ internal struct NativeStackSettings
     public int ShowPrices;
 }
 
+/// <summary>Layout of ccharts_heat_settings from abi/ccharts_abi.h: six pointers
+/// then one int. 8*6 + 4 = 52 bytes, aligned to 56 on x64.</summary>
+[StructLayout(LayoutKind.Sequential)]
+internal struct NativeHeatSettings
+{
+    public IntPtr LowColor;
+    public IntPtr HighColor;
+    public IntPtr MidColor;
+    public IntPtr BackgroundColor;
+    public IntPtr RowLabels;
+    public IntPtr ColLabels;
+    public int ShowLabels;
+}
+
 /// <summary>
 /// P/Invoke declarations for the ccharts C ABI. Strings are handled as raw
 /// pointers on both directions: the library owns what it returns, and
@@ -151,6 +165,11 @@ internal static partial class NativeMethods
     internal static partial int Stack(
         [In] NativeStackSeries[] series, int seriesCount, int width, int height,
         in NativeStackSettings settings, out IntPtr chart, out nuint length);
+
+    [LibraryImport(Library, EntryPoint = "ccharts_heat")]
+    internal static partial int Heat(
+        [In] double[] values, int rows, int cols, int width, int height,
+        in NativeHeatSettings settings, out IntPtr chart, out nuint length);
 
     [LibraryImport(Library, EntryPoint = "ccharts_color")]
     internal static partial IntPtr ColorAt(int index);

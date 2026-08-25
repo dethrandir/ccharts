@@ -216,6 +216,34 @@ export interface StackOptions {
    */
   plain?: boolean;
 }
+
+/** Options accepted by {@link Chart.heatmap}. */
+export interface HeatOptions {
+  /** Chart width in cells. Default 24. */
+  width?: number;
+  /** Chart height in cells. Default 10. */
+  height?: number;
+  /** ANSI escape for the matrix minimum value. Default: the ladder's low end. */
+  lowColor?: string;
+  /** ANSI escape for the matrix maximum value. Default: the ladder's high end. */
+  highColor?: string;
+  /** ANSI escape for the ladder's middle entry (a 3-stop ramp). Default: none. */
+  midColor?: string;
+  /** ANSI escape filling cells the matrix does not cover. Default: the terminal background. */
+  backgroundColor?: string;
+  /** Row labels printed around the grid when {@link showLabels} is set, one per row. Default: none. */
+  rowLabels?: string[];
+  /** Column labels printed around the grid when {@link showLabels} is set, one per column. Default: none. */
+  colLabels?: string[];
+  /**
+   * Print the row/column labels around the grid. Default false.
+   */
+  showLabels?: boolean;
+  /**
+   * Render with no ANSI escapes at all, overriding every color. Default false.
+   */
+  plain?: boolean;
+}
 export class CchartsError extends Error {
   /** The ccharts_status code: 1 invalid argument, 2 parse, 3 out of memory, 4 non-finite, 5 dimensions. */
   readonly code: number;
@@ -319,6 +347,18 @@ export class Chart {
    * values or bad dimensions.
    */
   static stackedBar(series: StackSeries[], options?: StackOptions): string;
+
+  /**
+   * Renders a heatmap of a rows x cols row-major values matrix into a
+   * width x height grid. Every row must share the same length. A heatmap has
+   * no OHLC dataset, so this is a static method taking the matrix directly.
+   * @throws {CchartsError} on empty or ragged input, non-finite values or bad
+   * dimensions.
+   */
+  static heatmap(
+    values: Array<ArrayLike<number>>,
+    options?: HeatOptions,
+  ): string;
 
   /** Releases the dataset. Safe to call more than once. */
   free(): void;

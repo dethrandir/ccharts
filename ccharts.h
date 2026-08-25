@@ -529,6 +529,84 @@ CC_INLINE char* cc_stack_create(const cc_stack_series_t* series, int series_coun
                                 int width, int height,
                                 const cc_stack_settings_t* settings);
 
+/* ============================= Heatmap chart =============================
+ * A heatmap draws a 2-D matrix of scalar values as a grid of colored cells:
+ * every value maps to one of a fixed, deterministic ladder of ANSI colors by
+ * its position between the matrix minimum and maximum. There is no OHLC
+ * data — the whole chart is a grid of values. The height / width arguments
+ * are the grid size in cells, and the matrix (rows x cols) is mapped onto
+ * that grid (see the downsample / padding rules in cc_heat_create). */
+
+/* Heatmap rendering options. Unspecified fields fall back to defaults:
+ *   - low_color  : ANSI color for the minimum value (default bright-black,
+ *                  a dim gray; ladder index 0)
+ *   - high_color : ANSI color for the maximum value (default bright-white,
+ *                  ladder index RAMP_LEN-1)
+ *   - mid_color  : optional ANSI color that replaces the ladder's middle
+ *                  entry (ladder index 5) for a 3-stop ramp; NULL (default)
+ *                  leaves the fixed middle ramp color in place (2-stop)
+ *   - bg_color   : color of the grid cells that the matrix does not cover
+ *                  (matrix smaller than width/height), or NULL for none
+ *   - row_labels : optional `rows` labels printed in a left margin when
+ *                  show_labels is set, or NULL (no row margin)
+ *   - col_labels : optional `cols` labels printed in a footer row under the
+ *                  grid when show_labels is set, or NULL (no footer)
+ *   - show_labels: 1 = print the row/col label frame around the grid
+ * All fields are pointers or plain ints, so a partial {0} brace initializer
+ * gets exactly the same defaults as NULL (no double sentinels, so there is
+ * no brace-init ambiguity — unlike the histogram's NaN window fields). */
+typedef struct cc_heat_settings {
+    const char* low_color;
+    const char* high_color;
+    const char* mid_color;
+    const char* bg_color;
+    const char* const* row_labels;
+    const char* const* col_labels;
+    int   show_labels;
+} cc_heat_settings_t;
+
+/* The colormap ladder. This is the chart's determinism contract: a value's
+ * ratio r in [0,1] ((value - data_min) / (data_max - data_min), 0.0 for an
+ * all-equal matrix) selects color index (int)(r * (CC_HEAT_RAMP_LEN - 1)),
+ * clamped into range. Index 0 is the low end and index CC_HEAT_RAMP_LEN-1
+ * the high end; low_color/high_color substitute those two entries and an
+ * optional mid_color substitutes index CC_HEAT_MID_INDEX. The ramp's ANSI
+ * strings are fixed, so every binding reproduces the same bytes for the same
+ * ratio. The full mapping, by ratio bucket (r in [0,1]):
+ *
+ *   r in [0/9, 1/9)   -> index 0  (low_color default bright-black)
+ *   r in [1/9, 2/9)   -> index 1  (blue)
+ *   r in [2/9, 3/9)   -> index 2  (cyan)
+ *   r in [3/9, 4/9)   -> index 3  (bright-cyan)
+ *   r in [4/9, 5/9)   -> index 4  (green)
+ *   r in [5/9, 6/9)   -> index 5  (MID_INDEX; mid_color default yellow)
+ *   r in [6/9, 7/9)   -> index 6  (bright-yellow)
+ *   r in [7/9, 8/9)   -> index 7  (red)
+ *   r in [8/9, 9/9)   -> index 8  (bright-red)
+ *   r == 1 (exactly)  -> index 9  (high_color default bright-white)
+ */
+#define CC_HEAT_RAMP_LEN 10
+#define CC_HEAT_MID_INDEX 5
+
+/* Renders a heatmap of a `rows` x `cols` row-major `values` matrix into a
+ * `width` x `height` grid (cells) and returns a malloc'd string (caller
+ * frees). Each grid cell (gx, gy — gy counting from the TOP row) represents
+ * a rectangular block of the matrix. A cell is "covered" when its block is
+ * non-empty: if the matrix is LARGER than the grid (rows > height or cols >
+ * width) the matrix is deterministically downsampled by BLOCK-AVERAGE (each
+ * covered cell renders the mean of the matrix values in its span); if the
+ * matrix is SMALLER than or equal to the grid, each matrix element occupies
+ * its own cell in the top-left (row 0 / column 0) and the remaining cells
+ * are background (bg_color or blank). Covered cells are colored by their
+ * block-average value on the fixed ladder above; an all-equal matrix maps
+ * every covered cell to ladder index 0 (a single color). Returns a malloc'd
+ * string (caller frees); NULL values, rows <= 0, cols <= 0, or invalid
+ * dimensions yield an empty string. Scratch buffers are heap-allocated (no
+ * VLAs) and freed on every path. */
+CC_INLINE char* cc_heat_create(const double* values, int rows, int cols,
+                               int width, int height,
+                               const cc_heat_settings_t* settings);
+
 #ifdef __cplusplus
 }
 #endif
@@ -2471,6 +2549,221 @@ CC_INLINE char* cc_stack_create(const cc_stack_series_t* series, int series_coun
                                     s.cat_labels, first_idx, span_len);
     free(segs); free(cum); free(pix); free(coltot);
     free(first_idx); free(span_len); free(columns);
+    return chart;
+}
+
+/* ------------------------------ Heatmap renderer --------------------------
+ * A heatmap draws a 2-D matrix onto a grid, coloring every covered cell by
+ * its value's position between the matrix min and max on the fixed ladder
+ * (CC_HEAT_RAMP above). Grid row 0 is the TOP (matrix row 0); columns run
+ * left to right (matrix column 0). Each covered cell block-averages the
+ * matrix values in its span; cells the matrix does not reach (matrix smaller
+ * than the grid) are background. All scratch buffers are heap-allocated (no
+ * VLAs) and freed on every path. */
+
+/* Returns the matrix row span [*ys, *ye) that output row `gy` (from the top)
+ * covers, plus a non-zero `*covered` when that span is non-empty. When the
+ * matrix has rows > height it is downsampled (block-average); otherwise each
+ * matrix row occupies its own output row on top and the rest are background. */
+static void cc_heat_row_span(int rows, int height, int gy,
+                             int* ys, int* ye, int* covered) {
+    if (rows <= height) {
+        if (gy < rows) { *ys = gy; *ye = gy + 1; *covered = 1; }
+        else           { *ys = rows; *ye = rows; *covered = 0; }
+    } else {
+        *ys = (int)(((long long)gy * rows) / height);
+        *ye = (int)(((long long)(gy + 1) * rows) / height);
+        if (*ye <= *ys) *ye = *ys + 1;
+        if (*ye > rows) *ye = rows;
+        *covered = (*ys < rows) ? 1 : 0;
+    }
+}
+
+static void cc_heat_col_span(int cols, int width, int gx,
+                             int* xs, int* xe, int* covered) {
+    if (cols <= width) {
+        if (gx < cols) { *xs = gx; *xe = gx + 1; *covered = 1; }
+        else           { *xs = cols; *xe = cols; *covered = 0; }
+    } else {
+        *xs = (int)(((long long)gx * cols) / width);
+        *xe = (int)(((long long)(gx + 1) * cols) / width);
+        if (*xe <= *xs) *xe = *xs + 1;
+        if (*xe > cols) *xe = cols;
+        *covered = (*xs < cols) ? 1 : 0;
+    }
+}
+
+CC_INLINE char* cc_heat_create(const double* values, int rows, int cols,
+                               int width, int height,
+                               const cc_heat_settings_t* settings) {
+    int gy, gx, i;
+    if (values == NULL || rows <= 0 || cols <= 0 ||
+        !cc_dim_ok(width, height)) {
+        return (char*)calloc(1, sizeof(char));
+    }
+
+    cc_heat_settings_t s;
+    /* All pointer/int fields: a partial {0} brace initializer matches NULL,
+     * so there is no sentinel ambiguity (unlike the histogram's doubles). */
+    s.low_color   = (settings && settings->low_color)  ? settings->low_color  : CC_COLOR_BRIGHT_BLACK;
+    s.high_color  = (settings && settings->high_color) ? settings->high_color : CC_COLOR_BRIGHT_WHITE;
+    s.mid_color   = settings ? settings->mid_color : NULL;
+    s.bg_color    = settings ? settings->bg_color  : NULL;
+    s.row_labels  = settings ? settings->row_labels  : NULL;
+    s.col_labels  = settings ? settings->col_labels  : NULL;
+    s.show_labels = (settings && settings->show_labels < 0) ? 0
+                    : (settings ? settings->show_labels : 0);
+
+    double dmin = values[0];
+    double dmax = values[0];
+    for (i = 1; i < rows * cols; i++) {
+        if (values[i] < dmin) dmin = values[i];
+        if (values[i] > dmax) dmax = values[i];
+    }
+    double range = dmax - dmin;
+
+    /* Resolve the ladder: fixed ramp, with the settings color endpoints
+     * substituted and an optional mid color replacing the middle entry. */
+    const char* ladder[CC_HEAT_RAMP_LEN];
+    ladder[0] = CC_COLOR_BRIGHT_BLACK;
+    ladder[1] = CC_COLOR_BLUE;
+    ladder[2] = CC_COLOR_CYAN;
+    ladder[3] = CC_COLOR_BRIGHT_CYAN;
+    ladder[4] = CC_COLOR_GREEN;
+    ladder[5] = CC_COLOR_YELLOW;
+    ladder[6] = CC_COLOR_BRIGHT_YELLOW;
+    ladder[7] = CC_COLOR_RED;
+    ladder[8] = CC_COLOR_BRIGHT_RED;
+    ladder[9] = CC_COLOR_BRIGHT_WHITE;
+    ladder[0] = s.low_color;
+    ladder[CC_HEAT_RAMP_LEN - 1] = s.high_color;
+    if (s.mid_color != NULL) ladder[CC_HEAT_MID_INDEX] = s.mid_color;
+    /* Plain mode mirrors the other charts' empty-color convention: an empty
+     * low_color (what the Python plain=True path hands in) blanks the WHOLE
+     * ladder so no ANSI escape from the fixed interior ramp leaks out. */
+    if (s.low_color != NULL && s.low_color[0] == '\0') {
+        for (i = 0; i < CC_HEAT_RAMP_LEN; i++) ladder[i] = "";
+    }
+
+    char* columns = (char*)malloc((size_t)width * (size_t)height * 32);
+    if (columns == NULL) return NULL;
+
+    /* Cells are indexed [(gy * width + gx) * 32], gy from the TOP, so the
+     * assembly loop reads rows top-to-bottom in matrix order. */
+    for (gy = 0; gy < height; gy++) {
+        int ys, ye, ycov;
+        cc_heat_row_span(rows, height, gy, &ys, &ye, &ycov);
+        for (gx = 0; gx < width; gx++) {
+            int xs, xe, xcov;
+            cc_heat_col_span(cols, width, gx, &xs, &xe, &xcov);
+            char* cell = columns + ((size_t)gy * (size_t)width + (size_t)gx) * 32;
+
+            if (!ycov || !xcov) {
+                if (s.bg_color != NULL) {
+                    snprintf(cell, 32, "%s %s", s.bg_color,
+                             cc_reset_for(s.bg_color, NULL));
+                } else {
+                    snprintf(cell, 32, " ");
+                }
+                continue;
+            }
+
+            /* Block-average the covered matrix cells. */
+            double sum = 0.0;
+            int r, c, n = 0;
+            for (r = ys; r < ye; r++) {
+                for (c = xs; c < xe; c++) {
+                    sum += values[(size_t)r * (size_t)cols + (size_t)c];
+                    n++;
+                }
+            }
+            if (n < 1) continue;
+            double avg = sum / (double)n;
+
+            double rr = (range > 0.0) ? (avg - dmin) / range : 0.0;
+            if (rr < 0.0) rr = 0.0;
+            if (rr > 1.0) rr = 1.0;
+            int idx = (int)(rr * (CC_HEAT_RAMP_LEN - 1));
+            if (idx >= CC_HEAT_RAMP_LEN) idx = CC_HEAT_RAMP_LEN - 1;
+            const char* color = ladder[idx];
+            snprintf(cell, 32, "%s%s%s", CC_S(color), CC_BLOCK_FULL,
+                     cc_reset_for(color, NULL));
+        }
+    }
+
+    /* Label frame: an optional left row-label margin and an optional footer
+     * row of column labels, both gated by show_labels, mirroring the bar/
+     * stack footer (each label truncated to its column span). */
+    int rmargin = 0;
+    if (s.show_labels && s.row_labels != NULL) {
+        for (i = 0; i < rows; i++) {
+            if (s.row_labels[i] != NULL) {
+                size_t n = strlen(s.row_labels[i]);
+                if (n > (size_t)rmargin) rmargin = (int)n;
+            }
+        }
+        if (rmargin > 255) rmargin = 255;   /* fixed label-margin cap */
+    }
+    int footer = (s.show_labels && s.col_labels != NULL) ? 1 : 0;
+    const int line_len = width + rmargin;
+    const int rows_out = height + footer;
+    /* Bounded by CC_MAX_CELLS: width*height <= 1e6. */
+    size_t total = (size_t)line_len * (size_t)rows_out * 32 + (size_t)rows_out + 1;
+    char* chart = (char*)calloc(total, 1);
+    if (chart == NULL) {
+        free(columns);
+        return NULL;
+    }
+
+    char* w = chart;
+    for (gy = 0; gy < height; gy++) {
+        if (rmargin > 0) {
+            int ys, ye, ycov;
+            cc_heat_row_span(rows, height, gy, &ys, &ye, &ycov);
+            char lbl[256] = "";
+            if (ycov && s.row_labels != NULL && s.row_labels[ys] != NULL) {
+                snprintf(lbl, sizeof(lbl), "%*s", rmargin, s.row_labels[ys]);
+            } else {
+                memset(lbl, ' ', (size_t)rmargin);
+                lbl[rmargin] = '\0';
+            }
+            memcpy(w, lbl, (size_t)rmargin);
+            w += (size_t)rmargin;
+        }
+        for (gx = 0; gx < width; gx++) {
+            const char* cell = columns + ((size_t)gy * (size_t)width + (size_t)gx) * 32;
+            size_t cl = strlen(cell);
+            memcpy(w, cell, cl);
+            w += cl;
+        }
+        *w++ = '\n';
+    }
+
+    if (footer) {
+        if (rmargin > 0) {
+            memset(w, ' ', (size_t)rmargin);
+            w += (size_t)rmargin;
+        }
+        for (gx = 0; gx < width; gx++) {
+            int xs, xe, xcov;
+            cc_heat_col_span(cols, width, gx, &xs, &xe, &xcov);
+            if (!xcov) { *w++ = ' '; continue; }
+            int span = xe - xs;
+            if (span < 1) span = 1;
+            const char* T = (s.col_labels != NULL && s.col_labels[xs] != NULL)
+                            ? s.col_labels[xs] : "";
+            size_t n = strlen(T);
+            if (n > (size_t)span) n = (size_t)span;
+            if (n > 0) { memcpy(w, T, n); w += n; }
+            if ((size_t)span > n) {
+                memset(w, ' ', (size_t)span - n);
+                w += (size_t)span - n;
+            }
+        }
+        *w++ = '\n';
+    }
+    *w = '\0';
+    free(columns);
     return chart;
 }
 

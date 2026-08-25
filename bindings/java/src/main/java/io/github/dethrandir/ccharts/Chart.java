@@ -587,6 +587,98 @@ public final class Chart implements AutoCloseable {
     }
 
     /**
+     * Renders a heatmap of a {@code rows} x {@code cols} row-major {@code values}
+     * matrix into a {@code width} x {@code height} grid. Every row must share
+     * the same length. Matrix elements map to the fixed deterministic colormap
+     * ladder by their position between the matrix min/max. A heatmap has no
+     * OHLC dataset, so this is a static method taking the matrix directly.
+     *
+     * @param values  the 2-D matrix, one {@code double[]} row per {@code rows}, each
+     *                of the same length (one entry per {@code cols})
+     * @param width   chart width in cells
+     * @param height  chart height in cells
+     * @param options rendering options
+     * @return the chart as a printable string
+     */
+    public static String heatmap(double[][] values, int width, int height,
+            HeatmapOptions options) {
+        if (values == null || values.length == 0) {
+            throw new CchartsException(CchartsException.Status.INVALID_ARGUMENT,
+                    "need at least one matrix row");
+        }
+        int rows = values.length;
+        int cols = values[0].length;
+        if (cols == 0) {
+            throw new CchartsException(CchartsException.Status.INVALID_ARGUMENT,
+                    "matrix columns must not be empty");
+        }
+        for (double[] row : values) {
+            if (row == null || row.length != cols) {
+                throw new CchartsException(CchartsException.Status.INVALID_ARGUMENT,
+                        "all rows must have the same number of values");
+            }
+        }
+
+        try (Arena arena = Arena.ofConfined()) {
+            // Flatten the matrix row-major into a contiguous double[] segment.
+            double[] flat = new double[rows * cols];
+            int idx = 0;
+            for (double[] row : values) {
+                for (double v : row) {
+                    flat[idx++] = v;
+                }
+            }
+            MemorySegment valuesSegment = arena.allocateFrom(ValueLayout.JAVA_DOUBLE, flat);
+
+            MemorySegment settings = arena.allocate(Native.HEAT_SETTINGS);
+            // An empty C string means "emit no escape at all": the heatmap's
+            // plain convention is that an empty low_color blanks the WHOLE
+            // ladder, so plain forces "" over every color (vs. null = library
+            // default when not plain).
+            settings.set(ValueLayout.ADDRESS, 0, text(arena,
+                    options.plain() ? "" : options.lowColor()));
+            settings.set(ValueLayout.ADDRESS, 8, text(arena,
+                    options.plain() ? "" : options.highColor()));
+            settings.set(ValueLayout.ADDRESS, 16, text(arena,
+                    options.plain() ? "" : options.midColor()));
+            settings.set(ValueLayout.ADDRESS, 24, text(arena,
+                    options.plain() ? "" : options.backgroundColor()));
+            settings.set(ValueLayout.ADDRESS, 32, labelSegment(arena, options.rowLabels()));
+            settings.set(ValueLayout.ADDRESS, 40, labelSegment(arena, options.colLabels()));
+            settings.set(ValueLayout.JAVA_INT, 48, options.showLabels() ? 1 : 0);
+
+            MemorySegment out = arena.allocate(ValueLayout.ADDRESS);
+            MemorySegment lengthOut = arena.allocate(ValueLayout.JAVA_LONG);
+            int status = (int) Native.HEAT.invokeExact(
+                    valuesSegment, rows, cols, width, height, settings, out, lengthOut);
+            CchartsException.throwIfError(status);
+
+            MemorySegment chart = out.get(ValueLayout.ADDRESS, 0);
+            long size = lengthOut.get(ValueLayout.JAVA_LONG, 0);
+            try {
+                byte[] bytes = chart.reinterpret(size).toArray(ValueLayout.JAVA_BYTE);
+                return new String(bytes, StandardCharsets.UTF_8);
+            } finally {
+                Native.STRING_FREE.invokeExact(chart);
+            }
+        } catch (Throwable t) {
+            throw Native.wrap(t);
+        }
+    }
+
+    /**
+     * Renders a heatmap of the given matrix with the default options.
+     *
+     * @param values the 2-D matrix, one {@code double[]} row per {@code rows}
+     * @param width  chart width in cells
+     * @param height chart height in cells
+     * @return the chart as a printable string
+     */
+    public static String heatmap(double[][] values, int width, int height) {
+        return heatmap(values, width, height, HeatmapOptions.DEFAULTS);
+    }
+
+    /**
      * Number of candles in the dataset.
      *
      * @return the candle count
@@ -684,6 +776,24 @@ public final class Chart implements AutoCloseable {
     /** null means "library default" (NULL); "" means "emit no escape". */
     private static MemorySegment text(Arena arena, String value) {
         return value == null ? MemorySegment.NULL : arena.allocateFrom(value);
+    }
+
+    /**
+     * Allocates a C-string pointer array for a label list, or NULL when absent.
+     * The renderer indexes it by row/column count, so a NULL-terminator is
+     * defensive; labels are plain text, so {@code plain} does not affect them.
+     */
+    private static MemorySegment labelSegment(Arena arena, String[] labels) {
+        if (labels == null || labels.length == 0) {
+            return MemorySegment.NULL;
+        }
+        MemorySegment segment = arena.allocate(ValueLayout.ADDRESS, labels.length + 1);
+        for (int i = 0; i < labels.length; i++) {
+            segment.set(ValueLayout.ADDRESS, i * 8L,
+                    text(arena, labels[i] == null ? "" : labels[i]));
+        }
+        segment.set(ValueLayout.ADDRESS, (long) labels.length * 8, MemorySegment.NULL);
+        return segment;
     }
 
     /** Releases the native dataset. Safe to call more than once. */

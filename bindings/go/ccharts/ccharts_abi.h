@@ -378,6 +378,43 @@ CCHARTS_API int32_t ccharts_stack(const ccharts_stack_series* series,
                                   const ccharts_stack_settings* settings,
                                   char** out, size_t* out_len);
 
+/* ------------------------------ Heatmap chart ---------------------------- */
+
+/* Heatmap rendering options. Mirrors cc_heat_settings_t in ccharts.h.
+ * `low_color` is the ANSI color for the minimum value (default bright-black),
+ * `high_color` for the maximum (default bright-white), and `mid_color` is an
+ * optional ANSI color that replaces the ladder's middle entry (index 5) for a
+ * 3-stop ramp (NULL = 2-stop). `bg_color` colors the grid cells the matrix
+ * does not cover (matrix smaller than width/height). `row_labels` / 
+ * `col_labels` are optional `rows` / `cols` label arrays printed around the
+ * grid when `show_labels` is set. All fields are pointers or plain ints, so a
+ * partial {0} initializer means the same as NULL (no sentinel ambiguity). */
+typedef struct ccharts_heat_settings {
+    const char* low_color;
+    const char* high_color;
+    const char* mid_color;
+    const char* bg_color;
+    const char* const* row_labels;
+    const char* const* col_labels;
+    int32_t show_labels;
+} ccharts_heat_settings;
+
+/* Renders a heatmap of a `rows` x `cols` row-major `values` matrix into a
+ * `width` x `height` grid. Matrix elements map to the fixed deterministic
+ * colormap ladder by their value's position between the matrix min/max; a
+ * matrix larger than the grid is downsampled by block-average, and one
+ * smaller than the grid occupies the top-left with background padding. Same
+ * contract as ccharts_line: CCHARTS_OK with *out (NUL-terminated UTF-8,
+ * release with ccharts_string_free) on success, CCHARTS_ERR_INVALID_ARG for
+ * NULL values / rows <= 0 / cols <= 0 / NULL out, CCHARTS_ERR_NON_FINITE for
+ * NaN/inf values, CCHARTS_ERR_DIMENSIONS for width/height outside cc_dim_ok,
+ * CCHARTS_ERR_NOMEM on allocation failure. On error *out is set to NULL. */
+CCHARTS_API int32_t ccharts_heat(const double* values, int32_t rows,
+                                 int32_t cols,
+                                 int32_t width, int32_t height,
+                                 const ccharts_heat_settings* settings,
+                                 char** out, size_t* out_len);
+
 /* ---------------------------- Introspection ---------------------------- */
 
 /* ANSI escape for a ccharts_color_index, or NULL when out of range. */

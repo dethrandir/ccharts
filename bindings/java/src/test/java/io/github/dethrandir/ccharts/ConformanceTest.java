@@ -97,7 +97,7 @@ class ConformanceTest {
                 Files.readAllBytes(suite.resolve("cases.json")));
         JsonNode datasets = document.get("datasets");
         JsonNode cases = document.get("cases");
-        assertTrue(cases.size() >= 58, "conformance suite looks truncated");
+        assertTrue(cases.size() >= 64, "conformance suite looks truncated");
 
         for (JsonNode testCase : cases) {
             String name = testCase.get("name").asText();
@@ -205,6 +205,49 @@ class ConformanceTest {
                         .build();
                 rendered = Chart.bar(labels, values, testCase.get("width").asInt(),
                         testCase.get("height").asInt(), options);
+            } else if (testCase.get("chart").asText().equals("heat")) {
+                JsonNode valuesNode = testCase.get("values");
+                int rows = valuesNode.size();
+                double[][] matrix = new double[rows][];
+                for (int i = 0; i < rows; i++) {
+                    JsonNode rowNode = valuesNode.get(i);
+                    double[] row = new double[rowNode.size()];
+                    for (int j = 0; j < row.length; j++) {
+                        row[j] = rowNode.get(j).asDouble();
+                    }
+                    matrix[i] = row;
+                }
+
+                String[] rowLabels = null;
+                JsonNode rowLabelsNode = settings.get("row_labels");
+                if (rowLabelsNode != null && rowLabelsNode.isArray()) {
+                    rowLabels = new String[rowLabelsNode.size()];
+                    for (int i = 0; i < rowLabels.length; i++) {
+                        rowLabels[i] = rowLabelsNode.get(i).asText();
+                    }
+                }
+
+                String[] colLabels = null;
+                JsonNode colLabelsNode = settings.get("col_labels");
+                if (colLabelsNode != null && colLabelsNode.isArray()) {
+                    colLabels = new String[colLabelsNode.size()];
+                    for (int i = 0; i < colLabels.length; i++) {
+                        colLabels[i] = colLabelsNode.get(i).asText();
+                    }
+                }
+
+                HeatmapOptions options = HeatmapOptions.builder()
+                        .lowColor(color(settings, "low_color"))
+                        .highColor(color(settings, "high_color"))
+                        .midColor(color(settings, "mid_color"))
+                        .backgroundColor(color(settings, "bg_color"))
+                        .rowLabels(rowLabels)
+                        .colLabels(colLabels)
+                        .showLabels(settings.path("show_labels").asBoolean(false))
+                        .plain(settings.path("plain").asBoolean(false))
+                        .build();
+                rendered = Chart.heatmap(matrix,
+                        testCase.get("width").asInt(), testCase.get("height").asInt(), options);
             } else if (testCase.get("chart").asText().equals("stack")) {
                 JsonNode seriesNode = testCase.get("series");
                 int n = seriesNode.size();

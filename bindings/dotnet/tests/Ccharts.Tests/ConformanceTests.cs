@@ -65,7 +65,7 @@ public class ConformanceTests
             File.ReadAllBytes(Path.Combine(suiteDir!, "cases.json")));
         var datasets = document.RootElement.GetProperty("datasets");
         var cases = document.RootElement.GetProperty("cases").EnumerateArray().ToList();
-        Assert.True(cases.Count >= 58, "conformance suite looks truncated");
+        Assert.True(cases.Count >= 64, "conformance suite looks truncated");
 
         foreach (var testCase in cases)
         {
@@ -134,6 +134,46 @@ public class ConformanceTests
                             && labelsFlag.GetBoolean(),
                         ShowPrices = settings.TryGetProperty("show_prices", out var prices)
                             && prices.GetBoolean(),
+                        Plain = settings.TryGetProperty("plain", out var plain)
+                            && plain.GetBoolean(),
+                    });
+            }
+            else if (chartName == "heat")
+            {
+                var matrix = testCase.GetProperty("values").EnumerateArray()
+                    .Select(row => (IReadOnlyList<double>)row.EnumerateArray()
+                        .Select(v => v.GetDouble()).ToArray())
+                    .ToList();
+
+                string[]? rowLabels = null;
+                if (settings.TryGetProperty("row_labels", out var rowLabelsElement)
+                    && rowLabelsElement.ValueKind == JsonValueKind.Array)
+                {
+                    rowLabels = rowLabelsElement.EnumerateArray()
+                        .Select(l => l.GetString() ?? "").ToArray();
+                }
+
+                string[]? colLabels = null;
+                if (settings.TryGetProperty("col_labels", out var colLabelsElement)
+                    && colLabelsElement.ValueKind == JsonValueKind.Array)
+                {
+                    colLabels = colLabelsElement.EnumerateArray()
+                        .Select(l => l.GetString() ?? "").ToArray();
+                }
+
+                rendered = Chart.Heatmap(matrix,
+                    testCase.GetProperty("width").GetInt32(),
+                    testCase.GetProperty("height").GetInt32(),
+                    new HeatmapOptions
+                    {
+                        LowColor = ColorFor(settings, "low_color"),
+                        HighColor = ColorFor(settings, "high_color"),
+                        MidColor = ColorFor(settings, "mid_color"),
+                        BackgroundColor = ColorFor(settings, "bg_color"),
+                        RowLabels = rowLabels,
+                        ColLabels = colLabels,
+                        ShowLabels = settings.TryGetProperty("show_labels", out var labelsFlag)
+                            && labelsFlag.GetBoolean(),
                         Plain = settings.TryGetProperty("plain", out var plain)
                             && plain.GetBoolean(),
                     });
