@@ -10,6 +10,8 @@
 [![RubyGems](https://img.shields.io/gem/v/ccharts.svg)](https://rubygems.org/gems/ccharts)
 [![LuaRocks](https://img.shields.io/luarocks/v/dethrandir/ccharts.svg)](https://luarocks.org/modules/dethrandir/ccharts)
 
+[![BuyMeACoffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/dethrandir)
+
 **Financial and statistical data in, a string out.** High-density terminal charts drawn with Unicode block characters and returned as plain text strings — so the chart goes wherever text goes: a terminal, a log line, a chat message, an HTML `<pre>`, a commit comment, or a `printf`.
 
 ```text
