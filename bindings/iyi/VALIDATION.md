@@ -55,7 +55,27 @@ No existing language binding behavior or C rendering code was changed; the full
 unrelated multi-language CI matrix was not run locally. Dataset handles require
 explicit close and concurrent close/render needs caller coordination.
 
-No GitHub push, release tag, topic change or catalog publication was performed.
-Existing upstream tags predate the root iyi manifest. Publication needs a new
-release containing the binding (or `@main` after merge), the public repository
-metadata, and observation of the subsequent iyipacks import.
+The initial local checks above preceded GitHub publication. Existing release
+tags predate the root iyi manifest; see the follow-up evidence below for the
+current Git distribution and CI state.
+
+## GitHub follow-up — 2026-11-04
+
+- Implementation commit `ce1386ab283f` and documentation/test follow-up
+  `e685fce39402` were pushed to `main`, preserving upstream README changes.
+- A clean external consumer performed real GitHub `iyi get
+  github.com/dethrandir/ccharts/v3@main`, received the first commit as a pinned
+  pseudo-version, wrote `iyi.sum`, and rendered through the native archive.
+- The GitHub repository now has the `iyi` topic. Local tests and documentation
+  link checks passed after the follow-up changes.
+- [CI run 41879791662](https://github.com/dethrandir/ccharts/actions/runs/41879791662)
+  targets `e685fce39402`, with 29 jobs including Linux, macOS 15 arm64 and
+  Windows iyi tests. At recording time, all jobs were queued without assigned
+  runners; no CI pass is claimed. The older superseded run was cancelled.
+- GitHub reports an [active Actions incident](https://www.githubstatus.com/incidents/h02n9572mx9y)
+  beginning at 17:40 UTC (20:40 Europe/Istanbul), matching the queue delay.
+  This is an external CI availability limit, not evidence that tests passed
+  or failed. macOS and Windows execution remain pending.
+- No release tag or iyipacks catalog listing was published. The current
+  catalog rejects canonical `/v3` identities; the researched publication path
+  and upstream compatibility fix are described in [PUBLICATION.md](PUBLICATION.md).
