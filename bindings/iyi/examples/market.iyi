@@ -1,0 +1,123 @@
+# A deliberately small consumer: fl fetches data; this executable only reads
+# JSON and renders it. Parsing happens in iyi's std/json, then typed price
+# columns cross the C ABI through Chart.from_arrays (not the C JSON parser).
+module bindings/iyi/examples/market
+
+import std/json::{JSON, Any}
+import std/file::{File}
+import std/time::{Time, TimeParseError}
+import ccharts::{Chart, ChartError, Charts, Settings, SparkSettings}
+
+def fail(message : String) : NoReturn
+  STDERR.puts "market: #{message}"
+  exit(2)
+end
+
+def number(value : Any, key : String, row : Int32) : Float64
+  field = value[key]? || fail("row #{row}: missing #{key}")
+  field.as_f? || fail("row #{row}: #{key} must be a number")
+end
+
+def timestamp(value : Any, key : String, row : Int32) : Int64
+  field = value[key]? || fail("row #{row}: missing #{key}")
+  if epoch = field.as_i64?
+    return epoch
+  end
+  text = field.as_s? || fail("row #{row}: #{key} must be ISO8601 or epoch seconds")
+  parsed = Time.parse_iso8601(text)
+  fail("row #{row}: invalid #{key} timestamp") if parsed.is_a?(TimeParseError)
+  parsed.to_unix
+end
+
+width = 64
+height = 14
+kind = "candle"
+path = "-"
+seen_path = false
+plain = false
+args = Program.args
+index = 0
+while index < args.size
+  arg = args[index]
+  if arg == "--help" || arg == "-h"
+    puts "Usage: market [FILE|-] [--type candle|line|spark] [--width N] [--height N] [--plain]"
+    puts "Read fl history JSON (OHLC rows), or fl price JSON (previous close/current)."
+    puts "Default: stdin, candle, width 64, height 14; spark uses one row."
+    puts "Examples:"
+    puts "  fl market history THYAO 1m 1d --json | market --type candle"
+    puts "  fl price ASELS --json | market --type line --width 40 --height 8"
+    exit(0)
+  elsif arg == "--plain"
+    plain = true
+  elsif arg == "--type" || arg == "--width" || arg == "--height"
+    index += 1
+    fail("#{arg} needs a value (see --help)") if index >= args.size
+    value = args[index]
+    if arg == "--type"
+      kind = value
+    else
+      dimension = value.to_i? || fail("#{arg} must be an integer")
+      fail("#{arg} must be between 1 and 4096") if dimension < 1 || dimension > 4096
+      if arg == "--width"
+        width = dimension
+      else
+        height = dimension
+      end
+    end
+  elsif arg.starts_with?("-") && arg != "-"
+    fail("unknown option #{arg} (see --help)")
+  else
+    fail("only one input file is accepted") if seen_path
+    path = arg
+    seen_path = true
+  end
+  index += 1
+end
+fail("--type must be candle, line, or spark") unless kind == "candle" || kind == "line" || kind == "spark"
+fail("input file does not exist: #{path}") if path != "-" && !File.exists?(path)
+text = path == "-" ? STDIN.read_all : File.read(path)
+root = JSON.parse?(text) || fail("invalid JSON")
+opens = [] of Float64
+highs = [] of Float64
+lows = [] of Float64
+closes = [] of Float64
+times = [] of Int64
+if rows = root.as_a?
+  fail("history array must not be empty") if rows.empty?
+  rows.each_with_index do |row, i|
+    fail("row #{i + 1}: expected object") unless row.as_h?
+    opens << number(row, "open", i + 1)
+    highs << number(row, "high", i + 1)
+    lows << number(row, "low", i + 1)
+    closes << number(row, "close", i + 1)
+    times << timestamp(row, "ts", i + 1)
+  end
+elsif root.as_h?
+  # A quote is two observed prices, not invented intraday candles. Render
+  # each as a flat OHLC point so line/spark can show the last-session move.
+  previous = number(root, "previous_close", 1)
+  current = number(root, "price", 1)
+  [previous, current].each do |price|
+    opens << price
+    highs << price
+    lows << price
+    closes << price
+  end
+  times << timestamp(root, "previous_close_as_of", 1)
+  times << timestamp(root, "as_of", 1)
+else
+  fail("expected history array or quote object")
+end
+chart = Chart.from_arrays(opens, highs, lows, closes, times)
+fail(chart.message) if chart.is_a?(ChartError)
+settings = Settings.new(show_prices: true, show_times: true, plain: plain)
+rendered = if kind == "spark"
+             Charts.spark(closes, width, 1, SparkSettings.new(plain: plain))
+           elsif kind == "line"
+             chart.line(width, height, settings)
+           else
+             chart.candle(width, height, settings)
+           end
+chart.close
+fail(rendered.message) if rendered.is_a?(ChartError)
+print rendered

@@ -284,3 +284,34 @@ jobs:
       - uses: julia-actions/julia-runtest@v1
         with:
           project: bindings/julia
+
+  iyi:
+    name: iyi binding (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-15, windows-latest]
+    env:
+      IYI_VERSION: "0.20.1"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install pinned iyi (Linux/macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          curl -fsSL "https://raw.githubusercontent.com/iyilang/iyi/v${IYI_VERSION}/install.sh" -o "$RUNNER_TEMP/install-iyi.sh"
+          sh "$RUNNER_TEMP/install-iyi.sh"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Install pinned iyi (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Invoke-WebRequest "https://raw.githubusercontent.com/iyilang/iyi/v$env:IYI_VERSION/install.ps1" -OutFile "$env:RUNNER_TEMP/install-iyi.ps1"
+          & "$env:RUNNER_TEMP/install-iyi.ps1"
+          "$env:LOCALAPPDATA\Programs\iyi\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+      - name: Native build, API, conformance and CLI tests
+        run: python bindings/iyi/scripts/dev.py test

@@ -1,0 +1,609 @@
+# Thin, owning binding to the shared ccharts C ABI. Rendering stays in C.
+#
+# Every operation that can reject input returns a ChartError value. Array
+# constructors copy input in C; stateless renderers only borrow buffers for
+# their synchronous call. Strings crossing a C-string boundary reject NUL.
+#
+# Datasets must be closed explicitly; rendering copies and frees C output
+# immediately. Chart is an owning reference type so aliases share one closed
+# state. Coordinate close/render and input mutation between concurrent tasks.
+# No runtime finalizer is assumed: use close even when rendering fails.
+module bindings/iyi/ccharts
+
+pub VERSION = "3.0.0"
+
+@[Link("ccharts")]
+{% unless flag?(:win32) %}
+  @[Link("m")]
+{% end %}
+lib Native
+  struct Settings
+    rise_color : UInt8*
+    fall_color : UInt8*
+    bg_color : UInt8*
+    area_color : UInt8*
+    single_color : Int32
+    show_prices : Int32
+    show_times : Int32
+  end
+
+  struct PieSlice
+    label : UInt8*
+    value : Float64
+  end
+
+  struct HistSettings
+    rise_color : UInt8*
+    bg_color : UInt8*
+    bin_count : Int32
+    min_value : Float64
+    max_value : Float64
+    show_bins : Int32
+    show_prices : Int32
+  end
+
+  struct SparkSettings
+    rise_color : UInt8*
+    area_color : UInt8*
+    min_above : Int32
+    min_below : Int32
+  end
+
+  struct BarSlice
+    label : UInt8*
+    value : Float64
+  end
+
+  struct BarSettings
+    rise_color : UInt8*
+    bg_color : UInt8*
+    show_labels : Int32
+    show_prices : Int32
+  end
+
+  struct StackSeries
+    name : UInt8*
+    values : Float64*
+  end
+
+  struct StackSettings
+    colors : UInt8**
+    bg_color : UInt8*
+    cat_labels : UInt8**
+    series : Int32
+    cats : Int32
+    show_labels : Int32
+    show_prices : Int32
+  end
+
+  struct HeatSettings
+    low_color : UInt8*
+    high_color : UInt8*
+    mid_color : UInt8*
+    bg_color : UInt8*
+    row_labels : UInt8**
+    col_labels : UInt8**
+    show_labels : Int32
+  end
+
+  struct BoxCategory
+    name : UInt8*
+    samples : Float64*
+    n : Int32
+  end
+
+  struct BoxSettings
+    rise_color : UInt8*
+    area_color : UInt8*
+    bg_color : UInt8*
+    show_prices : Int32
+  end
+
+  fun ccharts_from_arrays(open : Float64*, high : Float64*, low : Float64*, close : Float64*, ts : Int64*, n : Int32, out : Void**) : Int32
+  fun ccharts_parse_json(json : UInt8*, out : Void**) : Int32
+  fun ccharts_parse_csv(csv : UInt8*, value_separator : UInt8, line_separator : UInt8, out : Void**) : Int32
+  fun ccharts_data_len(data : Void*) : Int32
+  fun ccharts_data_free(data : Void*) : Void
+  fun ccharts_line(data : Void*, width : Int32, height : Int32, settings : Settings*, out : UInt8**, out_len : UInt64*) : Int32
+  fun ccharts_candle(data : Void*, width : Int32, height : Int32, settings : Settings*, out : UInt8**, out_len : UInt64*) : Int32
+  fun ccharts_string_free(s : UInt8*) : Void
+  fun ccharts_pie_from_slices(slices : PieSlice*, count : Int32, width : Int32, height : Int32, donut : Int32, colors : UInt8**, color_count : Int32, show_legend : Int32, show_pct : Int32, slice_gap : Float64, inner_radius_ratio : Float64, legend_format : Int32, start_angle : Float64, counter_clockwise : Int32, center_text : UInt8*, out : UInt8**, out_len : UInt64*) : Int32
+  fun ccharts_hist(samples : Float64*, count : Int32, width : Int32, height : Int32, settings : HistSettings*, out : UInt8**, out_len : UInt64*) : Int32
+  fun ccharts_spark(samples : Float64*, count : Int32, width : Int32, height : Int32, settings : SparkSettings*, out : UInt8**, out_len : UInt64*) : Int32
+  fun ccharts_bar(items : BarSlice*, count : Int32, width : Int32, height : Int32, settings : BarSettings*, out : UInt8**, out_len : UInt64*) : Int32
+  fun ccharts_stack(series : StackSeries*, series_count : Int32, width : Int32, height : Int32, settings : StackSettings*, out : UInt8**, out_len : UInt64*) : Int32
+  fun ccharts_heat(values : Float64*, rows : Int32, cols : Int32, width : Int32, height : Int32, settings : HeatSettings*, out : UInt8**, out_len : UInt64*) : Int32
+  fun ccharts_box(cats : BoxCategory*, cat_count : Int32, width : Int32, height : Int32, settings : BoxSettings*, out : UInt8**, out_len : UInt64*) : Int32
+  fun ccharts_color(index : Int32) : UInt8*
+  fun ccharts_error_message(status : Int32) : UInt8*
+  fun ccharts_version : UInt8*
+  fun ccharts_max_dim : Int32
+  fun ccharts_max_cells : Int32
+end
+
+# OHLC colors are ANSI escape strings, nil for the C defaults, or empty for
+# no color. plain overrides every color while preserving labels and geometry.
+pub struct Settings
+  getter rise_color : String?
+  getter fall_color : String?
+  getter bg_color : String?
+  getter area_color : String?
+  getter single_color : Bool
+  getter show_prices : Bool
+  getter show_times : Bool
+  getter plain : Bool
+
+  def initialize(@rise_color : String? = nil, @fall_color : String? = nil, @bg_color : String? = nil, @area_color : String? = nil, @single_color : Bool = false, @show_prices : Bool = false, @show_times : Bool = false, @plain : Bool = false)
+  end
+end
+
+# NaN min/max select the observed sample range; infinities remain errors.
+pub struct HistSettings
+  getter rise_color : String?
+  getter bg_color : String?
+  getter bin_count : Int32
+  getter min_value : Float64
+  getter max_value : Float64
+  getter show_bins : Bool
+  getter show_prices : Bool
+  getter plain : Bool
+
+  def initialize(@rise_color : String? = nil, @bg_color : String? = nil, @bin_count : Int32 = 0, @min_value : Float64 = (0.0 / 0.0), @max_value : Float64 = (0.0 / 0.0), @show_bins : Bool = false, @show_prices : Bool = false, @plain : Bool = false)
+  end
+end
+
+pub struct SparkSettings
+  getter rise_color : String?
+  getter area_color : String?
+  getter min_above : Int32
+  getter min_below : Int32
+  getter plain : Bool
+
+  def initialize(@rise_color : String? = nil, @area_color : String? = nil, @min_above : Int32 = 0, @min_below : Int32 = 0, @plain : Bool = false)
+  end
+end
+
+pub struct BarSettings
+  getter rise_color : String?
+  getter bg_color : String?
+  getter show_labels : Bool
+  getter show_prices : Bool
+  getter plain : Bool
+
+  def initialize(@rise_color : String? = nil, @bg_color : String? = nil, @show_labels : Bool = false, @show_prices : Bool = false, @plain : Bool = false)
+  end
+end
+
+pub struct StackSettings
+  getter colors : Array(String)
+  getter bg_color : String?
+  getter cat_labels : Array(String)
+  getter show_labels : Bool
+  getter show_prices : Bool
+  getter plain : Bool
+
+  def initialize(@colors : Array(String) = [] of String, @bg_color : String? = nil, @cat_labels : Array(String) = [] of String, @show_labels : Bool = false, @show_prices : Bool = false, @plain : Bool = false)
+  end
+end
+
+pub struct HeatSettings
+  getter low_color : String?
+  getter high_color : String?
+  getter mid_color : String?
+  getter bg_color : String?
+  getter row_labels : Array(String)
+  getter col_labels : Array(String)
+  getter show_labels : Bool
+  getter plain : Bool
+
+  def initialize(@low_color : String? = nil, @high_color : String? = nil, @mid_color : String? = nil, @bg_color : String? = nil, @row_labels : Array(String) = [] of String, @col_labels : Array(String) = [] of String, @show_labels : Bool = false, @plain : Bool = false)
+  end
+end
+
+pub struct BoxSettings
+  getter rise_color : String?
+  getter area_color : String?
+  getter bg_color : String?
+  getter show_prices : Bool
+  getter plain : Bool
+
+  def initialize(@rise_color : String? = nil, @area_color : String? = nil, @bg_color : String? = nil, @show_prices : Bool = false, @plain : Bool = false)
+  end
+end
+
+# Negative radius/angle sentinels preserve the C defaults. Palette strings
+# cycle by slice. legend_format uses CCHARTS_PIE_LEGEND_* values 0 through 3.
+pub struct PieSettings
+  getter donut : Bool
+  getter colors : Array(String)
+  getter show_legend : Bool
+  getter show_pct : Bool
+  getter slice_gap : Float64
+  getter inner_radius_ratio : Float64
+  getter legend_format : Int32
+  getter start_angle : Float64
+  getter counter_clockwise : Bool
+  getter center_text : String?
+  getter plain : Bool
+
+  def initialize(@donut : Bool = false, @colors : Array(String) = [] of String, @show_legend : Bool = false, @show_pct : Bool = false, @slice_gap : Float64 = 0.0, @inner_radius_ratio : Float64 = -1.0, @legend_format : Int32 = 0, @start_angle : Float64 = -1.0, @counter_clockwise : Bool = false, @center_text : String? = nil, @plain : Bool = false)
+  end
+end
+
+pub struct Slice
+  getter label : String
+  getter value : Float64
+
+  def initialize(@label : String = "", @value : Float64 = 0.0)
+  end
+end
+
+pub struct Series
+  getter name : String
+  getter values : Array(Float64)
+
+  def initialize(@name : String = "", @values : Array(Float64) = [] of Float64)
+  end
+end
+
+pub struct Category
+  getter name : String
+  getter samples : Array(Float64)
+
+  def initialize(@name : String = "", @samples : Array(Float64) = [] of Float64)
+  end
+end
+
+# ABI status codes 1..5 are preserved; wrapper validation uses code 1.
+pub struct ChartError
+  getter code : Int32
+  getter message : String
+
+  def initialize(@code : Int32, @message : String)
+  end
+
+  def to_s : String
+    @message
+  end
+end
+
+impl Error for ChartError
+  def message : String
+    @message
+  end
+end
+
+# Internal marshalling helpers retain all source arrays/strings until C returns.
+struct Marshal
+  def self.text(value : String?) : Pointer(UInt8)
+    value ? value.to_unsafe : Pointer(UInt8).new(0_u64)
+  end
+
+  def self.color(value : String?, plain : Bool) : Pointer(UInt8)
+    plain ? "".to_unsafe : text(value)
+  end
+
+  def self.valid?(value : String?) : Bool
+    value.nil? || !value.includes?("\0")
+  end
+
+  def self.valid?(values : Array(String)) : Bool
+    values.all? { |value| valid?(value) }
+  end
+
+  def self.pointers(values : Array(String)) : Array(Pointer(UInt8))
+    out = values.map { |value| value.to_unsafe }
+    out << Pointer(UInt8).new(0_u64)
+    out
+  end
+
+  def self.invalid(message : String) : ChartError
+    ChartError.new(1, message)
+  end
+
+  def self.error(code : Int32) : ChartError
+    ChartError.new(code, copy(Native.ccharts_error_message(code)))
+  end
+
+  def self.copy(ptr : Pointer(UInt8)) : String
+    length = 0
+    while ptr[length] != 0_u8
+      length += 1
+    end
+    String.new(length) { |dst| dst.copy_from(ptr, length) }
+  end
+
+  def self.finish(status : Int32, output : Pointer(UInt8), length : UInt64) : String | ChartError
+    if status != 0
+      Native.ccharts_string_free(output) unless (output.address == 0)
+      return error(status)
+    end
+    return invalid("C renderer returned a null string") if (output.address == 0)
+    answer = String.new(length.to_i32) { |dst| dst.copy_from(output, length.to_i32) }
+    Native.ccharts_string_free(output)
+    answer
+  end
+end
+
+# Immutable native OHLC data with explicit, idempotent close. size is zero
+# after close, while line/candle return an error instead of using freed data.
+pub class Chart
+  @handle : Pointer(Void)
+
+  private def initialize(@handle : Pointer(Void))
+  end
+
+  def self.from_arrays(open : Array(Float64), high : Array(Float64), low : Array(Float64), close : Array(Float64), timestamps : Array(Int64)? = nil) : Chart | ChartError
+    n = open.size
+    return Marshal.invalid("OHLC columns and timestamps must have equal lengths") unless high.size == n && low.size == n && close.size == n && (timestamps.nil? || timestamps.size == n)
+    handle = Pointer(Void).new(0_u64)
+    ts = timestamps ? timestamps.to_unsafe : Pointer(Int64).new(0_u64)
+    status = Native.ccharts_from_arrays(open.to_unsafe, high.to_unsafe, low.to_unsafe, close.to_unsafe, ts, n, pointerof(handle))
+    return Marshal.error(status) unless status == 0
+    new(handle)
+  end
+
+  def self.from_json(json : String) : Chart | ChartError
+    return Marshal.invalid("JSON contains an embedded NUL") unless Marshal.valid?(json)
+    handle = Pointer(Void).new(0_u64)
+    status = Native.ccharts_parse_json(json.to_unsafe, pointerof(handle))
+    return Marshal.error(status) unless status == 0
+    new(handle)
+  end
+
+  def self.from_csv(csv : String, value_separator : UInt8 = 44_u8, line_separator : UInt8 = 10_u8) : Chart | ChartError
+    return Marshal.invalid("CSV contains an embedded NUL or NUL separator") unless Marshal.valid?(csv) && value_separator != 0 && line_separator != 0
+    handle = Pointer(Void).new(0_u64)
+    status = Native.ccharts_parse_csv(csv.to_unsafe, value_separator, line_separator, pointerof(handle))
+    return Marshal.error(status) unless status == 0
+    new(handle)
+  end
+
+  def self.pie(slices : Array(Slice), width : Int32, height : Int32, settings : PieSettings = PieSettings.new) : String | ChartError
+    Charts.pie(slices, width, height, settings)
+  end
+
+  def self.histogram(samples : Array(Float64), width : Int32, height : Int32, settings : HistSettings = HistSettings.new) : String | ChartError
+    Charts.hist(samples, width, height, settings)
+  end
+
+  def self.sparkline(samples : Array(Float64), width : Int32, height : Int32 = 1, settings : SparkSettings = SparkSettings.new) : String | ChartError
+    Charts.spark(samples, width, height, settings)
+  end
+
+  def self.bar(items : Array(Slice), width : Int32, height : Int32, settings : BarSettings = BarSettings.new) : String | ChartError
+    Charts.bar(items, width, height, settings)
+  end
+
+  def self.stacked_bar(series : Array(Series), width : Int32, height : Int32, settings : StackSettings = StackSettings.new) : String | ChartError
+    Charts.stack(series, width, height, settings)
+  end
+
+  def self.heatmap(values : Array(Array(Float64)), width : Int32, height : Int32, settings : HeatSettings = HeatSettings.new) : String | ChartError
+    Charts.heat(values, width, height, settings)
+  end
+
+  def self.boxplot(categories : Array(Category), width : Int32, height : Int32, settings : BoxSettings = BoxSettings.new) : String | ChartError
+    Charts.box(categories, width, height, settings)
+  end
+
+  def close : Nil
+    Native.ccharts_data_free(@handle) unless (@handle.address == 0)
+    @handle = Pointer(Void).new(0_u64)
+    nil
+  end
+
+  def closed? : Bool
+    (@handle.address == 0)
+  end
+
+  def size : Int32
+    Native.ccharts_data_len(@handle)
+  end
+
+  def line(width : Int32, height : Int32, settings : Settings = Settings.new) : String | ChartError
+    return Marshal.invalid("chart is closed") if closed?
+    return Marshal.invalid("settings contain an embedded NUL") unless Marshal.valid?(settings.rise_color) && Marshal.valid?(settings.fall_color) && Marshal.valid?(settings.bg_color) && Marshal.valid?(settings.area_color)
+    native = Native::Settings.new
+    native.rise_color = Marshal.color(settings.rise_color, settings.plain)
+    native.fall_color = Marshal.color(settings.fall_color, settings.plain)
+    native.bg_color = Marshal.color(settings.bg_color, settings.plain)
+    native.area_color = Marshal.color(settings.area_color, settings.plain)
+    native.single_color = settings.single_color ? 1 : 0
+    native.show_prices = settings.show_prices ? 1 : 0
+    native.show_times = settings.show_times ? 1 : 0
+    output = Pointer(UInt8).new(0_u64)
+    length = 0_u64
+    status = Native.ccharts_line(@handle, width, height, pointerof(native), pointerof(output), pointerof(length))
+    Marshal.finish(status, output, length)
+  end
+
+  def candle(width : Int32, height : Int32, settings : Settings = Settings.new) : String | ChartError
+    return Marshal.invalid("chart is closed") if closed?
+    return Marshal.invalid("settings contain an embedded NUL") unless Marshal.valid?(settings.rise_color) && Marshal.valid?(settings.fall_color) && Marshal.valid?(settings.bg_color) && Marshal.valid?(settings.area_color)
+    native = Native::Settings.new
+    native.rise_color = Marshal.color(settings.rise_color, settings.plain)
+    native.fall_color = Marshal.color(settings.fall_color, settings.plain)
+    native.bg_color = Marshal.color(settings.bg_color, settings.plain)
+    native.area_color = Marshal.color(settings.area_color, settings.plain)
+    native.single_color = settings.single_color ? 1 : 0
+    native.show_prices = settings.show_prices ? 1 : 0
+    native.show_times = settings.show_times ? 1 : 0
+    output = Pointer(UInt8).new(0_u64)
+    length = 0_u64
+    status = Native.ccharts_candle(@handle, width, height, pointerof(native), pointerof(output), pointerof(length))
+    Marshal.finish(status, output, length)
+  end
+end
+
+# Stateless renderers: input buffers are borrowed for one synchronous ABI call.
+pub struct Charts
+  def self.version : String
+    Marshal.copy(Native.ccharts_version)
+  end
+
+  def self.max_dim : Int32
+    Native.ccharts_max_dim
+  end
+
+  def self.max_cells : Int32
+    Native.ccharts_max_cells
+  end
+
+  def self.color(index : Int32) : String | ChartError
+    ptr = Native.ccharts_color(index)
+    return Marshal.invalid("color index must be between 0 and 16") if ptr.address == 0
+    Marshal.copy(ptr)
+  end
+
+  def self.hist(samples : Array(Float64), width : Int32, height : Int32, settings : HistSettings = HistSettings.new) : String | ChartError
+    return Marshal.invalid("rise_color contains an embedded NUL") unless Marshal.valid?(settings.rise_color)
+    return Marshal.invalid("bg_color contains an embedded NUL") unless Marshal.valid?(settings.bg_color)
+    native = Native::HistSettings.new
+    native.rise_color = Marshal.color(settings.rise_color, settings.plain)
+    native.bg_color = Marshal.color(settings.bg_color, settings.plain)
+    native.bin_count = settings.bin_count
+    native.min_value = settings.min_value
+    native.max_value = settings.max_value
+    native.show_bins = settings.show_bins ? 1 : 0
+    native.show_prices = settings.show_prices ? 1 : 0
+    output = Pointer(UInt8).new(0_u64)
+    length = 0_u64
+    status = Native.ccharts_hist(samples.to_unsafe, samples.size, width, height, pointerof(native), pointerof(output), pointerof(length))
+    Marshal.finish(status, output, length)
+  end
+
+  def self.spark(samples : Array(Float64), width : Int32, height : Int32 = 1, settings : SparkSettings = SparkSettings.new) : String | ChartError
+    return Marshal.invalid("rise_color contains an embedded NUL") unless Marshal.valid?(settings.rise_color)
+    return Marshal.invalid("area_color contains an embedded NUL") unless Marshal.valid?(settings.area_color)
+    native = Native::SparkSettings.new
+    native.rise_color = Marshal.color(settings.rise_color, settings.plain)
+    native.area_color = Marshal.color(settings.area_color, settings.plain)
+    native.min_above = settings.min_above
+    native.min_below = settings.min_below
+    output = Pointer(UInt8).new(0_u64)
+    length = 0_u64
+    status = Native.ccharts_spark(samples.to_unsafe, samples.size, width, height, pointerof(native), pointerof(output), pointerof(length))
+    Marshal.finish(status, output, length)
+  end
+
+  def self.bar(items : Array(Slice), width : Int32, height : Int32, settings : BarSettings = BarSettings.new) : String | ChartError
+    return Marshal.invalid("rise_color contains an embedded NUL") unless Marshal.valid?(settings.rise_color)
+    return Marshal.invalid("bg_color contains an embedded NUL") unless Marshal.valid?(settings.bg_color)
+    return Marshal.invalid("labels contain an embedded NUL") unless items.all? { |item| Marshal.valid?(item.label) }
+    rows = items.map do |item|
+      row = Native::BarSlice.new
+      row.label = item.label.to_unsafe
+      row.value = item.value
+      row
+    end
+    native = Native::BarSettings.new
+    native.rise_color = Marshal.color(settings.rise_color, settings.plain)
+    native.bg_color = Marshal.color(settings.bg_color, settings.plain)
+    native.show_labels = settings.show_labels ? 1 : 0
+    native.show_prices = settings.show_prices ? 1 : 0
+    output = Pointer(UInt8).new(0_u64)
+    length = 0_u64
+    status = Native.ccharts_bar(rows.to_unsafe, rows.size, width, height, pointerof(native), pointerof(output), pointerof(length))
+    Marshal.finish(status, output, length)
+  end
+
+  def self.box(categories : Array(Category), width : Int32, height : Int32, settings : BoxSettings = BoxSettings.new) : String | ChartError
+    return Marshal.invalid("rise_color contains an embedded NUL") unless Marshal.valid?(settings.rise_color)
+    return Marshal.invalid("area_color contains an embedded NUL") unless Marshal.valid?(settings.area_color)
+    return Marshal.invalid("bg_color contains an embedded NUL") unless Marshal.valid?(settings.bg_color)
+    return Marshal.invalid("names contain an embedded NUL") unless categories.all? { |item| Marshal.valid?(item.name) }
+    rows = categories.map do |item|
+      row = Native::BoxCategory.new
+      row.name = item.name.to_unsafe
+      row.samples = item.samples.to_unsafe
+      row.n = item.samples.size
+      row
+    end
+    native = Native::BoxSettings.new
+    native.rise_color = Marshal.color(settings.rise_color, settings.plain)
+    native.area_color = Marshal.color(settings.area_color, settings.plain)
+    native.bg_color = Marshal.color(settings.bg_color, settings.plain)
+    native.show_prices = settings.show_prices ? 1 : 0
+    output = Pointer(UInt8).new(0_u64)
+    length = 0_u64
+    status = Native.ccharts_box(rows.to_unsafe, rows.size, width, height, pointerof(native), pointerof(output), pointerof(length))
+    Marshal.finish(status, output, length)
+  end
+
+  def self.stack(series : Array(Series), width : Int32, height : Int32, settings : StackSettings = StackSettings.new) : String | ChartError
+    return Marshal.invalid("colors contains an embedded NUL") unless Marshal.valid?(settings.colors)
+    palette = settings.plain ? [""] : settings.colors
+    colors = Marshal.pointers(palette)
+    return Marshal.invalid("bg_color contains an embedded NUL") unless Marshal.valid?(settings.bg_color)
+    return Marshal.invalid("cat_labels contains an embedded NUL") unless Marshal.valid?(settings.cat_labels)
+    cat_labels = Marshal.pointers(settings.cat_labels)
+    cats = series.empty? ? 0 : series[0].values.size
+    return Marshal.invalid("stack series lengths differ") unless series.all? { |item| item.values.size == cats }
+    return Marshal.invalid("category labels must be empty or match categories") unless settings.cat_labels.empty? || settings.cat_labels.size == cats
+    return Marshal.invalid("names contain an embedded NUL") unless series.all? { |item| Marshal.valid?(item.name) }
+    rows = series.map do |item|
+      row = Native::StackSeries.new
+      row.name = item.name.to_unsafe
+      row.values = item.values.to_unsafe
+      row
+    end
+    native = Native::StackSettings.new
+    native.colors = palette.empty? ? Pointer(Pointer(UInt8)).new(0_u64) : colors.to_unsafe
+    native.bg_color = Marshal.color(settings.bg_color, settings.plain)
+    native.cat_labels = settings.cat_labels.empty? ? Pointer(Pointer(UInt8)).new(0_u64) : cat_labels.to_unsafe
+    native.show_labels = settings.show_labels ? 1 : 0
+    native.show_prices = settings.show_prices ? 1 : 0
+    native.series = series.size
+    native.cats = cats
+    output = Pointer(UInt8).new(0_u64)
+    length = 0_u64
+    status = Native.ccharts_stack(rows.to_unsafe, rows.size, width, height, pointerof(native), pointerof(output), pointerof(length))
+    Marshal.finish(status, output, length)
+  end
+
+  def self.heat(values : Array(Array(Float64)), width : Int32, height : Int32, settings : HeatSettings = HeatSettings.new) : String | ChartError
+    return Marshal.invalid("low_color contains an embedded NUL") unless Marshal.valid?(settings.low_color)
+    return Marshal.invalid("high_color contains an embedded NUL") unless Marshal.valid?(settings.high_color)
+    return Marshal.invalid("mid_color contains an embedded NUL") unless Marshal.valid?(settings.mid_color)
+    return Marshal.invalid("bg_color contains an embedded NUL") unless Marshal.valid?(settings.bg_color)
+    return Marshal.invalid("row_labels contains an embedded NUL") unless Marshal.valid?(settings.row_labels)
+    row_labels = Marshal.pointers(settings.row_labels)
+    return Marshal.invalid("col_labels contains an embedded NUL") unless Marshal.valid?(settings.col_labels)
+    col_labels = Marshal.pointers(settings.col_labels)
+    cols = values.empty? ? 0 : values[0].size
+    return Marshal.invalid("heatmap rows must have equal lengths") unless values.all? { |row| row.size == cols }
+    return Marshal.invalid("row labels must be empty or match rows") unless settings.row_labels.empty? || settings.row_labels.size == values.size
+    return Marshal.invalid("column labels must be empty or match columns") unless settings.col_labels.empty? || settings.col_labels.size == cols
+    flat = [] of Float64
+    values.each { |row| row.each { |value| flat << value } }
+    native = Native::HeatSettings.new
+    native.low_color = Marshal.color(settings.low_color, settings.plain)
+    native.high_color = Marshal.color(settings.high_color, settings.plain)
+    native.mid_color = Marshal.color(settings.mid_color, settings.plain)
+    native.bg_color = Marshal.color(settings.bg_color, settings.plain)
+    native.row_labels = settings.row_labels.empty? ? Pointer(Pointer(UInt8)).new(0_u64) : row_labels.to_unsafe
+    native.col_labels = settings.col_labels.empty? ? Pointer(Pointer(UInt8)).new(0_u64) : col_labels.to_unsafe
+    native.show_labels = settings.show_labels ? 1 : 0
+    output = Pointer(UInt8).new(0_u64)
+    length = 0_u64
+    status = Native.ccharts_heat(flat.to_unsafe, values.size, cols, width, height, pointerof(native), pointerof(output), pointerof(length))
+    Marshal.finish(status, output, length)
+  end
+
+  def self.pie(slices : Array(Slice), width : Int32, height : Int32, settings : PieSettings = PieSettings.new) : String | ChartError
+    return Marshal.invalid("labels or colors contain an embedded NUL") unless slices.all? { |item| Marshal.valid?(item.label) } && Marshal.valid?(settings.colors) && Marshal.valid?(settings.center_text)
+    rows = slices.map do |item|
+      row = Native::PieSlice.new
+      row.label = item.label.to_unsafe
+      row.value = item.value
+      row
+    end
+    palette = settings.plain ? [""] : settings.colors
+    colors = Marshal.pointers(palette)
+    output = Pointer(UInt8).new(0_u64)
+    length = 0_u64
+    status = Native.ccharts_pie_from_slices(rows.to_unsafe, rows.size, width, height, settings.donut ? 1 : 0, colors.to_unsafe, palette.size, settings.show_legend ? 1 : 0, settings.show_pct ? 1 : 0, settings.slice_gap, settings.inner_radius_ratio, settings.legend_format, settings.start_angle, settings.counter_clockwise ? 1 : 0, Marshal.text(settings.center_text), pointerof(output), pointerof(length))
+    Marshal.finish(status, output, length)
+  end
+end

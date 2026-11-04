@@ -1,0 +1,12 @@
+# Straight-line C allocation check; no test tasks or scheduler are involved.
+# For Valgrind only, compile with -Dgc_none (see VALIDATION.md).
+module bindings/iyi/test/native_memory
+import ccharts::{Chart, Settings, Slice, PieSettings}
+500.times do
+  chart = Chart.from_arrays([1.0, 2.0], [3.0, 4.0], [0.5, 1.0], [1.5, 3.0]).or_panic
+  output = chart.candle(20, 4, Settings.new(plain: true)).or_panic
+  assert(!output.empty?)
+  chart.close
+  assert(!Chart.pie([Slice.new("a", 1.0)], 20, 4, PieSettings.new(plain: true)).or_panic.empty?)
+end
+puts "500 native allocation/render/free cycles passed"

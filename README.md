@@ -28,7 +28,7 @@
 
 There is no canvas, no image buffer, no GUI, and no terminal detection hooks — one function call returns a string, and what you do with it is your business.
 
-Written as a single-header C89 library with a flat C ABI and idiomatic bindings for **Python**, **Rust**, **Go**, **JavaScript/WASM**, **.NET/C#**, **Java**, **Ruby**, **Lua**, and **Julia**. Every binding produces byte-identical output across platforms.
+Written as a single-header C89 library with a flat C ABI and idiomatic bindings for **Python**, **Rust**, **Go**, **JavaScript/WASM**, **.NET/C#**, **Java**, **Ruby**, **Lua**, **Julia**, and **iyi**. All bindings target the same byte-for-byte conformance corpus; see each binding’s validation notes for tested platforms.
 
 ---
 
@@ -45,8 +45,22 @@ Written as a single-header C89 library with a flat C ABI and idiomatic bindings 
 | **Ruby** | `ccharts` | [RubyGems](https://rubygems.org/gems/ccharts) | `gem install ccharts` |
 | **Lua** | `ccharts` | [LuaRocks](https://luarocks.org/modules/dethrandir/ccharts) | `luarocks install ccharts` |
 | **Julia** | `Ccharts` | [General](https://github.com/dethrandir/ccharts) | `using Pkg; Pkg.add("Ccharts")` |
+| **iyi** | `github.com/dethrandir/ccharts/v3` | Git | `iyi get github.com/dethrandir/ccharts/v3@main` + [native build](bindings/iyi/README.md) |
 
 ---
+
+## iyi binding
+
+[The iyi binding](bindings/iyi/README.md) supports all nine chart types through
+the same C ABI, with typed errors and a small JSON-to-chart CLI. Run
+`python3 bindings/iyi/scripts/dev.py test` from this checkout. It requires iyi
+0.20.1 and an explicit native build. Install from `@main`; existing release tags
+predate this addition.
+
+```sh
+python3 bindings/iyi/scripts/dev.py cli
+fl market history THYAO 1m 1d --json | bindings/iyi/build/ccharts-market
+```
 
 ## Supported Chart Types
 
@@ -226,6 +240,8 @@ Comprehensive guides are available in the [`docs/`](docs/) directory:
   - `bindings/ruby/` — Ruby gem (`ccharts`).
   - `bindings/lua/` — LuaRocks package (`ccharts`).
   - `bindings/julia/` — Julia package (`Ccharts`).
+  - `bindings/iyi/` — iyi FFI binding, native build helper, tests and financial JSON CLI.
+- `iyi.mod` / `ccharts.iyi` — iyi package identity and public entry point.
 - `ccharts/` — Python package (`ccharts`) wrapping C core + pandas integration.
 - `docs/` — Modular documentation guides.
 - `conformance/` — 70 cross-language test cases (`cases.json`) and byte-for-byte golden files (`golden/*.txt`).

@@ -24,6 +24,8 @@ SOURCES = ["ccharts.h", "abi/ccharts_abi.h", "abi/ccharts_abi.c"]
 
 # binding root -> directory the copies live in, relative to that root.
 DESTINATIONS = {
+    # iyi links a native archive built explicitly from these shipped sources.
+    "bindings/iyi": "vendor",
     # cgo needs the sources in the package directory itself.
     "bindings/go": "ccharts",
     # cargo packages only what is inside the crate.

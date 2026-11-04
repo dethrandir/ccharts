@@ -1,0 +1,14 @@
+# Minimal public-package API, with native cleanup on every function exit.
+module bindings/iyi/examples/quickstart
+
+import ccharts::{Chart, Settings}
+
+def draw : Nil
+  chart = Chart.from_arrays(
+    [100.0, 102.0], [105.0, 106.0], [98.0, 101.0], [103.0, 104.0]
+  ).or_panic
+  defer chart.close
+  print chart.candle(40, 8, Settings.new(show_prices: true)).or_panic
+end
+
+draw

@@ -1,0 +1,133 @@
+# Public API checks complement the shared rendering fixtures: lifetimes,
+# parsing paths and invalid input must stay safe at the C boundary.
+module bindings/iyi/test/api_test
+
+import ccharts::{Chart, Charts, ChartError, Settings, PieSettings, StackSettings, HeatSettings, Slice, Series, Category}
+
+def sample : Chart
+  Chart.from_arrays([1.0, 2.0], [3.0, 4.0], [0.5, 1.0], [1.5, 3.0]).or_panic
+end
+
+test("version, native limits and color lookup are exposed") do
+  assert_eq("3.0.0", Charts.version)
+  assert(Charts.max_dim > 0)
+  assert(Charts.max_cells > 0)
+  assert_eq("\e[34m", Charts.color(4).or_panic)
+  assert_eq("\e[0m", Charts.color(16).or_panic)
+  assert_error(ChartError) { Charts.color(-1) }
+  assert_error(ChartError) { Charts.color(17) }
+end
+
+test("Chart static renderer aliases match the stateless API") do
+  samples = [1.0, 2.0, 3.0]
+  slices = [Slice.new("a", 1.0), Slice.new("b", 2.0)]
+  series = [Series.new("a", samples)]
+  categories = [Category.new("a", samples)]
+  values = [[1.0, 2.0], [3.0, 4.0]]
+  assert_eq(Charts.hist(samples, 20, 4).or_panic, Chart.histogram(samples, 20, 4).or_panic)
+  assert_eq(Charts.spark(samples, 20, 1).or_panic, Chart.sparkline(samples, 20, 1).or_panic)
+  assert_eq(Charts.bar(slices, 20, 4).or_panic, Chart.bar(slices, 20, 4).or_panic)
+  assert_eq(Charts.pie(slices, 20, 4).or_panic, Chart.pie(slices, 20, 4).or_panic)
+  assert_eq(Charts.stack(series, 20, 4).or_panic, Chart.stacked_bar(series, 20, 4).or_panic)
+  assert_eq(Charts.heat(values, 20, 4).or_panic, Chart.heatmap(values, 20, 4).or_panic)
+  assert_eq(Charts.box(categories, 20, 4).or_panic, Chart.boxplot(categories, 20, 4).or_panic)
+end
+
+test("array input is copied and chart lifetime is explicit") do
+  values = [1.0, 2.0]
+  chart = Chart.from_arrays(values, [3.0, 4.0], [0.5, 1.0], [1.5, 3.0]).or_panic
+  before = chart.candle(20, 4).or_panic
+  values[0] = 9999.0
+  assert_eq(before, chart.candle(20, 4).or_panic)
+  assert_eq(2, chart.size)
+  assert(!chart.closed?)
+  chart.close
+  assert(chart.closed?)
+  chart.close
+  assert_error(ChartError) { chart.line(20, 4) }
+  assert_error(ChartError) { chart.candle(20, 4) }
+end
+
+test("JSON and CSV constructors match array rendering") do
+  chart = sample
+  json = Chart.from_json("[{\"open\":1,\"high\":3,\"low\":0.5,\"close\":1.5},{\"open\":2,\"high\":4,\"low\":1,\"close\":3}]").or_panic
+  csv = Chart.from_csv("1,3,0.5,1.5\n2,4,1,3\n").or_panic
+  separated = Chart.from_csv("1;3;0.5;1.5|2;4;1;3|", 59_u8, 124_u8).or_panic
+  assert_eq(chart.line(20, 4).or_panic, json.line(20, 4).or_panic)
+  assert_eq(chart.line(20, 4).or_panic, csv.line(20, 4).or_panic)
+  assert_eq(chart.line(20, 4).or_panic, separated.line(20, 4).or_panic)
+  chart.close
+  json.close
+  csv.close
+  separated.close
+end
+
+test("plain rendering overrides custom colors") do
+  chart = sample
+  colored = chart.line(20, 4).or_panic
+  assert_includes(colored, "\e[")
+  plain = chart.line(20, 4, Settings.new(plain: true, rise_color: "blue", fall_color: "red", area_color: "green", bg_color: "white")).or_panic
+  assert(!plain.includes?("\e["))
+  chart.close
+end
+
+test("bad dimensions return errors instead of allocating") do
+  chart = sample
+  assert_error(ChartError) { chart.line(0, 4) }
+  assert_error(ChartError) { chart.candle(20, -1) }
+  assert_error(ChartError) { Charts.spark([1.0], 0, 1) }
+  assert_error(ChartError) { Charts.hist([1.0], 20, 0) }
+  assert_error(ChartError) { Charts.bar([Slice.new("a", 1.0)], -1, 4) }
+  assert_error(ChartError) { chart.line(Charts.max_dim + 1, 4) }
+  chart.close
+end
+
+test("empty, mismatched and non-finite data are rejected") do
+  assert_error(ChartError) { Chart.from_arrays([] of Float64, [] of Float64, [] of Float64, [] of Float64) }
+  assert_error(ChartError) { Chart.from_arrays([1.0], [2.0, 3.0], [0.5], [1.5]) }
+  assert_error(ChartError) { Chart.from_arrays([1.0], [2.0], [0.5], [1.5], [1_i64, 2_i64]) }
+  assert_error(ChartError) { Chart.from_arrays([(1.0 / 0.0)], [2.0], [0.5], [1.5]) }
+  assert_error(ChartError) { Charts.hist([(0.0 / 0.0)], 20, 4) }
+  assert_error(ChartError) { Charts.spark([(1.0 / 0.0)], 20, 1) }
+  assert_error(ChartError) { Charts.bar([Slice.new("a", (0.0 / 0.0))], 20, 4) }
+  assert_error(ChartError) { Charts.heat([[1.0], [1.0, 2.0]], 20, 4) }
+  assert_error(ChartError) { Charts.stack([Series.new("a", [1.0]), Series.new("b", [1.0, 2.0])], 20, 4) }
+  assert_error(ChartError) { Charts.box([Category.new("a", [] of Float64)], 20, 4) }
+  assert_error(ChartError) { Charts.pie([Slice.new("a", (0.0 / 0.0))], 20, 4) }
+  assert_error(ChartError) { Charts.heat([[1.0]], 20, 4, HeatSettings.new(row_labels: ["a", "b"])) }
+  assert_error(ChartError) { Charts.heat([[1.0]], 20, 4, HeatSettings.new(col_labels: ["a", "b"])) }
+  assert_error(ChartError) { Charts.stack([Series.new("a", [1.0])], 20, 4, StackSettings.new(cat_labels: ["a", "b"])) }
+end
+
+test("malformed text and embedded NUL cannot be silently truncated") do
+  error = assert_error(ChartError) { Chart.from_json("not json") }
+  assert(error.code != 0)
+  assert(!error.message.empty?)
+  assert_error(ChartError) { Chart.from_json("[]") }
+  assert_error(ChartError) { Chart.from_json("[{\"open\":1}]\0ignored") }
+  assert_error(ChartError) { Chart.from_csv("1,2,0,1\0ignored") }
+  assert_error(ChartError) { Chart.from_csv("1,2,0,1", 0_u8) }
+  assert_error(ChartError) { Chart.from_csv("1,2,0,1", 44_u8, 0_u8) }
+  assert_error(ChartError) { Charts.bar([Slice.new("a\0b", 1.0)], 20, 4) }
+  assert_error(ChartError) { Charts.pie([Slice.new("a", 1.0)], 20, 4, PieSettings.new(center_text: "x\0y")) }
+  assert_error(ChartError) { Charts.pie([Slice.new("a", 1.0)], 20, 4, PieSettings.new(colors: ["x\0y"])) }
+  assert_error(ChartError) { Charts.stack([Series.new("a\0b", [1.0])], 20, 4) }
+  assert_error(ChartError) { Charts.stack([Series.new("a", [1.0])], 20, 4, StackSettings.new(colors: ["x\0y"])) }
+  assert_error(ChartError) { Charts.stack([Series.new("a", [1.0])], 20, 4, StackSettings.new(cat_labels: ["x\0y"])) }
+  assert_error(ChartError) { Charts.box([Category.new("a\0b", [1.0])], 20, 4) }
+  assert_error(ChartError) { Charts.heat([[1.0]], 20, 4, HeatSettings.new(row_labels: ["x\0y"])) }
+  chart = sample
+  assert_error(ChartError) { chart.line(20, 4, Settings.new(rise_color: "x\0y")) }
+  chart.close
+end
+
+test("repeated allocation and cleanup preserves returned strings") do
+  chart = sample
+  first = chart.line(20, 4).or_panic
+  200.times do
+    assert_eq(first, chart.line(20, 4).or_panic)
+    assert(!Charts.pie([Slice.new("a", 1.0), Slice.new("b", 2.0)], 20, 6).or_panic.empty?)
+  end
+  chart.close
+  assert(!first.empty?)
+end

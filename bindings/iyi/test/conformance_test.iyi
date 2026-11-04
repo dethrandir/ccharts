@@ -1,0 +1,123 @@
+# Every case is read at runtime from the same corpus used by the other bindings.
+# No copied goldens or generated fixtures can silently diverge from that contract.
+module bindings/iyi/test/conformance_test
+
+import ccharts::{Chart, Charts, Settings, SparkSettings, HistSettings, BarSettings, StackSettings, HeatSettings, BoxSettings, PieSettings, Slice, Series, Category}
+import std/json::{JSON, Any}
+import std/file::{File}
+
+# Running from the repository root is the documented test invocation.
+def floats(value : Any) : Array(Float64)
+  value.as_a.map { |item| item.as_f }
+end
+
+def text(value : Any, key : String) : String?
+  item = value[key]?
+  item ? item.as_s? : nil
+end
+
+# A color setting carries the ANSI sequence, never its human-readable name.
+def color(value : Any, key : String) : String?
+  name = text(value, key)
+  return nil unless name
+  names = ["black", "red", "green", "yellow", "blue", "magenta", "cyan", "white", "bright_black", "bright_red", "bright_green", "bright_yellow", "bright_blue", "bright_magenta", "bright_cyan", "bright_white", "reset"]
+  index = names.index(name)
+  raise "unknown conformance color: " + name unless index
+  Charts.color(index).or_panic
+end
+
+def colors(value : Any) : Array(String)
+  texts(value, "colors").map do |name|
+    wrapper = JSON.parse("{\"color\":\"" + name + "\"}")
+    color(wrapper, "color") || raise "missing color"
+  end
+end
+
+def number(value : Any, key : String) : Float64?
+  item = value[key]?
+  item ? item.as_f? : nil
+end
+
+def integer(value : Any, key : String) : Int32
+  item = value[key]?
+  item ? (item.as_i? || 0) : 0
+end
+
+def flag(value : Any, key : String) : Bool
+  item = value[key]?
+  item ? (item.as_bool? || false) : false
+end
+
+def texts(value : Any, key : String) : Array(String)
+  item = value[key]?
+  return [] of String unless item
+  list = item.as_a?
+  list ? list.map { |entry| entry.as_s } : [] of String
+end
+
+suite = JSON.parse(File.read("conformance/cases.json"))
+cases = suite["cases"].as_a
+assert(cases.size >= 70, "shared conformance corpus was truncated")
+cases.each do |tc|
+  name = tc["name"].as_s
+  test(name) do
+    s = tc["settings"]
+    w = tc["width"].as_i
+    h = tc["height"].as_i
+    kind = tc["chart"].as_s
+    output = if kind == "hist"
+               Charts.hist(floats(tc["samples"]), w, h, HistSettings.new(
+                 rise_color: color(s, "rise_color"), bg_color: color(s, "bg_color"),
+                 bin_count: integer(s, "bin_count"), min_value: number(s, "min_value") || (0.0 / 0.0), max_value: number(s, "max_value") || (0.0 / 0.0),
+                 show_bins: flag(s, "show_bins"), show_prices: flag(s, "show_prices"), plain: flag(s, "plain"))).or_panic
+             elsif kind == "spark"
+               Charts.spark(floats(tc["samples"]), w, h, SparkSettings.new(
+                 rise_color: color(s, "rise_color"), area_color: color(s, "area_color"),
+                 min_above: integer(s, "min_above"), min_below: integer(s, "min_below"), plain: flag(s, "plain"))).or_panic
+             elsif kind == "bar"
+               items = tc["items"].as_a.map { |item| Slice.new(item["label"].as_s, item["value"].as_f) }
+               Charts.bar(items, w, h, BarSettings.new(
+                 rise_color: color(s, "rise_color"), bg_color: color(s, "bg_color"),
+                 show_labels: flag(s, "show_labels"), show_prices: flag(s, "show_prices"), plain: flag(s, "plain"))).or_panic
+             elsif kind == "pie"
+               slices = tc["slices"].as_a.map { |item| Slice.new(item["label"].as_s, item["value"].as_f) }
+               Charts.pie(slices, w, h, PieSettings.new(
+                 donut: flag(s, "donut"), colors: colors(s), show_legend: flag(s, "show_legend"), show_pct: flag(s, "show_pct"),
+                 slice_gap: number(s, "slice_gap") || 0.0, inner_radius_ratio: number(s, "inner_radius_ratio") || -1.0,
+                 legend_format: integer(s, "legend_format"), start_angle: number(s, "start_angle") || -1.0,
+                 counter_clockwise: flag(s, "counter_clockwise"), center_text: text(s, "center_text"))).or_panic
+             elsif kind == "stack"
+               series = tc["series"].as_a.map { |item| Series.new(item["name"].as_s, floats(item["values"])) }
+               Charts.stack(series, w, h, StackSettings.new(
+                 colors: colors(s), bg_color: color(s, "bg_color"), cat_labels: texts(s, "cat_labels"),
+                 show_labels: flag(s, "show_labels"), show_prices: flag(s, "show_prices"), plain: flag(s, "plain"))).or_panic
+             elsif kind == "heat"
+               values = tc["values"].as_a.map { |row| floats(row) }
+               Charts.heat(values, w, h, HeatSettings.new(
+                 low_color: color(s, "low_color"), high_color: color(s, "high_color"), mid_color: color(s, "mid_color"), bg_color: color(s, "bg_color"),
+                 row_labels: texts(s, "row_labels"), col_labels: texts(s, "col_labels"), show_labels: flag(s, "show_labels"), plain: flag(s, "plain"))).or_panic
+             elsif kind == "box"
+               categories = tc["categories"].as_a.map { |item| Category.new(item["name"].as_s, floats(item["samples"])) }
+               Charts.box(categories, w, h, BoxSettings.new(
+                 rise_color: color(s, "rise_color"), area_color: color(s, "area_color"), bg_color: color(s, "bg_color"),
+                 show_prices: flag(s, "show_prices"), plain: flag(s, "plain"))).or_panic
+             else
+               data = suite["datasets"][tc["dataset"].as_s]
+               chart = if tc["source"].as_s == "json"
+                         Chart.from_json(data["json"].as_s).or_panic
+                       else
+                         stamps = data["ts"]?
+                         timestamps = stamps ? stamps.as_a.map { |item| item.as_i64 } : nil
+                         Chart.from_arrays(floats(data["open"]), floats(data["high"]), floats(data["low"]), floats(data["close"]), timestamps).or_panic
+                       end
+               settings = Settings.new(rise_color: color(s, "rise_color"), fall_color: color(s, "fall_color"),
+                 bg_color: color(s, "bg_color"), area_color: color(s, "area_color"), single_color: flag(s, "single_color"),
+                 show_prices: flag(s, "show_prices"), show_times: flag(s, "show_times"), plain: flag(s, "plain"))
+               result = kind == "line" ? chart.line(w, h, settings).or_panic : chart.candle(w, h, settings).or_panic
+               chart.close
+               result
+             end
+    expected = File.read("conformance/golden/" + name + ".txt")
+    assert_eq(expected, output, "byte-for-byte shared rendering: " + name)
+  end
+end

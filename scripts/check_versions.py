@@ -16,6 +16,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # path -> regex whose first group is the version.
 MANIFESTS = {
+    "ccharts.iyi": r'pub VERSION\s*=\s*"([^\"]+)"',
+    "bindings/iyi/ccharts.iyi": r'pub VERSION\s*=\s*"([^\"]+)"',
     "pyproject.toml": r'^version\s*=\s*"([^"]+)"',
     "abi/ccharts_abi.h": r'^#define CCHARTS_VERSION "([^"]+)"',
     "bindings/rust/Cargo.toml": r'^version\s*=\s*"([^"]+)"',

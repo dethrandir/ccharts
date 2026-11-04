@@ -17,3 +17,8 @@ test-py:
 .PHONY: test test-py clean
 clean:
 	rm -rf build/ ccharts/*.so ccharts/__pycache__ tests/__pycache__
+
+# iyi binding: explicit native build, API/conformance tests, and example CLI.
+.PHONY: test-iyi
+test-iyi:
+	python3 bindings/iyi/scripts/dev.py test

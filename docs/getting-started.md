@@ -8,7 +8,7 @@
 
 - **Strings out, not streams**: Every function returns an allocated string (`char*`, `str`, `String`, etc.). You decide where to send it (`printf`, loggers, web APIs, Discord bots, terminal output, files).
 - **Zero runtime dependencies**: Written in clean, portable C89 with a flat C ABI.
-- **Deterministic & Byte-Identical**: The same inputs and dimensions produce the exact same bytes across all 9 language bindings.
+- **Deterministic & Byte-Identical**: The same inputs and dimensions produce the exact same bytes across the shared language-binding conformance suite.
 - **ANSI Color or Plain Text**: Full support for ANSI colors, 256-color, truecolor, or 100% plain text (`plain=true`) without escape codes for logs and files.
 
 ---
@@ -291,6 +291,27 @@ closes= [102.0, 101.5, 103.5, 105.5]
 chart = Chart.from_arrays(opens, highs, lows, closes)
 println(chart.candle(60, 8, show_prices=true))
 ```
+
+---
+
+### iyi (0.20.1)
+
+The Git package on `main` supports all nine chart types. First clone this repo
+and build the native archive explicitly; `iyi get` does not run build hooks:
+
+```sh
+git clone https://github.com/dethrandir/ccharts.git
+cd ccharts
+python3 bindings/iyi/scripts/dev.py test
+python3 bindings/iyi/scripts/dev.py cli
+fl market history THYAO 1m 1d --json | bindings/iyi/build/ccharts-market
+```
+
+The example reads file/stdin JSON through iyi's `std/json`; `fl` is optional
+and synthetic fixtures are included for offline use. For an independent iyi
+application, use `iyi get github.com/dethrandir/ccharts/v3@main` and point
+`IYI_LIBRARY_PATH` at the native build directory. See the
+[complete setup and ownership guide](../bindings/iyi/README.md).
 
 ---
 

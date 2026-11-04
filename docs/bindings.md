@@ -1,6 +1,6 @@
 # Language Bindings Guide
 
-`ccharts` provides idiomatic bindings for **9 major programming languages**. Every binding wraps the same core C engine, ensuring identical, byte-for-byte visual output across all platforms and runtimes.
+`ccharts` provides idiomatic bindings for **10 programming languages**. Every binding wraps the same core C engine and runs the shared byte-for-byte conformance cases. The iyi binding is currently distributed from Git main; its tagged release is pending.
 
 ---
 
@@ -17,6 +17,7 @@
 | **Ruby** | RubyGems | `ccharts` | `mkmf` + `Fiddle` (libffi) | Compiles C ABI at install time |
 | **Lua** | LuaRocks | `ccharts` | Lua C module + pure Lua facade | Compiles C ABI at install time |
 | **Julia** | Julia General | `Ccharts` | `deps/build.jl` + `ccall` | Compiles C ABI via `deps/build.jl` |
+| **iyi** | Git / iyipacks discovery | `github.com/dethrandir/ccharts/v3` | `lib` / `fun` C FFI | Explicit CMake static archive build |
 
 ---
 
@@ -200,22 +201,49 @@ println(pie([("A", 40.0), ("B", 60.0)], 24, 10; donut=true))
 
 ---
 
+## 10. iyi (`github.com/dethrandir/ccharts/v3`)
+
+- **Install**: `iyi get github.com/dethrandir/ccharts/v3@main` (existing tags predate the binding).
+- **Requirement**: iyi 0.20.1 and a separate native archive build with CMake and a C compiler. No Crystal compatibility mode or runtime Python dependency.
+- **Integration**: iyi `lib` / `fun` declarations call the existing flat C ABI. All nine chart types and JSON/CSV/typed-array input paths are exposed.
+- **Memory Management**: `Chart` owns its dataset. Call `close` explicitly, preferably with `defer chart.close` inside a function. There is no GC finalizer. Rendered text is copied into iyi memory and its native allocation freed immediately.
+- **Errors**: constructors return `Chart | ChartError`; renderers return `String | ChartError`.
+
+```ruby
+module main
+import github.com/dethrandir/ccharts/v3::{Chart, Settings}
+
+def draw : Nil
+  chart = Chart.from_arrays([100.0, 102.0], [105.0, 106.0], [98.0, 101.0], [103.0, 104.0]).or_panic
+  defer chart.close
+  print chart.candle(40, 8, Settings.new(show_prices: true)).or_panic
+end
+
+draw
+```
+
+See the [iyi build and API guide](../bindings/iyi/README.md),
+[JSON CLI example](../bindings/iyi/examples/README.md), and
+[validation evidence](../bindings/iyi/VALIDATION.md).
+
+---
+
 ## Cross-Language API Mapping
 
-| Chart / Operation | C ABI | Python | Rust | Go | JavaScript | .NET / C# | Java | Ruby | Lua | Julia |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **From Arrays** | `ccharts_from_arrays` | `Chart.from_arrays` | `Chart::from_arrays` | `FromArrays` | `Chart.fromArrays` | `Chart.FromArrays` | `Chart.fromArrays` | `Chart.from_arrays` | `from_arrays` | `from_arrays` |
-| **From JSON** | `ccharts_parse_json` | `Chart(json_str)` | `Chart::from_json` | `FromJSON` | `Chart.fromJson` | `Chart.FromJson` | `Chart.fromJson` | `Chart.from_json` | `from_json` | `from_json` |
-| **From CSV** | `ccharts_parse_csv` | — | `Chart::from_csv` | `FromCSV` | `Chart.fromCsv` | `Chart.FromCsv` | `Chart.fromCsv` | `Chart.from_csv` | `from_csv` | `from_csv` |
-| **Line Chart** | `ccharts_line` | `chart.line()` | `chart.line()` | `chart.Line()` | `chart.line()` | `chart.Line()` | `chart.line()` | `chart.line()` | `chart:line()` | `chart.line()` |
-| **Candle Chart**| `ccharts_candle` | `chart.candle()` | `chart.candle()`| `chart.Candle()`| `chart.candle()`| `chart.Candle()`| `chart.candle()`| `chart.candle()`| `chart:candle()`| `chart.candle()`|
-| **Pie / Donut** | `ccharts_pie_from_slices` | `Chart.pie()` | `Chart::pie()` | `Pie()` | `Chart.pie()` | `Chart.Pie()` | `Chart.pie()` | `Chart.pie()` | `pie()` | `pie()` |
-| **Histogram** | `ccharts_hist` | `Chart.histogram()` | `Chart::histogram()` | `Histogram()` | `Chart.histogram()` | `Chart.Histogram()` | `Chart.histogram()` | `Chart.histogram()` | `histogram()` | `histogram()` |
-| **Sparkline** | `ccharts_spark` | `Chart.sparkline()` | `Chart::sparkline()` | `Sparkline()` | `Chart.sparkline()` | `Chart.Sparkline()` | `Chart.sparkline()` | `Chart.sparkline()` | `sparkline()` | `sparkline()` |
-| **Bar** | `ccharts_bar` | `Chart.bar()` | `Chart::bar()` | `Bar()` | `Chart.bar()` | `Chart.Bar()` | `Chart.bar()` | `Chart.bar()` | `bar()` | `bar()` |
-| **Stacked Bar** | `ccharts_stack` | `Chart.stacked_bar()` | `Chart::stacked_bar()` | `StackedBar()` | `Chart.stackedBar()` | `Chart.StackedBar()` | `Chart.stackedBar()` | `Chart.stacked_bar()` | `stacked_bar()` | `stacked_bar()` |
-| **Heatmap** | `ccharts_heat` | `Chart.heatmap()` | `Chart::heatmap()` | `Heatmap()` | `Chart.heatmap()` | `Chart.Heatmap()` | `Chart.heatmap()` | `Chart.heatmap()` | `heatmap()` | `heatmap()` |
-| **Box Plot** | `ccharts_box` | `Chart.boxplot()` | `Chart::boxplot()` | `BoxPlot()` | `Chart.boxPlot()` | `Chart.BoxPlot()` | `Chart.boxPlot()` | `Chart.boxplot()` | `box_plot()` | `boxplot()` |
+| Chart / Operation | C ABI | Python | Rust | Go | JavaScript | .NET / C# | Java | Ruby | Lua | Julia | iyi |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **From Arrays** | `ccharts_from_arrays` | `Chart.from_arrays` | `Chart::from_arrays` | `FromArrays` | `Chart.fromArrays` | `Chart.FromArrays` | `Chart.fromArrays` | `Chart.from_arrays` | `from_arrays` | `from_arrays` | `Chart.from_arrays` |
+| **From JSON** | `ccharts_parse_json` | `Chart(json_str)` | `Chart::from_json` | `FromJSON` | `Chart.fromJson` | `Chart.FromJson` | `Chart.fromJson` | `Chart.from_json` | `from_json` | `from_json` | `Chart.from_json` |
+| **From CSV** | `ccharts_parse_csv` | — | `Chart::from_csv` | `FromCSV` | `Chart.fromCsv` | `Chart.FromCsv` | `Chart.fromCsv` | `Chart.from_csv` | `from_csv` | `from_csv` | `Chart.from_csv` |
+| **Line Chart** | `ccharts_line` | `chart.line()` | `chart.line()` | `chart.Line()` | `chart.line()` | `chart.Line()` | `chart.line()` | `chart.line()` | `chart:line()` | `chart.line()` | `chart.line()` |
+| **Candle Chart**| `ccharts_candle` | `chart.candle()` | `chart.candle()`| `chart.Candle()`| `chart.candle()`| `chart.Candle()`| `chart.candle()`| `chart.candle()`| `chart:candle()`| `chart.candle()`| `chart.candle()` |
+| **Pie / Donut** | `ccharts_pie_from_slices` | `Chart.pie()` | `Chart::pie()` | `Pie()` | `Chart.pie()` | `Chart.Pie()` | `Chart.pie()` | `Chart.pie()` | `pie()` | `pie()` | `Chart.pie()` |
+| **Histogram** | `ccharts_hist` | `Chart.histogram()` | `Chart::histogram()` | `Histogram()` | `Chart.histogram()` | `Chart.Histogram()` | `Chart.histogram()` | `Chart.histogram()` | `histogram()` | `histogram()` | `Chart.histogram()` |
+| **Sparkline** | `ccharts_spark` | `Chart.sparkline()` | `Chart::sparkline()` | `Sparkline()` | `Chart.sparkline()` | `Chart.Sparkline()` | `Chart.sparkline()` | `Chart.sparkline()` | `sparkline()` | `sparkline()` | `Chart.sparkline()` |
+| **Bar** | `ccharts_bar` | `Chart.bar()` | `Chart::bar()` | `Bar()` | `Chart.bar()` | `Chart.Bar()` | `Chart.bar()` | `Chart.bar()` | `bar()` | `bar()` | `Chart.bar()` |
+| **Stacked Bar** | `ccharts_stack` | `Chart.stacked_bar()` | `Chart::stacked_bar()` | `StackedBar()` | `Chart.stackedBar()` | `Chart.StackedBar()` | `Chart.stackedBar()` | `Chart.stacked_bar()` | `stacked_bar()` | `stacked_bar()` | `Chart.stacked_bar()` |
+| **Heatmap** | `ccharts_heat` | `Chart.heatmap()` | `Chart::heatmap()` | `Heatmap()` | `Chart.heatmap()` | `Chart.Heatmap()` | `Chart.heatmap()` | `Chart.heatmap()` | `heatmap()` | `heatmap()` | `Chart.heatmap()` |
+| **Box Plot** | `ccharts_box` | `Chart.boxplot()` | `Chart::boxplot()` | `BoxPlot()` | `Chart.boxPlot()` | `Chart.BoxPlot()` | `Chart.boxPlot()` | `Chart.boxplot()` | `box_plot()` | `boxplot()` | `Chart.boxplot()` |
 
 ---
 

@@ -1,0 +1,22 @@
+# Public package entry point. The binding lives with the other language bindings;
+# aliases keep consumer imports short without duplicating marshalling or rendering.
+module ccharts
+
+pub import bindings/iyi/ccharts
+
+pub VERSION = "3.0.0"
+
+pub alias Settings = Bindings::Iyi::Ccharts::Settings
+pub alias HistSettings = Bindings::Iyi::Ccharts::HistSettings
+pub alias SparkSettings = Bindings::Iyi::Ccharts::SparkSettings
+pub alias BarSettings = Bindings::Iyi::Ccharts::BarSettings
+pub alias StackSettings = Bindings::Iyi::Ccharts::StackSettings
+pub alias HeatSettings = Bindings::Iyi::Ccharts::HeatSettings
+pub alias BoxSettings = Bindings::Iyi::Ccharts::BoxSettings
+pub alias PieSettings = Bindings::Iyi::Ccharts::PieSettings
+pub alias Slice = Bindings::Iyi::Ccharts::Slice
+pub alias Series = Bindings::Iyi::Ccharts::Series
+pub alias Category = Bindings::Iyi::Ccharts::Category
+pub alias ChartError = Bindings::Iyi::Ccharts::ChartError
+pub alias Chart = Bindings::Iyi::Ccharts::Chart
+pub alias Charts = Bindings::Iyi::Ccharts::Charts

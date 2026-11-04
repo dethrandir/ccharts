@@ -19,9 +19,9 @@ hataların tekrarlanmaması için buraya yazılmıştır.
 
 ## 1. Versiyon bump — hangi dosyalar, tek seferde
 
-`version` **9 manifestte + vendored C kopyalarda + Cargo.lock** tek sürümde.
+`version` **11 manifestte + vendored C kopyalarda + Cargo.lock** tek sürümde.
 
-check_versions.py'nin referans aldığı 9 manifest:
+check_versions.py'nin referans aldığı 11 manifest:
 
 | Dosya | Alan |
 |------|------|
@@ -34,6 +34,8 @@ check_versions.py'nin referans aldığı 9 manifest:
 | `bindings/ruby/lib/ccharts/version.rb` | `VERSION = "..."` |
 | `bindings/lua/src/ccharts/version.lua` | `VERSION = "..."` |
 | `bindings/julia/Project.toml` | `version = "..."` |
+| `ccharts.iyi` | `pub VERSION = "..."` |
+| `bindings/iyi/ccharts.iyi` | `pub VERSION = "..."` |
 
 Ayrıca elle güncellenmesi gerekenler (check_versions KONTROL ETMEZ):
 
@@ -42,7 +44,7 @@ Ayrıca elle güncellenmesi gerekenler (check_versions KONTROL ETMEZ):
 - Vendored C kopyaları: `bindings/rust/vendor/ccharts_abi.h`,
   `bindings/js/vendor/ccharts_abi.h`, `bindings/go/ccharts/ccharts_abi.h`,
   `bindings/ruby/ext/ccharts/vendor/ccharts_abi.h`, `bindings/lua/vendor/ccharts_abi.h`,
-  `bindings/julia/vendor/ccharts_abi.h`.
+  `bindings/julia/vendor/ccharts_abi.h`, `bindings/iyi/vendor/ccharts_abi.h`.
   Bunları **elle değil** `python3 scripts/sync_sources.py` ile tazele
   (abi/ccharts_abi.h'ten kopyalar). CCHARTS_VERSION makrosunun yanı sıra,
   `abi/ccharts_abi.h` içinde "Library version (...)" yorum satırı da sürüm
@@ -52,7 +54,7 @@ Ayrıca elle güncellenmesi gerekenler (check_versions KONTROL ETMEZ):
 **Doğrulama (push etmeden önce şart):**
 
 ```sh
-python3 scripts/check_versions.py            # 9 manifest aynı sürümde olmalı
+python3 scripts/check_versions.py            # 11 manifest aynı sürümde olmalı
 python3 scripts/sync_sources.py --check      # vendored kaynaklar güncel olmalı
 make test                                    # C demo (line + candle)
 python3 -m unittest discover -s tests -v     # Python testleri
@@ -209,3 +211,14 @@ gh secret list
 gh run list --workflow=publish.yml --limit 1
 gh run watch <run-id> --exit-status
 ```
+## iyi package
+
+The iyi binding shares the ccharts version, exports it in `ccharts.iyi` and
+`bindings/iyi/ccharts.iyi`, and is covered by `scripts/check_versions.py`. Its
+root `iyi.mod` uses `github.com/dethrandir/ccharts/v3` for the current 3.x line.
+Run `python3 bindings/iyi/scripts/dev.py test` before release. No extra package
+upload is needed: iyi fetches Git tags from this repository. Existing tags
+without the root manifest cannot install the binding; publish a new release
+containing it instead of moving an existing tag. The native ABI must still be
+built explicitly by consumers. Add the `iyi` GitHub topic for iyipacks discovery
+and check the catalog after its next import; discovery is not an upload.
