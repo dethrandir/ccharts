@@ -6,9 +6,9 @@ bar, heatmap and box plot. Rendering stays in `ccharts.h`; iyi handles typed
 inputs, options, error values and native ownership.
 
 Requires iyi **0.20.1**, Python 3 (development helper), CMake and a C compiler.
-This binding targets 64-bit native hosts. Linux x86-64 was exercised locally;
-the CI matrix is configured for macOS arm64 and Windows x86-64 too, but
-those jobs have not been run as part of this local delivery. Cross-compilation,
+This binding targets 64-bit native hosts. Linux x86-64 and Windows x86-64
+passed the full iyi CI job. The macOS arm64 job is configured but still queued;
+see the validation report for the exact run and tested commit. Cross-compilation,
 32-bit targets and WebAssembly have not been qualified for this binding.
 There is no runtime Python dependency and no `--crystal` requirement.
 

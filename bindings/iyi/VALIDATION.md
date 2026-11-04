@@ -79,3 +79,25 @@ current Git distribution and CI state.
 - No release tag or iyipacks catalog listing was published. The current
   catalog rejects canonical `/v3` identities; the researched publication path
   and upstream compatibility fix are described in [PUBLICATION.md](PUBLICATION.md).
+
+
+## CI portability fixes and latest observed state
+
+The first run exposed two real failures, now fixed and pushed:
+
+- `bcd21b7`: keep `-lccharts -lm` in one ordered linker fragment. Ubuntu's
+  `--as-needed` discarded math symbols when separate annotations reversed the
+  libraries. The failure was reproduced locally with an as-needed compiler
+  wrapper; the full iyi tests then passed under that setting.
+- `72bd486`: add the missing trailing newline to the public C header and sync
+  every vendored header. Strict Clang compilation and unchanged 70-case C
+  goldens passed after the formatting-only change.
+
+[Current CI run 41880848815](https://github.com/dethrandir/ccharts/actions/runs/41880848815)
+executes code commit `72bd4868c5f9`. At the latest observation, **26 of 29 jobs
+passed**, including the full Linux and Windows iyi jobs. The remaining three
+macOS jobs (iyi, Rust, C ABI) were queued without runner assignments. The run
+has no failure reported, but is not complete and is not claimed green.
+Duplicate/superseded runs were cancelled; the old failed run is retained as
+failure evidence. The current Git package was fetched again from GitHub and
+built successfully in a separate consumer with `--as-needed` enabled.
