@@ -12,9 +12,13 @@ module bindings/iyi/ccharts
 
 pub VERSION = "3.0.0"
 
-@[Link("ccharts")]
-{% unless flag?(:win32) %}
-  @[Link("m")]
+# Keep the archive before its math dependency as one ordered linker fragment.
+# Separate Link annotations are collected in reverse order by iyi; Ubuntu's
+# --as-needed then drops libm before seeing ccharts' lround/atan2 references.
+{% if flag?(:win32) %}
+  @[Link("ccharts")]
+{% else %}
+  @[Link(ldflags: "-lccharts -lm")]
 {% end %}
 lib Native
   struct Settings
