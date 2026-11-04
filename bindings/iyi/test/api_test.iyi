@@ -2,14 +2,14 @@
 # parsing paths and invalid input must stay safe at the C boundary.
 module bindings/iyi/test/api_test
 
-import ccharts::{Chart, Charts, ChartError, Settings, PieSettings, StackSettings, HeatSettings, Slice, Series, Category}
+import ccharts::{VERSION, Chart, Charts, ChartError, Settings, PieSettings, StackSettings, HeatSettings, Slice, Series, Category}
 
 def sample : Chart
   Chart.from_arrays([1.0, 2.0], [3.0, 4.0], [0.5, 1.0], [1.5, 3.0]).or_panic
 end
 
 test("version, native limits and color lookup are exposed") do
-  assert_eq("3.0.0", Charts.version)
+  assert_eq(VERSION, Charts.version)
   assert(Charts.max_dim > 0)
   assert(Charts.max_cells > 0)
   assert_eq("\e[34m", Charts.color(4).or_panic)

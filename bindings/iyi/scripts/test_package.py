@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Exercise actual iyi get against a temporary local git mirror, never GitHub.
 
-The mirror has a synthetic v3.0.0 tag containing this working tree's package;
+The mirror has a synthetic tag matching the current source version containing this working tree's package;
 this does not assert that an already-published upstream tag contains iyi support.
 """
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -12,6 +13,7 @@ import tempfile
 
 BINDING = Path(__file__).resolve().parents[1]
 ROOT = BINDING.parents[1]
+VERSION = re.search(r'pub VERSION = "([^"]+)"', (ROOT / "ccharts.iyi").read_text(encoding="utf-8")).group(1)
 
 
 def main():
@@ -37,13 +39,13 @@ def main():
         run(["git", "add", "."], package)
         run(["git", "-c", "user.name=Package Test", "-c", "user.email=test@example.invalid",
              "-c", "commit.gpgsign=false", "commit", "-qm", "Package test snapshot"], package)
-        run(["git", "-c", "tag.gpgsign=false", "tag", "v3.0.0"], package)
+        run(["git", "-c", "tag.gpgsign=false", "tag", "v" + VERSION], package)
         consumer = tmp / "consumer"
         consumer.mkdir()
         (consumer / "iyi.mod").write_text("module example.test/ccharts-demo\n", encoding="utf-8")
         (consumer / "main.iyi").write_text('''module main
-import github.com/dethrandir/ccharts/v3::{Chart, Settings, Slice, Charts, ChartError}
-assert_eq("3.0.0", Charts.version)
+import github.com/dethrandir/ccharts/v3::{VERSION, Chart, Settings, Slice, Charts, ChartError}
+assert_eq(VERSION, Charts.version)
 chart = Chart.from_arrays([1.0, 2.0], [3.0, 4.0], [0.5, 1.0], [1.5, 3.0]).or_panic
 assert_eq(2, chart.size)
 assert(!chart.candle(20, 4, Settings.new(plain: true)).or_panic.empty?)
@@ -52,7 +54,7 @@ assert_error(ChartError) { chart.line(20, 4) }
 assert(!Chart.pie([Slice.new("Türkçe", 1.0)], 20, 6).or_panic.empty?)
 puts "package consumer passed"
 ''', encoding="utf-8")
-        result = run(["iyi", "get", "github.com/dethrandir/ccharts/v3@v3.0.0"], consumer)
+        result = run(["iyi", "get", "github.com/dethrandir/ccharts/v3@v" + VERSION], consumer)
         assert "github.com/dethrandir/ccharts/v3" in (consumer / "iyi.mod").read_text()
         result = run(["iyi", "run", "main.iyi"], consumer)
         assert "package consumer passed" in result.stdout, result.stdout + result.stderr
